@@ -102,10 +102,10 @@ export class CodeReviewOrchestrator extends DurableObject<Env> {
       this.state = storedState;
 
       // Restore usage accumulators from persisted state so they survive DO eviction
-      if (storedState.model) this.model = storedState.model;
-      if (storedState.totalTokensIn) this.totalTokensIn = storedState.totalTokensIn;
-      if (storedState.totalTokensOut) this.totalTokensOut = storedState.totalTokensOut;
-      if (storedState.totalCost) this.totalCost = storedState.totalCost;
+      if (storedState.model != null) this.model = storedState.model;
+      if (storedState.totalTokensIn != null) this.totalTokensIn = storedState.totalTokensIn;
+      if (storedState.totalTokensOut != null) this.totalTokensOut = storedState.totalTokensOut;
+      if (storedState.totalCost != null) this.totalCost = storedState.totalCost;
     }
   }
 
