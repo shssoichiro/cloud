@@ -1,1 +1,0 @@
-CREATE INDEX "IDX_cli_sessions_v2_user_updated" ON "cli_sessions_v2" USING btree ("kilo_user_id","updated_at");
