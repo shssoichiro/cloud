@@ -110,7 +110,7 @@ export function isValidSessionConfig(config: SessionConfig | null): config is Se
   if (!config) return false;
 
   const validModes: AgentMode[] = ['code', 'plan', 'debug', 'orchestrator', 'ask'];
-  const hasValidMode = validModes.includes(config.mode as AgentMode);
+  const hasValidMode = (validModes as string[]).includes(config.mode);
   const hasValidModel = config.model.length > 0;
 
   return hasValidMode && hasValidModel;
