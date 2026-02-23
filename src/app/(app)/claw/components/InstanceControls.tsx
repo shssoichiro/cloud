@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Play, RotateCw, Square, Stethoscope } from 'lucide-react';
+import { Play, RefreshCw, RotateCw, Stethoscope } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
 import type { KiloClawDashboardStatus } from '@/lib/kiloclaw/types';
@@ -42,23 +42,25 @@ export function InstanceControls({
           }}
         >
           <Play className="h-4 w-4" />
-          {mutations.start.isPending ? 'Starting...' : 'Start'}
+          {mutations.start.isPending ? 'Starting...' : 'Start Machine'}
         </Button>
         <Button
           size="sm"
           variant="outline"
-          className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-          disabled={!isRunning || mutations.stop.isPending || isDestroying}
+          className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
+          disabled={!isRunning || mutations.restartOpenClaw.isPending || isDestroying}
           onClick={() => {
-            posthog?.capture('claw_stop_instance_clicked', { instance_status: status.status });
-            mutations.stop.mutate(undefined, {
-              onSuccess: () => toast.success('Instance stopped'),
+            posthog?.capture('claw_restart_openclaw_clicked', {
+              instance_status: status.status,
+            });
+            mutations.restartOpenClaw.mutate(undefined, {
+              onSuccess: () => toast.success('OpenClaw restarting'),
               onError: err => toast.error(err.message),
             });
           }}
         >
-          <Square className="h-4 w-4" />
-          {mutations.stop.isPending ? 'Stopping...' : 'Stop'}
+          <RefreshCw className="h-4 w-4" />
+          {mutations.restartOpenClaw.isPending ? 'Restarting...' : 'Restart OpenClaw'}
         </Button>
         <Button
           size="sm"

@@ -95,6 +95,9 @@ export function useKiloClawMutations() {
     restartGateway: useMutation(
       trpc.kiloclaw.restartGateway.mutationOptions({ onSuccess: invalidateStatus })
     ),
+    restartOpenClaw: useMutation(
+      trpc.kiloclaw.restartOpenClaw.mutationOptions({ onSuccess: invalidateStatus })
+    ),
     approvePairingRequest: useMutation(
       trpc.kiloclaw.approvePairingRequest.mutationOptions({
         onSuccess: async () => {
