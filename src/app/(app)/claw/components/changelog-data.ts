@@ -12,9 +12,9 @@ export type ChangelogEntry = {
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-02-23',
-    description: 'Version bump',
+    description: 'Deploy OpenClaw 2026.2.22. Added device pairing support to the dashboard.',
     category: 'feature',
-    deployHint: 'redeploy_suggested',
+    deployHint: 'redeploy_required',
   },
   {
     date: '2026-02-23',
