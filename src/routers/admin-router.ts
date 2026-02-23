@@ -481,8 +481,6 @@ export const adminRouter = createTRPCRouter({
           columns: {
             id: true,
             stripe_customer_id: true,
-            microdollars_used: true,
-            total_microdollars_acquired: true,
             blocked_reason: true,
           },
           where: eq(kilocode_users.id, input.userId),
@@ -564,9 +562,6 @@ export const adminRouter = createTRPCRouter({
           }
         }
 
-        const currentBalanceMicrodollars =
-          user.total_microdollars_acquired - user.microdollars_used;
-
         const balanceResetAmountUsd = await db.transaction(async tx => {
           await tx
             .update(kilo_pass_subscriptions)
@@ -587,8 +582,22 @@ export const adminRouter = createTRPCRouter({
               .where(eq(kilocode_users.id, input.userId));
           }
 
+          const freshUserRows = await tx
+            .select({
+              microdollars_used: kilocode_users.microdollars_used,
+              total_microdollars_acquired: kilocode_users.total_microdollars_acquired,
+            })
+            .from(kilocode_users)
+            .where(eq(kilocode_users.id, input.userId))
+            .for('update')
+            .limit(1);
+          const freshUser = freshUserRows[0];
+          const currentBalanceMicrodollars = freshUser
+            ? freshUser.total_microdollars_acquired - freshUser.microdollars_used
+            : 0;
+
           let balanceReset: number | null = null;
-          if (currentBalanceMicrodollars > 0) {
+          if (currentBalanceMicrodollars > 0 && freshUser) {
             await tx.insert(credit_transactions).values({
               kilo_user_id: input.userId,
               organization_id: null,
@@ -596,7 +605,7 @@ export const adminRouter = createTRPCRouter({
               amount_microdollars: -currentBalanceMicrodollars,
               credit_category: 'admin-cancel-refund-kilo-pass',
               description: `Balance zeroed by admin: ${input.reason}`,
-              original_baseline_microdollars_used: user.microdollars_used,
+              original_baseline_microdollars_used: freshUser.microdollars_used,
             });
             await tx
               .update(kilocode_users)
