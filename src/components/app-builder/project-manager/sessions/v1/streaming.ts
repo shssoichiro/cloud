@@ -6,8 +6,8 @@
  * methods for sending messages, interrupting, and managing session lifecycle.
  *
  * This is purely V1 — no V2 or auto-upgrade logic.
- * Auto-upgrade detection is signaled via the onUpgradeDetected callback,
- * allowing ProjectManager to handle the upgrade externally.
+ * Session changes (upgrade or GitHub migration) are signaled via the
+ * onSessionChanged callback, allowing ProjectManager to handle them externally.
  */
 
 import {
@@ -18,8 +18,11 @@ import {
 import type { V1SessionStore } from './store';
 import type { AppTRPCClient } from '../../types';
 import type { Images } from '@/lib/images-schema';
+import type { WorkerVersion } from '@/lib/app-builder/types';
 import { addUserMessage, addErrorMessage } from './messages';
 import { formatStreamError, createLogger } from '../../logging';
+
+type SendMessageResponse = { sessionId: string; workerVersion: WorkerVersion };
 
 export type V1StreamingConfig = {
   projectId: string;
@@ -31,8 +34,8 @@ export type V1StreamingConfig = {
   /** Whether the session has been prepared (false for legacy sessions) */
   sessionPrepared: boolean | null;
   onStreamComplete?: () => void;
-  /** Called when the backend returns a different session ID, signaling an upgrade */
-  onUpgradeDetected?: (newSessionId: string) => void;
+  /** Called when the backend creates a new session (upgrade or GitHub migration) */
+  onSessionChanged?: (newSessionId: string, workerVersion: WorkerVersion) => void;
 };
 
 export type V1StreamingCoordinator = {
@@ -53,7 +56,7 @@ export type V1StreamingCoordinator = {
  * For legacy (unprepared) sessions, uses prepareLegacySession mutation instead.
  */
 export function createV1StreamingCoordinator(config: V1StreamingConfig): V1StreamingCoordinator {
-  const { projectId, organizationId, trpcClient, store, onStreamComplete, onUpgradeDetected } =
+  const { projectId, organizationId, trpcClient, store, onStreamComplete, onSessionChanged } =
     config;
 
   const logger = createLogger(projectId);
@@ -132,7 +135,7 @@ export function createV1StreamingCoordinator(config: V1StreamingConfig): V1Strea
     message: string,
     images?: Images,
     model?: string
-  ): Promise<string> {
+  ): Promise<SendMessageResponse> {
     if (organizationId) {
       const result = await trpcClient.organizations.appBuilder.sendMessage.mutate({
         projectId,
@@ -141,7 +144,7 @@ export function createV1StreamingCoordinator(config: V1StreamingConfig): V1Strea
         images,
         model,
       });
-      return result.cloudAgentSessionId;
+      return { sessionId: result.cloudAgentSessionId, workerVersion: result.workerVersion };
     } else {
       const result = await trpcClient.appBuilder.sendMessage.mutate({
         projectId,
@@ -149,7 +152,7 @@ export function createV1StreamingCoordinator(config: V1StreamingConfig): V1Strea
         images,
         model,
       });
-      return result.cloudAgentSessionId;
+      return { sessionId: result.cloudAgentSessionId, workerVersion: result.workerVersion };
     }
   }
 
@@ -226,6 +229,7 @@ export function createV1StreamingCoordinator(config: V1StreamingConfig): V1Strea
     void (async () => {
       try {
         let sessionId: string;
+        let workerVersion: WorkerVersion = 'v1';
 
         if (!isSessionPrepared) {
           legacyPreparationInProgress = true;
@@ -241,8 +245,10 @@ export function createV1StreamingCoordinator(config: V1StreamingConfig): V1Strea
             legacyPreparationInProgress = false;
           }
         } else {
-          sessionId = await callSendMessage(message, images, model);
-          logger.log('sendMessage returned', { sessionId });
+          const response = await callSendMessage(message, images, model);
+          sessionId = response.sessionId;
+          workerVersion = response.workerVersion;
+          logger.log('sendMessage returned', { sessionId, workerVersion });
         }
 
         if (destroyed || abortSignal.aborted) {
@@ -250,9 +256,9 @@ export function createV1StreamingCoordinator(config: V1StreamingConfig): V1Strea
           return;
         }
 
-        // Detect auto-upgrade: if session ID changed, backend may have created a v2 session
-        if (sessionId !== config.cloudAgentSessionId && onUpgradeDetected) {
-          onUpgradeDetected(sessionId);
+        // Detect session change: backend created a new session (upgrade or GitHub migration)
+        if (sessionId !== config.cloudAgentSessionId && onSessionChanged) {
+          onSessionChanged(sessionId, workerVersion);
           return;
         }
 

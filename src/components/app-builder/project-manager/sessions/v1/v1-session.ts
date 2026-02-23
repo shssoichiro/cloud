@@ -5,7 +5,7 @@
 
 import type { CloudMessage } from '@/components/cloud-agent/types';
 import type { Images } from '@/lib/images-schema';
-import type { ProjectSessionInfo } from '@/lib/app-builder/types';
+import type { ProjectSessionInfo, WorkerVersion } from '@/lib/app-builder/types';
 import type { AppTRPCClient } from '../../types';
 import type { V1Session } from '../types';
 import { createV1SessionStore } from './store';
@@ -21,7 +21,7 @@ export type CreateV1SessionConfig = {
   cloudAgentSessionId?: string | null;
   sessionPrepared?: boolean | null;
   onStreamComplete?: () => void;
-  onUpgradeDetected?: (newSessionId: string) => void;
+  onSessionChanged?: (newSessionId: string, workerVersion: WorkerVersion) => void;
 };
 
 /**
@@ -38,7 +38,7 @@ export function createV1Session(config: CreateV1SessionConfig): V1Session {
     cloudAgentSessionId,
     sessionPrepared,
     onStreamComplete,
-    onUpgradeDetected,
+    onSessionChanged,
   } = config;
 
   const store = createV1SessionStore(initialMessages);
@@ -53,7 +53,7 @@ export function createV1Session(config: CreateV1SessionConfig): V1Session {
       cloudAgentSessionId: cloudAgentSessionId ?? null,
       sessionPrepared: sessionPrepared ?? null,
       onStreamComplete,
-      onUpgradeDetected,
+      onSessionChanged,
     });
   }
 

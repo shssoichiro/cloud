@@ -36,6 +36,7 @@ import type {
   CreateProjectResult,
   StartSessionInput,
   SendMessageInput,
+  SendMessageResult,
   DeployProjectResult,
   ProjectWithMessages,
   ProjectSessionInfo,
@@ -924,9 +925,7 @@ export async function startSessionForProject(
   }
 }
 
-export async function sendMessage(
-  input: SendMessageInput
-): Promise<InitiateSessionV2Output | InitiateSessionV2OutputNext> {
+export async function sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
   const { projectId, owner, message, authToken, images, model } = input;
 
   const project = await getProjectWithOwnershipCheck(projectId, owner);
@@ -972,9 +971,15 @@ export async function sendMessage(
       reason: decision.reason,
     } satisfies CreateSessionParams;
 
-    return decision.targetWorkerVersion === 'v2'
-      ? createV2Session(createParams)
-      : createV1Session(createParams);
+    const result =
+      decision.targetWorkerVersion === 'v2'
+        ? await createV2Session(createParams)
+        : await createV1Session(createParams);
+
+    return {
+      cloudAgentSessionId: result.cloudAgentSessionId,
+      workerVersion: decision.targetWorkerVersion,
+    };
   }
 
   const sendParams = {
@@ -987,9 +992,15 @@ export async function sendMessage(
     images,
   } satisfies SendToExistingSessionParams;
 
-  return decision.workerVersion === 'v2'
-    ? sendToExistingV2Session(sendParams)
-    : sendToExistingV1Session(sendParams);
+  const result =
+    decision.workerVersion === 'v2'
+      ? await sendToExistingV2Session(sendParams)
+      : await sendToExistingV1Session(sendParams);
+
+  return {
+    cloudAgentSessionId: result.cloudAgentSessionId,
+    workerVersion: decision.workerVersion,
+  };
 }
 
 /**

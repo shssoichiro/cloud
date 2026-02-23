@@ -9,6 +9,7 @@ import type {
   DeployProjectResult,
   ProjectSessionInfo,
   ProjectWithMessages,
+  WorkerVersion,
 } from '@/lib/app-builder/types';
 import type { Images } from '@/lib/images-schema';
 import type { TRPCClient } from '@trpc/client';
@@ -140,7 +141,7 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
             cloudAgentSessionId: proj.session_id ?? null,
             sessionPrepared: info.prepared,
             onStreamComplete: () => startPreviewPollingIfNeeded(),
-            onUpgradeDetected: handleUpgradeDetected,
+            onSessionChanged: handleSessionChanged,
           })
         );
       }
@@ -149,46 +150,59 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
     return sessions;
   }
 
-  // --- Upgrade detection ---
+  // --- Session change detection (upgrade or GitHub migration) ---
 
-  function handleUpgradeDetected(newSessionId: string): void {
-    logger.log('V1→V2 upgrade detected', { newSessionId });
+  function handleSessionChanged(newSessionId: string, workerVersion: WorkerVersion): void {
+    logger.log('Session changed', { newSessionId, workerVersion });
 
     const currentActive = getActiveSession();
     currentActive?.destroy();
 
-    const v2Info: ProjectSessionInfo = {
+    const newInfo: ProjectSessionInfo = {
       id: newSessionId,
       cloud_agent_session_id: newSessionId,
-      worker_version: 'v2',
+      worker_version: workerVersion,
       created_at: new Date().toISOString(),
       ended_at: null,
-      reason: 'upgrade',
+      reason: workerVersion === 'v1' ? 'github_migration' : 'upgrade',
       title: null,
       initiated: true,
       prepared: true,
     };
 
-    const v2Session = createV2Session({
-      info: v2Info,
-      initialMessages: [],
-      projectId,
-      organizationId,
-      trpcClient,
-      cloudAgentSessionId: newSessionId,
-      onStreamComplete: () => startPreviewPollingIfNeeded(),
-    });
+    const newSession =
+      workerVersion === 'v2'
+        ? createV2Session({
+            info: newInfo,
+            initialMessages: [],
+            projectId,
+            organizationId,
+            trpcClient,
+            cloudAgentSessionId: newSessionId,
+            onStreamComplete: () => startPreviewPollingIfNeeded(),
+          })
+        : createV1Session({
+            info: newInfo,
+            initialMessages: [],
+            projectId,
+            organizationId,
+            trpcClient,
+            cloudAgentSessionId: newSessionId,
+            sessionPrepared: true,
+            onStreamComplete: () => startPreviewPollingIfNeeded(),
+            onSessionChanged: handleSessionChanged,
+          });
 
-    subscribeToSession(v2Session);
+    subscribeToSession(newSession);
 
     const currentSessions = store.getState().sessions;
     store.setState({
-      sessions: [...currentSessions, v2Session],
+      sessions: [...currentSessions, newSession],
       isStreaming: true,
     });
     cloudAgentSessionId = newSessionId;
 
-    v2Session.connectToExistingSession(newSessionId);
+    newSession.connectToExistingSession(newSessionId);
   }
 
   // --- Preview polling ---

@@ -52,6 +52,15 @@ export type SendMessageInput = {
 };
 
 /**
+ * Result of sendMessage — includes the worker version of the session that handled
+ * the message, so the client can distinguish upgrades from GitHub migrations.
+ */
+export type SendMessageResult = {
+  cloudAgentSessionId: string;
+  workerVersion: WorkerVersion;
+};
+
+/**
  * Worker version for cloud agent sessions
  */
 export type WorkerVersion = 'v1' | 'v2';

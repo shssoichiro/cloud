@@ -212,13 +212,11 @@ function ExpandableSessionBlock({
   const endedDate = ended_at ? new Date(ended_at) : null;
 
   const handleToggle = useCallback(() => {
-    setExpanded(prev => {
-      if (!prev) {
-        session.loadMessages();
-      }
-      return !prev;
-    });
-  }, [session]);
+    if (!expanded) {
+      session.loadMessages();
+    }
+    setExpanded(prev => !prev);
+  }, [expanded, session]);
 
   return (
     <div className="border-b">
