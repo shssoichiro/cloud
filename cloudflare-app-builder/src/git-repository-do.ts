@@ -50,6 +50,7 @@ export class GitRepositoryDO extends DurableObject<Env> {
       this.fs = new SqliteFS(this.sql.bind(this));
       this.fs.init();
     } catch (error) {
+      this.fs = null;
       logger.error('Failed to initialize SqliteFS', formatError(error));
       throw error;
     }
