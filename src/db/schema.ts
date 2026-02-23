@@ -2240,6 +2240,7 @@ export type AppBuilderProject = typeof app_builder_projects.$inferSelect;
 export const AppBuilderSessionReason = {
   Initial: 'initial', // First session created with project
   GitHubMigration: 'github_migration', // New session after migrating to GitHub
+  Upgrade: 'upgrade', // New session after worker version upgrade (v1→v2)
 } satisfies Record<string, string>;
 
 export const app_builder_project_sessions = pgTable(
@@ -2255,7 +2256,8 @@ export const app_builder_project_sessions = pgTable(
     cloud_agent_session_id: text().notNull(), // "agent_xxx"
     created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     ended_at: timestamp({ withTimezone: true, mode: 'string' }), // null = current/active session
-    reason: text().notNull(), // 'initial', 'github_migration', etc.
+    reason: text().notNull(), // 'initial', 'github_migration', 'upgrade', etc.
+    worker_version: text().notNull().default('v1'), // 'v1' (old cloud-agent) or 'v2' (cloud-agent-next)
   },
   table => [
     index('IDX_app_builder_project_sessions_project_id').on(table.project_id),
