@@ -326,7 +326,7 @@ export type ToolExecution = {
 export type SessionConfig = {
   sessionId: string; // Session identifier (agent_xxx)
   repository: string; // GitHub repo (owner/repo format)
-  mode: string; // Agent mode (code, architect, debug, etc.)
+  mode: string; // Agent mode (code, plan, debug, orchestrator, ask, etc.)
   model: string; // LLM model identifier
 };
 

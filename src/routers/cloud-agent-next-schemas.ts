@@ -3,7 +3,7 @@ import * as z from 'zod';
 /**
  * Shared schemas for cloud-agent-next routers
  *
- * Uses new modes (plan, build) and V2 WebSocket-based API only.
+ * Uses V2 WebSocket-based API only.
  */
 
 /**
