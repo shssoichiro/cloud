@@ -10,6 +10,7 @@ import { createCloudAgentNextClient } from '@/lib/cloud-agent-next/cloud-agent-c
 import { generateApiToken } from '@/lib/tokens';
 import { fetchSessionMessages } from '@/lib/session-ingest-client';
 import { baseGetSessionNextOutputSchema } from './cloud-agent-next-schemas';
+import { sanitizeGitUrl } from '@/routers/cli-sessions-router';
 
 /**
  * Check if an error indicates the session was not found in the cloud-agent DO.
@@ -114,7 +115,7 @@ export const cliSessionsV2Router = createTRPCRouter({
     }
 
     if (gitUrl) {
-      whereConditions.push(eq(cli_sessions_v2.git_url, gitUrl));
+      whereConditions.push(eq(cli_sessions_v2.git_url, sanitizeGitUrl(gitUrl)));
     }
 
     const results = await db
