@@ -75,6 +75,7 @@ const ListSessionsInputSchema = z.object({
   limit: z.number().min(1).max(50).optional().default(PAGE_SIZE),
   orderBy: z.enum(['created_at', 'updated_at']).optional().default('created_at'),
   includeChildren: z.boolean().optional().default(false),
+  gitUrl: z.string().optional(),
 });
 
 const GetSessionInputSchema = z.object({
@@ -97,7 +98,7 @@ export const cliSessionsV2Router = createTRPCRouter({
    * List sessions for the current user with cursor-based pagination.
    */
   list: baseProcedure.input(ListSessionsInputSchema).query(async ({ ctx, input }) => {
-    const { cursor, limit, orderBy, includeChildren } = input;
+    const { cursor, limit, orderBy, includeChildren, gitUrl } = input;
 
     const orderColumn =
       orderBy === 'updated_at' ? cli_sessions_v2.updated_at : cli_sessions_v2.created_at;
@@ -110,6 +111,10 @@ export const cliSessionsV2Router = createTRPCRouter({
 
     if (!includeChildren) {
       whereConditions.push(isNull(cli_sessions_v2.parent_session_id));
+    }
+
+    if (gitUrl) {
+      whereConditions.push(eq(cli_sessions_v2.git_url, gitUrl));
     }
 
     const results = await db
