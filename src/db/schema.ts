@@ -56,6 +56,7 @@ import {
 } from '@/lib/kilo-pass/enums';
 import type { AnyPgColumn as DrizzleAnyPgColumn } from 'drizzle-orm/pg-core';
 import { FeedbackFor, FeedbackSource } from '@/lib/feedback/enums';
+import type { Tool } from '@/lib/organizations/model-settings';
 
 /**
  * Generates a complete check constraint for an enum column.
@@ -844,6 +845,10 @@ export const custom_llm = pgTable('custom_llm', {
   api_key: text().notNull(),
   verbosity: text().$type<'low' | 'medium' | 'high' | 'max'>(),
   organization_ids: jsonb().notNull().$type<string[]>(),
+  reasoning_effort: text().$type<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'>(),
+  included_tools: jsonb().$type<Tool[]>(),
+  excluded_tools: jsonb().$type<Tool[]>(),
+  supports_image_input: boolean(),
 });
 
 export type CustomLlm = typeof custom_llm.$inferSelect;
@@ -1974,6 +1979,9 @@ export const cloud_agent_code_reviews = pgTable(
     status: text().notNull().default('pending'), // 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
     error_message: text(),
 
+    // Which cloud agent backend executed this review: 'v1' (cloud-agent SSE) or 'v2' (cloud-agent-next)
+    agent_version: text().default('v1'),
+
     // Timestamps
     started_at: timestamp({ withTimezone: true, mode: 'string' }),
     completed_at: timestamp({ withTimezone: true, mode: 'string' }),
@@ -2107,6 +2115,8 @@ export const cli_sessions_v2 = pgTable(
     organization_id: uuid().references(() => organizations.id, { onDelete: 'set null' }),
     cloud_agent_session_id: text(),
     created_on_platform: text().notNull().default('unknown'),
+    git_url: text(),
+    git_branch: text(),
     created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     updated_at: timestamp({ withTimezone: true, mode: 'string' })
       .defaultNow()

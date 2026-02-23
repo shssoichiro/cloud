@@ -6,6 +6,8 @@ import type { SessionDataItem } from '../types/session-sync';
 import { getItemIdentity } from '../util/compaction';
 import { buildSharedSessionSnapshot } from '../util/share-output';
 import {
+  extractNormalizedGitBranchFromItem,
+  extractNormalizedGitUrlFromItem,
   extractNormalizedOrgIdFromItem,
   extractNormalizedParentIdFromItem,
   extractNormalizedPlatformFromItem,
@@ -26,7 +28,7 @@ type IngestMetaKey =
   | 'closeReason'
   | 'metricsEmitted';
 
-type ExtractableMetaKey = 'title' | 'parentId' | 'platform' | 'orgId';
+type ExtractableMetaKey = 'title' | 'parentId' | 'platform' | 'orgId' | 'gitUrl' | 'gitBranch';
 
 function writeIngestMetaIfChanged(
   sql: SqlStorage,
@@ -64,6 +66,8 @@ const INGEST_META_EXTRACTORS: Array<{
   { key: 'parentId', extract: extractNormalizedParentIdFromItem },
   { key: 'platform', extract: extractNormalizedPlatformFromItem },
   { key: 'orgId', extract: extractNormalizedOrgIdFromItem },
+  { key: 'gitUrl', extract: extractNormalizedGitUrlFromItem },
+  { key: 'gitBranch', extract: extractNormalizedGitBranchFromItem },
 ];
 
 type Changes = Array<{ name: ExtractableMetaKey; value: string | null }>;
@@ -128,6 +132,8 @@ export class SessionIngestDO extends DurableObject<Env> {
       parentId: undefined,
       platform: undefined,
       orgId: undefined,
+      gitUrl: undefined,
+      gitBranch: undefined,
     };
 
     let hasSessionOpen = false;
@@ -205,7 +211,9 @@ export class SessionIngestDO extends DurableObject<Env> {
     this.initSchema();
 
     const rows = this.sql
-      .exec('SELECT item_id, item_type, item_data FROM ingest_items ORDER BY id')
+      .exec(
+        "SELECT item_id, item_type, item_data FROM ingest_items WHERE item_type != 'session_diff' ORDER BY id"
+      )
       .toArray() as Array<{ item_id: string; item_type: string; item_data: string }>;
 
     const items: IngestBatch = [];
@@ -253,7 +261,9 @@ export class SessionIngestDO extends DurableObject<Env> {
       .exec<{
         item_type: string;
         item_data: string;
-      }>('SELECT item_type, item_data FROM ingest_items')
+      }>(
+        "SELECT item_id, item_type, item_data FROM ingest_items WHERE item_type != 'session_diff' ORDER BY id"
+      )
       .toArray();
 
     // Skip emission if the session has no meaningful data

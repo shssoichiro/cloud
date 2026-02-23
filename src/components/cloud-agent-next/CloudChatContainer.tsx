@@ -41,6 +41,7 @@ import {
 import { useCloudAgentStream } from './useCloudAgentStream';
 import { useAutoScroll } from './hooks/useAutoScroll';
 import { useCelebrationSound } from '@/hooks/useCelebrationSound';
+import { useNotificationSound } from '@/hooks/useNotificationSound';
 import { useSidebarSessions } from './hooks/useSidebarSessions';
 import { useOrganizationModels } from './hooks/useOrganizationModels';
 import { useSessionDeletion } from './hooks/useSessionDeletion';
@@ -197,6 +198,9 @@ export function CloudChatContainer({ organizationId }: CloudChatContainerProps) 
   // Celebration sound
   const { play: playCelebrationSound, soundEnabled, setSoundEnabled } = useCelebrationSound();
 
+  // Notification chime for agent questions
+  const { playNotification } = useNotificationSound();
+
   // Toggle sound handler
   const handleToggleSound = useCallback(() => {
     setSoundEnabled(prev => !prev);
@@ -253,6 +257,7 @@ export function CloudChatContainer({ organizationId }: CloudChatContainerProps) 
     onComplete: handleStreamComplete,
     onKiloSessionCreated: handleKiloSessionCreated,
     onSessionInitiated: handleSessionInitiated,
+    onQuestionAsked: playNotification,
   });
 
   // Wrapper for sendMessage that doesn't use sessionIdOverride
