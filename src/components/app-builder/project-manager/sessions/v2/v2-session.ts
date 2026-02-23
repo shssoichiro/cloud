@@ -9,7 +9,11 @@ import type { SessionDisplayInfo, WorkerVersion } from '@/lib/app-builder/types'
 import type { AppTRPCClient } from '../../types';
 import type { V2Session } from '../types';
 import { createV2SessionStore } from './store';
-import { createV2StreamingCoordinator, type V2StreamingCoordinator } from './streaming';
+import {
+  createV2StreamingCoordinator,
+  type V2StreamingCoordinator,
+  type SessionChangedUserMessage,
+} from './streaming';
 
 export type CreateV2SessionConfig = {
   info: SessionDisplayInfo;
@@ -20,7 +24,11 @@ export type CreateV2SessionConfig = {
   trpcClient?: AppTRPCClient;
   cloudAgentSessionId?: string | null;
   onStreamComplete?: () => void;
-  onSessionChanged?: (newSessionId: string, workerVersion: WorkerVersion) => void;
+  onSessionChanged?: (
+    newSessionId: string,
+    workerVersion: WorkerVersion,
+    userMessage: SessionChangedUserMessage
+  ) => void;
 };
 
 /**

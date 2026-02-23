@@ -76,6 +76,24 @@ export function addUserMessage(store: V1SessionStore, content: string, images?: 
 }
 
 /**
+ * Removes the last user message from the store.
+ * Used when a session change is detected after an optimistic user message was added —
+ * the message will arrive in the new session via server replay, so we remove it from
+ * the old session to avoid duplication.
+ */
+export function removeLastUserMessage(store: V1SessionStore): void {
+  const messages = store.getState().messages;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].type === 'user') {
+      const newMessages = [...messages];
+      newMessages.splice(i, 1);
+      store.setState({ messages: newMessages });
+      return;
+    }
+  }
+}
+
+/**
  * Adds an error message to the store.
  */
 export function addErrorMessage(store: V1SessionStore, error: string): void {

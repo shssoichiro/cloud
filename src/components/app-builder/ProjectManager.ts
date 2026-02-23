@@ -15,6 +15,9 @@ import type {
 import type { Images } from '@/lib/images-schema';
 import type { TRPCClient } from '@trpc/client';
 import type { RootRouter } from '@/routers/root-router';
+import type { CloudMessage } from '@/components/cloud-agent/types';
+import type { StoredMessage } from '@/components/cloud-agent-next/types';
+import type { UserMessage, TextPart } from '@/types/opencode.gen';
 import { createLogger } from './project-manager/logging';
 import { createProjectStore, createInitialState } from './project-manager/store';
 import type { ProjectState, ProjectStore, AppBuilderSession } from './project-manager/types';
@@ -158,7 +161,11 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
 
   // --- Session change detection (upgrade or GitHub migration) ---
 
-  function handleSessionChanged(newSessionId: string, workerVersion: WorkerVersion): void {
+  function handleSessionChanged(
+    newSessionId: string,
+    workerVersion: WorkerVersion,
+    userMessage: { text: string; images?: Images }
+  ): void {
     logger.log('Session changed', { newSessionId, workerVersion });
 
     const currentActive = getActiveSession();
@@ -174,7 +181,7 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
       workerVersion === 'v2'
         ? createV2Session({
             info: newInfo,
-            initialMessages: [],
+            initialMessages: [makeOptimisticV2UserMessage(newSessionId, userMessage.text)],
             projectId,
             organizationId,
             trpcClient,
@@ -184,7 +191,7 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
           })
         : createV1Session({
             info: newInfo,
-            initialMessages: [],
+            initialMessages: [makeOptimisticV1UserMessage(userMessage.text, userMessage.images)],
             projectId,
             organizationId,
             trpcClient,
@@ -204,6 +211,37 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
     cloudAgentSessionId = newSessionId;
 
     newSession.connectToExistingSession(newSessionId);
+  }
+
+  function makeOptimisticV1UserMessage(text: string, images?: Images): CloudMessage {
+    return {
+      ts: Date.now(),
+      type: 'user',
+      text,
+      partial: false,
+      images,
+    };
+  }
+
+  function makeOptimisticV2UserMessage(sessionId: string, text: string): StoredMessage {
+    const messageId = `optimistic-${Date.now()}`;
+    const now = Date.now();
+    const info: UserMessage = {
+      id: messageId,
+      sessionID: sessionId,
+      role: 'user',
+      time: { created: now },
+      agent: '',
+      model: { providerID: '', modelID: '' },
+    };
+    const textPart: TextPart = {
+      id: `${messageId}-text`,
+      sessionID: sessionId,
+      messageID: messageId,
+      type: 'text',
+      text,
+    };
+    return { info, parts: [textPart] };
   }
 
   // --- Preview polling ---

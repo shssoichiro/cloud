@@ -229,7 +229,9 @@ function ExpandableSessionBlock({
           {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-foreground truncate text-sm font-medium">{title ?? 'Session'}</div>
+          <div className="text-foreground truncate text-sm font-medium">
+            {title || 'Chat session'}
+          </div>
           {endedDate && (
             <div className="text-muted-foreground mt-0.5 text-xs">
               Chat session ended {format(endedDate, 'MMM d, yyyy')} (

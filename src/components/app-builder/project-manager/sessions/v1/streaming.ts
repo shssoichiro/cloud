@@ -19,10 +19,12 @@ import type { V1SessionStore } from './store';
 import type { AppTRPCClient } from '../../types';
 import type { Images } from '@/lib/images-schema';
 import type { WorkerVersion } from '@/lib/app-builder/types';
-import { addUserMessage, addErrorMessage } from './messages';
+import { addUserMessage, addErrorMessage, removeLastUserMessage } from './messages';
 import { formatStreamError, createLogger } from '../../logging';
 
 type SendMessageResponse = { sessionId: string; workerVersion: WorkerVersion };
+
+export type SessionChangedUserMessage = { text: string; images?: Images };
 
 export type V1StreamingConfig = {
   projectId: string;
@@ -35,7 +37,11 @@ export type V1StreamingConfig = {
   sessionPrepared: boolean | null;
   onStreamComplete?: () => void;
   /** Called when the backend creates a new session (upgrade or GitHub migration) */
-  onSessionChanged?: (newSessionId: string, workerVersion: WorkerVersion) => void;
+  onSessionChanged?: (
+    newSessionId: string,
+    workerVersion: WorkerVersion,
+    userMessage: SessionChangedUserMessage
+  ) => void;
 };
 
 export type V1StreamingCoordinator = {
@@ -256,9 +262,13 @@ export function createV1StreamingCoordinator(config: V1StreamingConfig): V1Strea
           return;
         }
 
-        // Detect session change: backend created a new session (upgrade or GitHub migration)
+        // Detect session change: backend created a new session (upgrade or GitHub migration).
+        // Remove the optimistic user message from this (old) session and pass it to the
+        // new session so it appears there immediately (before WS replay arrives).
         if (sessionId !== config.cloudAgentSessionId && onSessionChanged) {
-          onSessionChanged(sessionId, workerVersion);
+          removeLastUserMessage(store);
+          store.setState({ isStreaming: false });
+          onSessionChanged(sessionId, workerVersion, { text: message, images });
           return;
         }
 

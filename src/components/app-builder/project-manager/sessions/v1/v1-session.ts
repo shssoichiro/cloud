@@ -9,7 +9,11 @@ import type { SessionDisplayInfo, WorkerVersion } from '@/lib/app-builder/types'
 import type { AppTRPCClient } from '../../types';
 import type { V1Session } from '../types';
 import { createV1SessionStore } from './store';
-import { createV1StreamingCoordinator, type V1StreamingCoordinator } from './streaming';
+import {
+  createV1StreamingCoordinator,
+  type V1StreamingCoordinator,
+  type SessionChangedUserMessage,
+} from './streaming';
 
 export type CreateV1SessionConfig = {
   info: SessionDisplayInfo;
@@ -21,7 +25,11 @@ export type CreateV1SessionConfig = {
   cloudAgentSessionId?: string | null;
   sessionPrepared?: boolean | null;
   onStreamComplete?: () => void;
-  onSessionChanged?: (newSessionId: string, workerVersion: WorkerVersion) => void;
+  onSessionChanged?: (
+    newSessionId: string,
+    workerVersion: WorkerVersion,
+    userMessage: SessionChangedUserMessage
+  ) => void;
 };
 
 /**

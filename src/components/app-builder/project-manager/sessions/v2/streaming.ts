@@ -30,6 +30,8 @@ import { createLogger } from '../../logging';
 
 type SendMessageResponse = { sessionId: string; workerVersion: WorkerVersion };
 
+export type SessionChangedUserMessage = { text: string; images?: Images };
+
 export type V2StreamingConfig = {
   projectId: string;
   organizationId: string | null;
@@ -38,7 +40,11 @@ export type V2StreamingConfig = {
   cloudAgentSessionId: string | null;
   onStreamComplete?: () => void;
   /** Called when the backend creates a new session (upgrade or GitHub migration) */
-  onSessionChanged?: (newSessionId: string, workerVersion: WorkerVersion) => void;
+  onSessionChanged?: (
+    newSessionId: string,
+    workerVersion: WorkerVersion,
+    userMessage: SessionChangedUserMessage
+  ) => void;
 };
 
 export type V2StreamingCoordinator = {
@@ -88,6 +94,17 @@ export function createV2StreamingCoordinator(config: V2StreamingConfig): V2Strea
             const updated = [...messages];
             updated[idx] = storedMsg;
             return updated;
+          }
+          // Replace optimistic user message when the real one arrives from server
+          if (message.info.role === 'user') {
+            const optimisticIdx = messages.findIndex(
+              m => m.info.role === 'user' && m.info.id.startsWith('optimistic-')
+            );
+            if (optimisticIdx >= 0) {
+              const updated = [...messages];
+              updated[optimisticIdx] = storedMsg;
+              return updated;
+            }
           }
           return [...messages, storedMsg];
         });
@@ -355,9 +372,11 @@ export function createV2StreamingCoordinator(config: V2StreamingConfig): V2Strea
           return;
         }
 
-        // Detect session change: backend created a new session (upgrade or GitHub migration)
+        // Detect session change: backend created a new session (upgrade or GitHub migration).
+        // V2 has no optimistic message — pass the user message to the new session.
         if (sessionId !== config.cloudAgentSessionId && onSessionChanged) {
-          onSessionChanged(sessionId, workerVersion);
+          store.setState({ isStreaming: false });
+          onSessionChanged(sessionId, workerVersion, { text: message, images });
           return;
         }
 
