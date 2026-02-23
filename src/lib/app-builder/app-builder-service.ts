@@ -608,8 +608,9 @@ export async function getProject(
 
   if (project.session_id) {
     try {
-      // Determine which client to use based on the current session's worker version
-      const currentWorkerVersion = await getCurrentSessionWorkerVersion(project.session_id);
+      // Derive worker version from the already-fetched sessions (avoids a redundant DB query)
+      const activeSession = sessions.find(s => s.cloud_agent_session_id === project.session_id);
+      const currentWorkerVersion = activeSession?.worker_version ?? null;
 
       if (currentWorkerVersion === 'v2') {
         // V2 session: get state from cloud-agent-next
