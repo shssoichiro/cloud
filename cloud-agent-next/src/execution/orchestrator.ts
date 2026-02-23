@@ -264,6 +264,9 @@ export class ExecutionOrchestrator {
           botId: initContext.botId,
           githubRepo: initContext.githubRepo,
           githubToken: initContext.githubToken,
+          gitUrl: initContext.gitUrl,
+          gitToken: initContext.gitToken,
+          platform: initContext.platform,
           envVars: initContext.envVars,
         };
 
