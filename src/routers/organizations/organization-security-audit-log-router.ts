@@ -116,12 +116,12 @@ export const organizationSecurityAuditLogRouter = createTRPCRouter({
         .orderBy(orderBy)
         .limit(PAGE_SIZE + 1);
 
-      if (after && logs.length > 0) {
-        logs.reverse();
-      }
-
       const hasMore = logs.length > PAGE_SIZE;
       const resultLogs = hasMore ? logs.slice(0, PAGE_SIZE) : logs;
+
+      if (after) {
+        resultLogs.reverse();
+      }
 
       const isKiloAdmin = ctx.user.google_user_email.endsWith('@kilocode.ai');
       const maskedLogs = maskKiloAdminActors(resultLogs, isKiloAdmin);
@@ -185,7 +185,19 @@ export const organizationSecurityAuditLogRouter = createTRPCRouter({
     }
 
     const logs = await db
-      .select()
+      .select({
+        id: security_audit_log.id,
+        action: security_audit_log.action,
+        actor_id: security_audit_log.actor_id,
+        actor_email: security_audit_log.actor_email,
+        actor_name: security_audit_log.actor_name,
+        resource_type: security_audit_log.resource_type,
+        resource_id: security_audit_log.resource_id,
+        before_state: security_audit_log.before_state,
+        after_state: security_audit_log.after_state,
+        metadata: security_audit_log.metadata,
+        created_at: security_audit_log.created_at,
+      })
       .from(security_audit_log)
       .where(and(...whereConditions))
       .orderBy(desc(security_audit_log.created_at))
