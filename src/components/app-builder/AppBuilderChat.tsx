@@ -262,13 +262,15 @@ function ExpandableSessionBlock({
  */
 const V2StaticMessages = memo(function V2StaticMessages({
   messages,
+  getChildMessages,
 }: {
   messages: StoredMessage[];
+  getChildMessages?: (sessionId: string) => StoredMessage[];
 }) {
   return (
     <>
       {messages.map(msg => (
-        <V2MessageBubble key={msg.info.id} message={msg} />
+        <V2MessageBubble key={msg.info.id} message={msg} getChildMessages={getChildMessages} />
       ))}
     </>
   );
@@ -277,7 +279,13 @@ const V2StaticMessages = memo(function V2StaticMessages({
 /**
  * V2 dynamic messages (streaming)
  */
-function V2DynamicMessages({ messages }: { messages: StoredMessage[] }) {
+function V2DynamicMessages({
+  messages,
+  getChildMessages,
+}: {
+  messages: StoredMessage[];
+  getChildMessages?: (sessionId: string) => StoredMessage[];
+}) {
   return (
     <>
       {messages.map(msg => {
@@ -287,6 +295,7 @@ function V2DynamicMessages({ messages }: { messages: StoredMessage[] }) {
             key={`${msg.info.id}-${streaming ? 'streaming' : 'complete'}`}
             message={msg}
             isStreaming={streaming}
+            getChildMessages={getChildMessages}
           />
         );
       })}
@@ -376,6 +385,15 @@ function V2SessionMessages({
     return { v2Static: staticMsgs, v2Dynamic: dynamicMsgs };
   }, [sessionState.messages]);
 
+  // Identity changes when childSessionMessages changes, which forces memo'd
+  // V2StaticMessages to re-render with updated child session data.
+  // This is intentional: static parent messages may contain task tool parts
+  // whose child sessions are still streaming.
+  const getChildMessages = useCallback(
+    (childSessionId: string) => session.getChildSessionMessages(childSessionId),
+    [session, sessionState.childSessionMessages] // eslint-disable-line react-hooks/exhaustive-deps -- childSessionMessages triggers re-render
+  );
+
   if (sessionState.messages.length === 0 && !sessionState.isStreaming) {
     return null;
   }
@@ -386,8 +404,8 @@ function V2SessionMessages({
       cloudAgentSessionId={session.info.cloud_agent_session_id}
       organizationId={organizationId ?? null}
     >
-      <V2StaticMessages messages={v2Static} />
-      <V2DynamicMessages messages={v2Dynamic} />
+      <V2StaticMessages messages={v2Static} getChildMessages={getChildMessages} />
+      <V2DynamicMessages messages={v2Dynamic} getChildMessages={getChildMessages} />
       {sessionState.isStreaming && v2Dynamic.length === 0 && <TypingIndicator />}
     </QuestionContextProvider>
   );

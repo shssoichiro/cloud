@@ -31,15 +31,23 @@ function createMockStore(): {
   subscribe: jest.Mock;
   updateMessages: jest.Mock;
   setQuestionRequestId: jest.Mock;
+  updateChildSessionMessages: jest.Mock;
+  getChildSessionMessages: jest.Mock;
   stateUpdates: Array<Record<string, unknown>>;
 } {
   const stateUpdates: Array<Record<string, unknown>> = [];
   let messages: CloudMessage[] = [];
   let isStreaming = false;
+  const childSessionMessages = new Map<string, CloudMessage[]>();
 
   return {
     stateUpdates,
-    getState: () => ({ messages, isStreaming, questionRequestIds: new Map<string, string>() }),
+    getState: () => ({
+      messages,
+      isStreaming,
+      questionRequestIds: new Map<string, string>(),
+      childSessionMessages,
+    }),
     setState: jest.fn((partial: Partial<V1SessionState>) => {
       stateUpdates.push(partial);
       if ('messages' in partial && partial.messages) {
@@ -54,6 +62,15 @@ function createMockStore(): {
       messages = updater(messages);
     }),
     setQuestionRequestId: jest.fn(),
+    updateChildSessionMessages: jest.fn(
+      (childSessionId: string, updater: (msgs: CloudMessage[]) => CloudMessage[]) => {
+        const existing = childSessionMessages.get(childSessionId) ?? [];
+        childSessionMessages.set(childSessionId, updater(existing));
+      }
+    ),
+    getChildSessionMessages: jest.fn((childSessionId: string) => {
+      return childSessionMessages.get(childSessionId) ?? [];
+    }),
   };
 }
 

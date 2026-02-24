@@ -102,6 +102,7 @@ export function createV2Session(config: CreateV2SessionConfig): V2Session {
     info,
     getState: store.getState,
     subscribe: store.subscribe,
+    getChildSessionMessages: store.getChildSessionMessages,
     sendMessage,
     interrupt,
     startInitialStreaming,

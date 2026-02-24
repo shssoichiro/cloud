@@ -84,19 +84,31 @@ export function createV2StreamingCoordinator(config: V2StreamingConfig): V2Strea
   // WebSocket + EventProcessor
   // ---------------------------------------------------------------------------
 
+  /** Returns the appropriate message updater for parent vs child session messages. */
+  function messageUpdater(
+    sessionId: string,
+    parentSessionId: string | null
+  ): (updater: (msgs: StoredMessage[]) => StoredMessage[]) => void {
+    return parentSessionId !== null
+      ? updater => store.updateChildSessionMessages(sessionId, updater)
+      : store.updateMessages;
+  }
+
   function createProcessorCallbacks(): EventProcessorCallbacks {
     return {
-      onMessageUpdated: (_sessionId, messageId, message, _parentSessionId) => {
-        store.updateMessages(messages => {
+      onMessageUpdated: (sessionId, messageId, message, parentSessionId) => {
+        const update = messageUpdater(sessionId, parentSessionId);
+        const storedMsg: StoredMessage = { info: message.info, parts: message.parts };
+        update(messages => {
           const idx = messages.findIndex(m => m.info.id === messageId);
-          const storedMsg: StoredMessage = { info: message.info, parts: message.parts };
           if (idx >= 0) {
             const updated = [...messages];
             updated[idx] = storedMsg;
             return updated;
           }
           // Replace optimistic user message when the real one arrives from server
-          if (message.info.role === 'user') {
+          // (only applies to parent session messages)
+          if (parentSessionId === null && message.info.role === 'user') {
             const optimisticIdx = messages.findIndex(
               m => m.info.role === 'user' && m.info.id.startsWith('optimistic-')
             );
@@ -106,25 +118,37 @@ export function createV2StreamingCoordinator(config: V2StreamingConfig): V2Strea
               return updated;
             }
           }
-          return [...messages, storedMsg];
+          const updated = [...messages, storedMsg];
+          if (parentSessionId !== null) {
+            updated.sort((a, b) => a.info.time.created - b.info.time.created);
+          }
+          return updated;
         });
       },
 
-      onMessageCompleted: (_sessionId, messageId, message, _parentSessionId) => {
-        store.updateMessages(messages => {
+      onMessageCompleted: (sessionId, messageId, message, parentSessionId) => {
+        const update = messageUpdater(sessionId, parentSessionId);
+        const storedMsg: StoredMessage = { info: message.info, parts: message.parts };
+        update(messages => {
           const idx = messages.findIndex(m => m.info.id === messageId);
-          const storedMsg: StoredMessage = { info: message.info, parts: message.parts };
           if (idx >= 0) {
             const updated = [...messages];
             updated[idx] = storedMsg;
             return updated;
           }
-          return [...messages, storedMsg];
+          const updated = [...messages, storedMsg];
+          if (parentSessionId !== null) {
+            updated.sort((a, b) => a.info.time.created - b.info.time.created);
+          }
+          return updated;
         });
       },
 
-      onPartUpdated: (_sessionId, messageId, _partId, part, _parentSessionId) => {
-        store.updateMessages(messages => {
+      onPartUpdated: (sessionId, messageId, _partId, part, parentSessionId) => {
+        messageUpdater(
+          sessionId,
+          parentSessionId
+        )(messages => {
           const idx = messages.findIndex(m => m.info.id === messageId);
           if (idx < 0) return messages;
           const msg = messages[idx];
@@ -141,8 +165,11 @@ export function createV2StreamingCoordinator(config: V2StreamingConfig): V2Strea
         });
       },
 
-      onPartRemoved: (_sessionId, messageId, partId, _parentSessionId) => {
-        store.updateMessages(messages => {
+      onPartRemoved: (sessionId, messageId, partId, parentSessionId) => {
+        messageUpdater(
+          sessionId,
+          parentSessionId
+        )(messages => {
           const idx = messages.findIndex(m => m.info.id === messageId);
           if (idx < 0) return messages;
           const msg = messages[idx];
