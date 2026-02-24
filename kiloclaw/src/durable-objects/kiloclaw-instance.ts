@@ -245,6 +245,17 @@ export function parseRegions(regionList: string): string[] {
     .filter(Boolean);
 }
 
+/** Fisher-Yates shuffle (in-place). Returns the same array for chaining. */
+export function shuffleRegions(regions: string[]): string[] {
+  for (let i = regions.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = regions[i];
+    regions[i] = regions[j];
+    regions[j] = tmp;
+  }
+  return regions;
+}
+
 /**
  * Move a failed region to the end of the list so we try other regions first.
  * E.g. deprioritizeRegion(['dfw', 'yyz', 'cdg'], 'dfw') → ['yyz', 'cdg', 'dfw']
@@ -439,7 +450,9 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     // with capacity for both the volume and the expected machine spec.
     if (isNew && !this.flyVolumeId) {
       const flyConfig = this.getFlyConfig();
-      const regions = parseRegions(config.region ?? this.env.FLY_REGION ?? DEFAULT_FLY_REGION);
+      const regions = shuffleRegions(
+        parseRegions(config.region ?? this.env.FLY_REGION ?? DEFAULT_FLY_REGION)
+      );
       const guest = guestFromSize(config.machineSize ?? null);
       const volume = await fly.createVolumeWithFallback(
         flyConfig,
@@ -1917,7 +1930,10 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     if (this.flyVolumeId) return;
     if (!this.sandboxId) return;
 
-    const regions = parseRegions(this.flyRegion ?? this.env.FLY_REGION ?? DEFAULT_FLY_REGION);
+    // When flyRegion is set this is a single region — shuffle is a no-op.
+    const regions = shuffleRegions(
+      parseRegions(this.flyRegion ?? this.env.FLY_REGION ?? DEFAULT_FLY_REGION)
+    );
     const volume = await fly.createVolumeWithFallback(
       flyConfig,
       {
@@ -1955,7 +1971,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     const oldVolumeId = this.flyVolumeId;
     const oldRegion = this.flyRegion;
     const hasUserData = this.lastStartedAt !== null;
-    const allRegions = parseRegions(this.env.FLY_REGION ?? DEFAULT_FLY_REGION);
+    const allRegions = shuffleRegions(parseRegions(this.env.FLY_REGION ?? DEFAULT_FLY_REGION));
     const regions = deprioritizeRegion(allRegions, oldRegion);
     const compute = guestFromSize(this.machineSize);
 
