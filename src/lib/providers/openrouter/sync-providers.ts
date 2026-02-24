@@ -393,6 +393,8 @@ export async function syncProviders() {
 }
 
 export async function syncAndStoreProviders() {
+  const startTime = performance.now();
+
   const [openrouter_providers, vercel_providers] = await Promise.all([
     syncProviders(),
     fetchVercelAiGatewayProviders(),
@@ -432,5 +434,6 @@ export async function syncAndStoreProviders() {
     total_models: result.data.total_models,
     total_providers: result.data.total_providers,
     vercel_provider_count,
+    time: performance.now() - startTime,
   };
 }
