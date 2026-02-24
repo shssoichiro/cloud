@@ -355,8 +355,8 @@ describe('appNameFromUserId — adversarial inputs', () => {
     ];
     for (const userId of dangerousInputs) {
       const name = await appNameFromUserId(userId);
+      // acct-{hex} format implicitly excludes all URL-dangerous characters
       expect(name).toMatch(/^acct-[0-9a-f]{20}$/);
-      expect(name).not.toMatch(/[/?#%\x00]/);
     }
   });
 });
