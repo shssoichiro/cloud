@@ -96,11 +96,12 @@ export type ProjectSessionInfo = {
 
 /**
  * Subset of session info exposed on SessionBase for UI display and identity.
- * Routing-only fields (worker_version, initiated, prepared, cloud_agent_session_id)
- * are consumed in buildSessions() and not stored on the session object.
+ * Routing-only fields (worker_version, initiated, prepared) are consumed in
+ * buildSessions() and not stored on the session object.
  */
 export type SessionDisplayInfo = {
   id: string;
+  cloud_agent_session_id: string | null;
   ended_at: string | null;
   title: string | null;
 };
