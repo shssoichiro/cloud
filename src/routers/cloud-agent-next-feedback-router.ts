@@ -53,14 +53,7 @@ export const cloudAgentNextFeedbackRouter = createTRPCRouter({
           ? `<https://app.kilo.ai/admin/cloud-agent/${input.cloud_agent_session_id}|${input.cloud_agent_session_id}>`
           : '_unknown_';
 
-        const metadataLines = [
-          `• user: \`${ctx.user.id}\``,
-          `• session: ${sessionLink}`,
-          input.model ? `• model: \`${input.model}\`` : null,
-          input.repository ? `• repository: \`${input.repository}\`` : null,
-          input.is_streaming != null ? `• streaming: \`${input.is_streaming}\`` : null,
-          input.message_count != null ? `• messages: \`${input.message_count}\`` : null,
-        ].filter((line): line is string => line != null);
+        const metadataLines = [`• session: ${sessionLink}`];
 
         const trimmedFeedback = input.feedback_text.trim();
         const feedbackText =

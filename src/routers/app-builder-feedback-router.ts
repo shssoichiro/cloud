@@ -60,14 +60,7 @@ export const appBuilderFeedbackRouter = createTRPCRouter({
       if (SLACK_USER_FEEDBACK_WEBHOOK_URL) {
         const projectLink = `<https://app.kilo.ai/admin/app-builder/${input.project_id}|${input.project_id}>`;
 
-        const metadataLines = [
-          `• user: \`${ctx.user.id}\``,
-          `• project: ${projectLink}`,
-          sessionId ? `• session: \`${sessionId}\`` : null,
-          input.model ? `• model: \`${input.model}\`` : null,
-          input.preview_status ? `• preview: \`${input.preview_status}\`` : null,
-          input.message_count != null ? `• messages: \`${input.message_count}\`` : null,
-        ].filter((line): line is string => line != null);
+        const metadataLines = [`• project: ${projectLink}`];
 
         const trimmedFeedback = input.feedback_text.trim();
         const feedbackText =
