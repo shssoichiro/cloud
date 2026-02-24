@@ -47,6 +47,8 @@ import {
   SELF_HEAL_THRESHOLD,
   DEFAULT_FLY_REGION,
   LIVE_CHECK_THROTTLE_MS,
+  HEALTH_PROBE_TIMEOUT_SECONDS,
+  HEALTH_PROBE_INTERVAL_MS,
 } from '../config';
 import type { FlyClientConfig } from '../fly/client';
 import type {
@@ -1082,6 +1084,9 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       await this.createNewMachine(flyConfig, retryConfig, minSecretsVersion);
     }
 
+    // Wait for the gateway process inside the container to be healthy
+    await this.waitForHealthy(flyConfig.appName, this.flyMachineId!);
+
     // Update state
     this.status = 'running';
     this.lastStartedAt = Date.now();
@@ -1424,6 +1429,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
 
       await fly.updateMachine(flyConfig, this.flyMachineId, machineConfig, { minSecretsVersion });
       await fly.waitForState(flyConfig, this.flyMachineId, 'started', STARTUP_TIMEOUT_SECONDS);
+      await this.waitForHealthy(flyConfig.appName, this.flyMachineId);
 
       return { success: true };
     } catch (err) {
@@ -1903,6 +1909,78 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
    */
   private getRegistryApp(): string {
     return this.env.FLY_REGISTRY_APP ?? this.env.FLY_APP_NAME ?? 'kiloclaw-machines';
+  }
+
+  /**
+   * Poll the gateway status endpoint until the OpenClaw gateway process
+   * reports state === 'running', meaning it's ready to accept WebSocket
+   * connections on port 3001.
+   *
+   * The controller's /_kilo/health returns 200 as soon as the controller
+   * itself is up, which is too early — the gateway process spawns after.
+   * So we check /_kilo/gateway/status and parse the JSON state field.
+   *
+   * On timeout, logs a warning but does NOT throw — the caller proceeds
+   * anyway (the proxy layer catches lingering 502s with a friendly page).
+   */
+  private async waitForHealthy(appName: string, machineId: string): Promise<void> {
+    const url = `https://${appName}.fly.dev/_kilo/gateway/status`;
+    const deadline = Date.now() + HEALTH_PROBE_TIMEOUT_SECONDS * 1000;
+
+    // Derive auth token — gateway controller requires Bearer auth
+    let gatewayToken: string | undefined;
+    if (this.sandboxId && this.env.GATEWAY_TOKEN_SECRET) {
+      gatewayToken = await deriveGatewayToken(this.sandboxId, this.env.GATEWAY_TOKEN_SECRET);
+    }
+
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(url, {
+          headers: {
+            'fly-force-instance-id': machineId,
+            ...(gatewayToken && { Authorization: `Bearer ${gatewayToken}` }),
+            Accept: 'application/json',
+          },
+        });
+        if (res.ok) {
+          const body = (await res.json()) as { state?: string };
+          if (body.state === 'running') {
+            // Gateway reports running — verify it's actually serving traffic
+            // by probing the root path (controller proxies to gateway on :3001)
+            const rootUrl = `https://${appName}.fly.dev/`;
+            try {
+              const rootRes = await fetch(rootUrl, {
+                headers: { 'fly-force-instance-id': machineId },
+              });
+              if (rootRes.status !== 502) {
+                console.log(
+                  '[DO] Gateway health probe passed (state: running, root:',
+                  rootRes.status,
+                  ')'
+                );
+                return;
+              }
+              console.log('[DO] Gateway reports running but root returned 502 — retrying');
+            } catch {
+              console.log('[DO] Gateway reports running but root fetch failed — retrying');
+            }
+          } else {
+            console.log('[DO] Gateway state:', body.state, '— retrying');
+          }
+        } else {
+          console.log('[DO] Gateway status returned', res.status, '— retrying');
+        }
+      } catch (err) {
+        console.log('[DO] Gateway status fetch error — retrying:', err);
+      }
+      await new Promise(r => setTimeout(r, HEALTH_PROBE_INTERVAL_MS));
+    }
+
+    console.warn(
+      '[DO] Gateway health probe timed out after',
+      HEALTH_PROBE_TIMEOUT_SECONDS,
+      's — proceeding anyway'
+    );
   }
 
   private getFlyConfig(): FlyClientConfig {
