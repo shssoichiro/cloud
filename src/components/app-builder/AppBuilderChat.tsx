@@ -31,6 +31,7 @@ import type { CloudMessage } from '@/components/cloud-agent/types';
 import type { StoredMessage } from '@/components/cloud-agent-next/types';
 import { isMessageStreaming } from '@/components/cloud-agent-next/types';
 import { MessageBubble as V2MessageBubble } from '@/components/cloud-agent-next/MessageBubble';
+import { QuestionContextProvider } from '@/components/cloud-agent-next/QuestionContext';
 import type { AppBuilderSession, V1Session, V2Session } from './project-manager/types';
 import {
   filterAppBuilderMessages,
@@ -202,10 +203,12 @@ function ExpandableSessionBlock({
   session,
   visibleSessionCount,
   onLoadMore,
+  organizationId,
 }: {
   session: AppBuilderSession;
   visibleSessionCount: number;
   onLoadMore: () => void;
+  organizationId?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { ended_at, title } = session.info;
@@ -242,7 +245,7 @@ function ExpandableSessionBlock({
       </button>
       {expanded &&
         (session.type === 'v2' ? (
-          <V2SessionMessages session={session} />
+          <V2SessionMessages session={session} organizationId={organizationId} />
         ) : (
           <V1SessionMessages
             session={session}
@@ -259,13 +262,15 @@ function ExpandableSessionBlock({
  */
 const V2StaticMessages = memo(function V2StaticMessages({
   messages,
+  getChildMessages,
 }: {
   messages: StoredMessage[];
+  getChildMessages?: (sessionId: string) => StoredMessage[];
 }) {
   return (
     <>
       {messages.map(msg => (
-        <V2MessageBubble key={msg.info.id} message={msg} />
+        <V2MessageBubble key={msg.info.id} message={msg} getChildMessages={getChildMessages} />
       ))}
     </>
   );
@@ -274,7 +279,13 @@ const V2StaticMessages = memo(function V2StaticMessages({
 /**
  * V2 dynamic messages (streaming)
  */
-function V2DynamicMessages({ messages }: { messages: StoredMessage[] }) {
+function V2DynamicMessages({
+  messages,
+  getChildMessages,
+}: {
+  messages: StoredMessage[];
+  getChildMessages?: (sessionId: string) => StoredMessage[];
+}) {
   return (
     <>
       {messages.map(msg => {
@@ -284,6 +295,7 @@ function V2DynamicMessages({ messages }: { messages: StoredMessage[] }) {
             key={`${msg.info.id}-${streaming ? 'streaming' : 'complete'}`}
             message={msg}
             isStreaming={streaming}
+            getChildMessages={getChildMessages}
           />
         );
       })}
@@ -351,7 +363,13 @@ function V1SessionMessages({
 /**
  * Renders a V2 session's messages.
  */
-function V2SessionMessages({ session }: { session: V2Session }) {
+function V2SessionMessages({
+  session,
+  organizationId,
+}: {
+  session: V2Session;
+  organizationId?: string;
+}) {
   const sessionState = useSyncExternalStore(session.subscribe, session.getState);
 
   const { v2Static, v2Dynamic } = useMemo(() => {
@@ -367,16 +385,29 @@ function V2SessionMessages({ session }: { session: V2Session }) {
     return { v2Static: staticMsgs, v2Dynamic: dynamicMsgs };
   }, [sessionState.messages]);
 
+  // Identity changes when childSessionMessages changes, which forces memo'd
+  // V2StaticMessages to re-render with updated child session data.
+  // This is intentional: static parent messages may contain task tool parts
+  // whose child sessions are still streaming.
+  const getChildMessages = useCallback(
+    (childSessionId: string) => session.getChildSessionMessages(childSessionId),
+    [session, sessionState.childSessionMessages] // eslint-disable-line react-hooks/exhaustive-deps -- childSessionMessages triggers re-render
+  );
+
   if (sessionState.messages.length === 0 && !sessionState.isStreaming) {
     return null;
   }
 
   return (
-    <>
-      <V2StaticMessages messages={v2Static} />
-      <V2DynamicMessages messages={v2Dynamic} />
+    <QuestionContextProvider
+      questionRequestIds={sessionState.questionRequestIds}
+      cloudAgentSessionId={session.info.cloud_agent_session_id}
+      organizationId={organizationId ?? null}
+    >
+      <V2StaticMessages messages={v2Static} getChildMessages={getChildMessages} />
+      <V2DynamicMessages messages={v2Dynamic} getChildMessages={getChildMessages} />
       {sessionState.isStreaming && v2Dynamic.length === 0 && <TypingIndicator />}
-    </>
+    </QuestionContextProvider>
   );
 }
 
@@ -388,11 +419,13 @@ function SessionMessages({
   isLast,
   visibleSessionCount,
   onLoadMore,
+  organizationId,
 }: {
   session: AppBuilderSession;
   isLast: boolean;
   visibleSessionCount: number;
   onLoadMore: () => void;
+  organizationId?: string;
 }) {
   if (!isLast) {
     return (
@@ -400,12 +433,13 @@ function SessionMessages({
         session={session}
         visibleSessionCount={visibleSessionCount}
         onLoadMore={onLoadMore}
+        organizationId={organizationId}
       />
     );
   }
 
   if (session.type === 'v2') {
-    return <V2SessionMessages session={session} />;
+    return <V2SessionMessages session={session} organizationId={organizationId} />;
   }
 
   return (
@@ -652,6 +686,7 @@ export function AppBuilderChat({ organizationId }: AppBuilderChatProps) {
                 isLast={index === sessions.length - 1}
                 visibleSessionCount={visibleSessionCount}
                 onLoadMore={handleLoadMore}
+                organizationId={organizationId}
               />
             ))
           )}

@@ -5,6 +5,7 @@
  */
 
 import { createProjectStore, createInitialState } from '../store';
+import { createSessionStore } from '../sessions/session-store';
 import type { ProjectState } from '../types';
 
 /**
@@ -180,6 +181,72 @@ describe('createProjectStore', () => {
       await flushNotifications();
       expect(listener1).not.toHaveBeenCalled();
       expect(listener2).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+describe('createSessionStore', () => {
+  describe('child session messages', () => {
+    it('returns empty array for unknown child session', () => {
+      const store = createSessionStore<{ id: string }>([]);
+
+      expect(store.getChildSessionMessages('unknown-session')).toEqual([]);
+    });
+
+    it('stores messages for a child session', () => {
+      const store = createSessionStore<{ id: string }>([]);
+      const msg = { id: 'msg-1' };
+
+      store.updateChildSessionMessages('child-1', () => [msg]);
+
+      expect(store.getChildSessionMessages('child-1')).toEqual([msg]);
+    });
+
+    it('updates existing child session messages via updater', () => {
+      const store = createSessionStore<{ id: string }>([]);
+
+      store.updateChildSessionMessages('child-1', () => [{ id: 'msg-1' }]);
+      store.updateChildSessionMessages('child-1', msgs => [...msgs, { id: 'msg-2' }]);
+
+      expect(store.getChildSessionMessages('child-1')).toEqual([{ id: 'msg-1' }, { id: 'msg-2' }]);
+    });
+
+    it('keeps child sessions isolated from each other', () => {
+      const store = createSessionStore<{ id: string }>([]);
+
+      store.updateChildSessionMessages('child-1', () => [{ id: 'msg-a' }]);
+      store.updateChildSessionMessages('child-2', () => [{ id: 'msg-b' }]);
+
+      expect(store.getChildSessionMessages('child-1')).toEqual([{ id: 'msg-a' }]);
+      expect(store.getChildSessionMessages('child-2')).toEqual([{ id: 'msg-b' }]);
+    });
+
+    it('does not affect parent messages', () => {
+      const store = createSessionStore<{ id: string }>([{ id: 'parent-msg' }]);
+
+      store.updateChildSessionMessages('child-1', () => [{ id: 'child-msg' }]);
+
+      expect(store.getState().messages).toEqual([{ id: 'parent-msg' }]);
+    });
+
+    it('notifies subscribers when child session messages change', async () => {
+      const store = createSessionStore<{ id: string }>([]);
+      const listener = jest.fn();
+
+      store.subscribe(listener);
+      store.updateChildSessionMessages('child-1', () => [{ id: 'msg-1' }]);
+
+      await flushNotifications();
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('exposes childSessionMessages in state', () => {
+      const store = createSessionStore<{ id: string }>([]);
+
+      store.updateChildSessionMessages('child-1', () => [{ id: 'msg-1' }]);
+
+      const state = store.getState();
+      expect(state.childSessionMessages.get('child-1')).toEqual([{ id: 'msg-1' }]);
     });
   });
 });

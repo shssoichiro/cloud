@@ -10,6 +10,9 @@
 export type SessionState<TMessage> = {
   messages: TMessage[];
   isStreaming: boolean;
+  questionRequestIds: Map<string, string>;
+  /** Messages from child/subagent sessions, keyed by child session ID */
+  childSessionMessages: Map<string, TMessage[]>;
 };
 
 export type SessionStore<TMessage> = {
@@ -17,12 +20,20 @@ export type SessionStore<TMessage> = {
   setState: (partial: Partial<SessionState<TMessage>>) => void;
   subscribe: (listener: () => void) => () => void;
   updateMessages: (updater: (messages: TMessage[]) => TMessage[]) => void;
+  setQuestionRequestId: (callId: string, requestId: string) => void;
+  updateChildSessionMessages: (
+    childSessionId: string,
+    updater: (messages: TMessage[]) => TMessage[]
+  ) => void;
+  getChildSessionMessages: (childSessionId: string) => TMessage[];
 };
 
 export function createSessionStore<TMessage>(initialMessages: TMessage[]): SessionStore<TMessage> {
   let state: SessionState<TMessage> = {
     messages: initialMessages,
     isStreaming: false,
+    questionRequestIds: new Map(),
+    childSessionMessages: new Map(),
   };
 
   const listeners = new Set<() => void>();
@@ -66,5 +77,33 @@ export function createSessionStore<TMessage>(initialMessages: TMessage[]): Sessi
     setState({ messages: updater(state.messages) });
   }
 
-  return { getState, setState, subscribe, updateMessages };
+  function setQuestionRequestId(callId: string, requestId: string): void {
+    const updated = new Map(state.questionRequestIds);
+    updated.set(callId, requestId);
+    setState({ questionRequestIds: updated });
+  }
+
+  function updateChildSessionMessages(
+    childSessionId: string,
+    updater: (messages: TMessage[]) => TMessage[]
+  ): void {
+    const newMap = new Map(state.childSessionMessages);
+    const existing = newMap.get(childSessionId) ?? [];
+    newMap.set(childSessionId, updater(existing));
+    setState({ childSessionMessages: newMap });
+  }
+
+  function getChildSessionMessages(childSessionId: string): TMessage[] {
+    return state.childSessionMessages.get(childSessionId) ?? [];
+  }
+
+  return {
+    getState,
+    setState,
+    subscribe,
+    updateMessages,
+    setQuestionRequestId,
+    updateChildSessionMessages,
+    getChildSessionMessages,
+  };
 }

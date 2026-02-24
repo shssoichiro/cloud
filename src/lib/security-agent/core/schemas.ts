@@ -234,6 +234,7 @@ export const AnalysisResponseLegacySchema = z.object({
 export const StartAnalysisInputSchema = z.object({
   findingId: z.string().uuid(),
   model: z.string().optional(),
+  retrySandboxOnly: z.boolean().optional(), // Skip triage, reuse existing triage data, retry only sandbox
 });
 
 /**

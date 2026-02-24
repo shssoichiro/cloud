@@ -2,12 +2,10 @@ import 'server-only';
 
 import { baseProcedure, createTRPCRouter } from '@/lib/trpc/init';
 import { db } from '@/lib/drizzle';
-import { app_builder_feedback } from '@/db/schema';
-import { getProjectWithOwnershipCheck } from '@/lib/app-builder/app-builder-service';
+import { cloud_agent_feedback } from '@/db/schema';
 import { ensureOrganizationAccess } from '@/routers/organizations/utils';
 import * as z from 'zod';
 import { SLACK_USER_FEEDBACK_WEBHOOK_URL } from '@/lib/config.server';
-import type { Owner } from '@/lib/integrations/core/types';
 
 const recentMessageSchema = z.object({
   role: z.string().max(50),
@@ -15,52 +13,47 @@ const recentMessageSchema = z.object({
   ts: z.number(),
 });
 
-const CreateAppBuilderFeedbackInputSchema = z.object({
-  project_id: z.string().uuid(),
+const CreateCloudAgentFeedbackInputSchema = z.object({
+  cloud_agent_session_id: z.string().max(500).optional(),
   organization_id: z.string().uuid().optional(),
   feedback_text: z.string().min(1).max(10_000),
   model: z.string().max(255).optional(),
-  preview_status: z.string().max(100).optional(),
+  repository: z.string().max(500).optional(),
   is_streaming: z.boolean().optional(),
   message_count: z.number().int().nonnegative().optional(),
   recent_messages: z.array(recentMessageSchema).max(10).optional(),
 });
 
-export const appBuilderFeedbackRouter = createTRPCRouter({
+export const cloudAgentNextFeedbackRouter = createTRPCRouter({
   create: baseProcedure
-    .input(CreateAppBuilderFeedbackInputSchema)
+    .input(CreateCloudAgentFeedbackInputSchema)
     .mutation(async ({ ctx, input }) => {
       if (input.organization_id) {
         await ensureOrganizationAccess(ctx, input.organization_id);
       }
 
-      const owner: Owner = input.organization_id
-        ? { type: 'org', id: input.organization_id }
-        : { type: 'user', id: ctx.user.id };
-
-      const project = await getProjectWithOwnershipCheck(input.project_id, owner);
-      const sessionId = project.session_id ?? undefined;
-
       const [inserted] = await db
-        .insert(app_builder_feedback)
+        .insert(cloud_agent_feedback)
         .values({
           kilo_user_id: ctx.user.id,
-          project_id: project.id,
+          cloud_agent_session_id: input.cloud_agent_session_id,
+          organization_id: input.organization_id,
           feedback_text: input.feedback_text,
-          session_id: sessionId,
           model: input.model,
-          preview_status: input.preview_status,
+          repository: input.repository,
           is_streaming: input.is_streaming,
           message_count: input.message_count,
           recent_messages: input.recent_messages,
         })
-        .returning({ id: app_builder_feedback.id });
+        .returning({ id: cloud_agent_feedback.id });
 
       // Best-effort Slack notification
       if (SLACK_USER_FEEDBACK_WEBHOOK_URL) {
-        const projectLink = `<https://app.kilo.ai/admin/app-builder/${input.project_id}|${input.project_id}>`;
+        const sessionLink = input.cloud_agent_session_id
+          ? `<https://app.kilo.ai/admin/cloud-agent/${input.cloud_agent_session_id}|${input.cloud_agent_session_id}>`
+          : '_unknown_';
 
-        const metadataLines = [`• project: ${projectLink}`];
+        const metadataLines = [`• session: ${sessionLink}`];
 
         const trimmedFeedback = input.feedback_text.trim();
         const feedbackText =
@@ -70,13 +63,13 @@ export const appBuilderFeedbackRouter = createTRPCRouter({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            text: 'New App Builder feedback',
+            text: 'New Cloud Agent feedback',
             unfurl_links: false,
             unfurl_media: false,
             blocks: [
               {
                 type: 'section',
-                text: { type: 'mrkdwn', text: '*New App Builder feedback:* :hammer_and_wrench:' },
+                text: { type: 'mrkdwn', text: '*New Cloud Agent feedback:* :robot_face:' },
               },
               {
                 type: 'section',
@@ -93,7 +86,7 @@ export const appBuilderFeedbackRouter = createTRPCRouter({
             ],
           }),
         }).catch(error => {
-          console.error('[AppBuilderFeedback] Failed to post to Slack webhook', error);
+          console.error('[CloudAgentFeedback] Failed to post to Slack webhook', error);
         });
       }
 

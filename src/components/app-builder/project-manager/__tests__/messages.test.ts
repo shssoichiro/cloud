@@ -16,12 +16,15 @@ import type { CloudMessage, StreamEvent } from '@/components/cloud-agent/types';
 // Helper to create a mock V1 session store for testing
 function createMockStore(initialMessages: CloudMessage[] = []): V1SessionStore {
   let messages = [...initialMessages];
+  const childSessionMessages = new Map<string, CloudMessage[]>();
   const listeners = new Set<() => void>();
 
   return {
     getState: () => ({
       messages,
       isStreaming: false,
+      questionRequestIds: new Map<string, string>(),
+      childSessionMessages,
     }),
     setState: jest.fn(partial => {
       if ('messages' in partial && partial.messages) {
@@ -36,6 +39,16 @@ function createMockStore(initialMessages: CloudMessage[] = []): V1SessionStore {
     updateMessages: jest.fn(updater => {
       messages = updater(messages);
       listeners.forEach(l => l());
+    }),
+    setQuestionRequestId: jest.fn(),
+    updateChildSessionMessages: jest.fn(
+      (childSessionId: string, updater: (msgs: CloudMessage[]) => CloudMessage[]) => {
+        const existing = childSessionMessages.get(childSessionId) ?? [];
+        childSessionMessages.set(childSessionId, updater(existing));
+      }
+    ),
+    getChildSessionMessages: jest.fn((childSessionId: string) => {
+      return childSessionMessages.get(childSessionId) ?? [];
     }),
   };
 }
