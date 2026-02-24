@@ -28,13 +28,16 @@ import {
   type AiSdkReasoningPart,
 } from './reasoning-provider-metadata';
 import type { ChatCompletionChunk, ChatCompletionChunkChoice } from './schemas';
-import type { CustomLlm } from '@/db/schema';
+import { temp_phase, type CustomLlm } from '@/db/schema';
 import type { OpenAILanguageModelResponsesOptions } from '@ai-sdk/openai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createXai } from '@ai-sdk/xai';
 import type { XaiLanguageModelResponsesOptions } from '@ai-sdk/xai';
 import { debugSaveLog, inStreamDebugMode } from '@/lib/debugUtils';
 import { ReasoningFormat } from '@/lib/custom-llm/format';
+import type OpenAI from 'openai';
+import crypto from 'crypto';
+import { db } from '@/lib/drizzle';
 
 function convertMessages(messages: OpenRouterChatCompletionsInput): ModelMessage[] {
   const toolNameByCallId = new Map<string, string>();
@@ -256,7 +259,22 @@ const FINISH_REASON_MAP: Record<string, string> = {
   other: 'stop',
 };
 
-function createStreamPartConverter(model: string) {
+function phaseKey(
+  userId: string,
+  taskId: string | undefined,
+  content: Array<OpenAI.Responses.ResponseOutputText | OpenAI.Responses.ResponseOutputRefusal>
+) {
+  return crypto.hash(
+    'sha256',
+    [
+      userId,
+      taskId,
+      ...content.filter(part => part.type === 'output_text').map(part => part.text),
+    ].join('|')
+  );
+}
+
+function createStreamPartConverter(userId: string, taskId: string | undefined, model: string) {
   const toolCallIndices = new Map<string, number>();
   let nextToolIndex = 0;
   let nextReasoningIndex = 0;
@@ -264,11 +282,25 @@ function createStreamPartConverter(model: string) {
   let inReasoningBlock = false;
   let responseId: string | undefined;
 
-  return function convertStreamPartToChunk(
+  return async function convertStreamPartToChunk(
     part: TextStreamPart<ToolSet>
-  ): ChatCompletionChunk | null {
+  ): Promise<ChatCompletionChunk | null> {
     const id = responseId;
     switch (part.type) {
+      case 'raw': {
+        const event = part.rawValue as OpenAI.Responses.ResponseStreamEvent;
+        if (event.type === 'response.output_item.done') {
+          const item = event.item;
+          const phase = 'phase' in item && typeof item.phase === 'string' ? item.phase : null;
+          if (item.type === 'message' && phase) {
+            await db
+              .insert(temp_phase)
+              .values({ key: phaseKey(userId, taskId, item.content), value: phase })
+              .onConflictDoNothing();
+          }
+        }
+        return null;
+      }
       case 'text-delta':
         return {
           ...(id !== undefined ? { id } : {}),
@@ -659,6 +691,8 @@ function applyLegacyExtensionHack(choice: ChatCompletionChunkChoice | undefined)
 export async function customLlmRequest(
   customLlm: CustomLlm,
   request: OpenRouterChatCompletionRequest,
+  userId: string,
+  taskId: string | undefined,
   isLegacyExtension: boolean
 ) {
   const messages = request.messages as OpenRouterChatCompletionsInput;
@@ -695,7 +729,7 @@ export async function customLlmRequest(
     }
   }
 
-  const result = streamText({ model, ...commonParams, includeRawChunks: inStreamDebugMode });
+  const result = streamText({ model, ...commonParams, includeRawChunks: true });
 
   if (inStreamDebugMode) {
     debugSaveLog(JSON.stringify(request, undefined, 2), 'request.gateway.json');
@@ -703,7 +737,7 @@ export async function customLlmRequest(
     debugSaveLog(JSON.stringify((await result.request).body, undefined, 2), 'request.native.json');
   }
 
-  const convertStreamPartToChunk = createStreamPartConverter(modelId);
+  const convertStreamPartToChunk = createStreamPartConverter(userId, taskId, modelId);
 
   const debugGatewayChunks = new Array<unknown>();
   const debugAiSdkChunks = new Array<unknown>();
@@ -722,7 +756,7 @@ export async function customLlmRequest(
             }
           }
 
-          const converted = convertStreamPartToChunk(chunk);
+          const converted = await convertStreamPartToChunk(chunk);
           if (converted) {
             if (isLegacyExtension) {
               applyLegacyExtensionHack((converted.choices as ChatCompletionChunkChoice[])[0]);
