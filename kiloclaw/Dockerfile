@@ -46,7 +46,7 @@ RUN mkdir -p /root/.openclaw \
     && mkdir -p /root/clawd/skills
 
 # Copy startup script
-# Build cache bust: 2026-02-24-v51-exec-allowlist
+# Build cache bust: 2026-02-25-v52-exec-host-gateway
 RUN echo "4"
 COPY start-openclaw.sh /usr/local/bin/start-openclaw.sh
 COPY openclaw-pairing-list.js /usr/local/bin/openclaw-pairing-list.js

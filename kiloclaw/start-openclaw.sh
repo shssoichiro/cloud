@@ -246,11 +246,12 @@ config.agents.defaults = config.agents.defaults || {};
 config.agents.defaults.model = { primary: defaultModel };
 console.log('KiloCode provider configured with base URL ' + baseUrl);
 
-// Exec security: allowlist mode lets skills install and agent exec work
-// while still gating unknown commands via the Control UI approval dialog.
-// The ask=on-miss default prompts for commands not in the allowlist.
+// Exec: KiloClaw machines have no Docker sandbox, so exec must target the
+// gateway host directly. Allowlist mode gates unknown commands via the
+// Control UI approval dialog; safe bins (jq, head, tail, etc.) auto-allow.
 config.tools = config.tools || {};
 config.tools.exec = config.tools.exec || {};
+config.tools.exec.host = 'gateway';
 config.tools.exec.security = 'allowlist';
 config.tools.exec.ask = 'on-miss';
 
