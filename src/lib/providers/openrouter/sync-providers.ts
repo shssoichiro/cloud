@@ -407,10 +407,7 @@ export async function syncProviders() {
 export async function syncAndStoreProviders() {
   const startTime = performance.now();
 
-  const [openrouter_providers, vercel_providers] = await Promise.all([
-    syncProviders(),
-    fetchVercelAiGatewayProviders(),
-  ]);
+  const openrouter_providers = await syncProviders();
 
   if (openrouter_providers.total_providers < 10) {
     throw new Error(
@@ -424,6 +421,7 @@ export async function syncAndStoreProviders() {
     );
   }
 
+  const vercel_providers = await fetchVercelAiGatewayProviders();
   const vercel_provider_count = Object.keys(vercel_providers).length;
   if (vercel_provider_count < 100) {
     throw new Error(
