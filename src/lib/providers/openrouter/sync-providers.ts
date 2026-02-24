@@ -427,7 +427,7 @@ export async function syncAndStoreProviders() {
   const vercel_provider_count = Object.keys(vercel_providers).length;
   if (vercel_provider_count < 100) {
     throw new Error(
-      `Suspicious: total number of potential user byok models is ${vercel_provider_count} < 100`
+      `Suspicious: total number of Vercel AI Gateway models is ${vercel_provider_count} < 100`
     );
   }
 
