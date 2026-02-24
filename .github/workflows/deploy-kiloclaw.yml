@@ -75,7 +75,6 @@ jobs:
           command: deploy --var FLY_IMAGE_TAG:${{ github.sha }} --var OPENCLAW_VERSION:${{ steps.openclaw-version.outputs.version }}
 
       - name: Notify Slack
-        if: success()
         continue-on-error: true
         uses: slackapi/slack-github-action@v2
         with:
@@ -105,10 +104,6 @@ jobs:
                     {
                       "type": "mrkdwn",
                       "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Diff:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|View changes>"
                     }
                   ]
                 },
