@@ -50,7 +50,7 @@ async function fetchVercelAiGatewayProviders() {
         });
         if (!endpointsResponse.ok) {
           throw new Error(
-            `Fetching model endpoints for ${model.id} failed: ${modelsResponse.status}`
+            `Fetching model endpoints for ${model.id} failed: ${endpointsResponse.status}`
           );
         }
         const endpoints = endpointsSchema.parse(await endpointsResponse.json());
