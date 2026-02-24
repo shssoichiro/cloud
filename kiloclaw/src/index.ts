@@ -119,8 +119,11 @@ async function deriveSandboxId(c: Context<AppEnv>, next: Next) {
   if (userId) {
     try {
       c.set('sandboxId', sandboxIdFromUserId(userId));
-    } catch {
-      return c.text('Invalid user identifier', 400);
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('userId too long')) {
+        return c.text('Invalid user identifier', 400);
+      }
+      throw err;
     }
   }
   return next();
