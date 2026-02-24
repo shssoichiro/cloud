@@ -108,7 +108,10 @@ if (usesSeparateReplica) {
 }
 
 // --- Pool observability ---
-// Periodic pool metrics (every 30s) — picked up by Vercel log drain → Axiom
+// Periodic pool metrics (every 30s) — picked up by Vercel log drain → Axiom.
+// instanceId lets us deduplicate readings per instance in Axiom queries.
+const instanceId = `${VERCEL_REGION ?? 'unknown'}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
 function logPoolMetrics() {
   const primary = { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount };
   const replica = usesSeparateReplica
@@ -121,6 +124,7 @@ function logPoolMetrics() {
   console.log(
     JSON.stringify({
       type: 'pool_metrics',
+      instanceId,
       region: VERCEL_REGION ?? 'unknown',
       primary,
       replica,
