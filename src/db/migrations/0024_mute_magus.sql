@@ -1,1 +1,0 @@
-ALTER TABLE "app_builder_project_sessions" ADD COLUMN "worker_version" text DEFAULT 'v1' NOT NULL;
