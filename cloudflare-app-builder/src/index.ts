@@ -80,7 +80,7 @@ function withCorsHeaders(response: Response, origin: string): Response {
   newResponse.headers.set('Access-Control-Allow-Origin', origin);
   newResponse.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, DELETE, OPTIONS');
   newResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type');
-  newResponse.headers.set('Vary', 'Origin');
+  newResponse.headers.append('Vary', 'Origin');
   return newResponse;
 }
 
