@@ -22,7 +22,6 @@ export type CreateV1SessionConfig = {
   projectId?: string;
   organizationId?: string | null;
   trpcClient?: AppTRPCClient;
-  cloudAgentSessionId?: string | null;
   sessionPrepared?: boolean | null;
   onStreamComplete?: () => void;
   onSessionChanged?: (
@@ -43,11 +42,11 @@ export function createV1Session(config: CreateV1SessionConfig): V1Session {
     projectId,
     organizationId,
     trpcClient,
-    cloudAgentSessionId,
     sessionPrepared,
     onStreamComplete,
     onSessionChanged,
   } = config;
+  const cloudAgentSessionId = info.cloud_agent_session_id;
 
   const store = createV1SessionStore(initialMessages);
 

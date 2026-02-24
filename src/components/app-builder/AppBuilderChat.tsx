@@ -31,6 +31,7 @@ import type { CloudMessage } from '@/components/cloud-agent/types';
 import type { StoredMessage } from '@/components/cloud-agent-next/types';
 import { isMessageStreaming } from '@/components/cloud-agent-next/types';
 import { MessageBubble as V2MessageBubble } from '@/components/cloud-agent-next/MessageBubble';
+import { QuestionContextProvider } from '@/components/cloud-agent-next/QuestionContext';
 import type { AppBuilderSession, V1Session, V2Session } from './project-manager/types';
 import {
   filterAppBuilderMessages,
@@ -202,10 +203,12 @@ function ExpandableSessionBlock({
   session,
   visibleSessionCount,
   onLoadMore,
+  organizationId,
 }: {
   session: AppBuilderSession;
   visibleSessionCount: number;
   onLoadMore: () => void;
+  organizationId?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { ended_at, title } = session.info;
@@ -242,7 +245,7 @@ function ExpandableSessionBlock({
       </button>
       {expanded &&
         (session.type === 'v2' ? (
-          <V2SessionMessages session={session} />
+          <V2SessionMessages session={session} organizationId={organizationId} />
         ) : (
           <V1SessionMessages
             session={session}
@@ -351,7 +354,13 @@ function V1SessionMessages({
 /**
  * Renders a V2 session's messages.
  */
-function V2SessionMessages({ session }: { session: V2Session }) {
+function V2SessionMessages({
+  session,
+  organizationId,
+}: {
+  session: V2Session;
+  organizationId?: string;
+}) {
   const sessionState = useSyncExternalStore(session.subscribe, session.getState);
 
   const { v2Static, v2Dynamic } = useMemo(() => {
@@ -372,11 +381,15 @@ function V2SessionMessages({ session }: { session: V2Session }) {
   }
 
   return (
-    <>
+    <QuestionContextProvider
+      questionRequestIds={sessionState.questionRequestIds}
+      cloudAgentSessionId={session.info.cloud_agent_session_id}
+      organizationId={organizationId ?? null}
+    >
       <V2StaticMessages messages={v2Static} />
       <V2DynamicMessages messages={v2Dynamic} />
       {sessionState.isStreaming && v2Dynamic.length === 0 && <TypingIndicator />}
-    </>
+    </QuestionContextProvider>
   );
 }
 
@@ -388,11 +401,13 @@ function SessionMessages({
   isLast,
   visibleSessionCount,
   onLoadMore,
+  organizationId,
 }: {
   session: AppBuilderSession;
   isLast: boolean;
   visibleSessionCount: number;
   onLoadMore: () => void;
+  organizationId?: string;
 }) {
   if (!isLast) {
     return (
@@ -400,12 +415,13 @@ function SessionMessages({
         session={session}
         visibleSessionCount={visibleSessionCount}
         onLoadMore={onLoadMore}
+        organizationId={organizationId}
       />
     );
   }
 
   if (session.type === 'v2') {
-    return <V2SessionMessages session={session} />;
+    return <V2SessionMessages session={session} organizationId={organizationId} />;
   }
 
   return (
@@ -652,6 +668,7 @@ export function AppBuilderChat({ organizationId }: AppBuilderChatProps) {
                 isLast={index === sessions.length - 1}
                 visibleSessionCount={visibleSessionCount}
                 onLoadMore={handleLoadMore}
+                organizationId={organizationId}
               />
             ))
           )}

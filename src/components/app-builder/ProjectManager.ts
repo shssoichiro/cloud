@@ -74,7 +74,12 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
   // --- Session building ---
 
   function toDisplayInfo(info: ProjectSessionInfo): SessionDisplayInfo {
-    return { id: info.id, ended_at: info.ended_at, title: info.title };
+    return {
+      id: info.id,
+      cloud_agent_session_id: info.cloud_agent_session_id,
+      ended_at: info.ended_at,
+      title: info.title,
+    };
   }
 
   function createStaticSession(info: ProjectSessionInfo): AppBuilderSession {
@@ -85,7 +90,6 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
       projectId,
       organizationId,
       trpcClient,
-      cloudAgentSessionId: info.cloud_agent_session_id,
     };
     if (info.worker_version === 'v2') {
       return createV2Session(streamingConfig);
@@ -134,7 +138,6 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
             projectId,
             organizationId,
             trpcClient,
-            cloudAgentSessionId: proj.session_id ?? null,
             onStreamComplete: () => startPreviewPollingIfNeeded(),
             onSessionChanged: handleSessionChanged,
           })
@@ -147,7 +150,6 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
             projectId,
             organizationId,
             trpcClient,
-            cloudAgentSessionId: proj.session_id ?? null,
             sessionPrepared: info.prepared,
             onStreamComplete: () => startPreviewPollingIfNeeded(),
             onSessionChanged: handleSessionChanged,
@@ -173,6 +175,7 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
 
     const newInfo: SessionDisplayInfo = {
       id: newSessionId,
+      cloud_agent_session_id: newSessionId,
       ended_at: null,
       title: null,
     };
@@ -185,7 +188,6 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
             projectId,
             organizationId,
             trpcClient,
-            cloudAgentSessionId: newSessionId,
             onStreamComplete: () => startPreviewPollingIfNeeded(),
             onSessionChanged: handleSessionChanged,
           })
@@ -195,7 +197,6 @@ export function createProjectManager(config: ProjectManagerConfig): ProjectManag
             projectId,
             organizationId,
             trpcClient,
-            cloudAgentSessionId: newSessionId,
             sessionPrepared: true,
             onStreamComplete: () => startPreviewPollingIfNeeded(),
             onSessionChanged: handleSessionChanged,

@@ -22,7 +22,6 @@ export type CreateV2SessionConfig = {
   projectId?: string;
   organizationId?: string | null;
   trpcClient?: AppTRPCClient;
-  cloudAgentSessionId?: string | null;
   onStreamComplete?: () => void;
   onSessionChanged?: (
     newSessionId: string,
@@ -42,10 +41,11 @@ export function createV2Session(config: CreateV2SessionConfig): V2Session {
     projectId,
     organizationId,
     trpcClient,
-    cloudAgentSessionId,
     onStreamComplete,
     onSessionChanged,
   } = config;
+
+  const cloudAgentSessionId = info.cloud_agent_session_id;
 
   const store = createV2SessionStore(initialMessages);
 
