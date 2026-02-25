@@ -100,11 +100,36 @@ function getDefaultTemplate(platform: CodeReviewPlatform): PromptTemplate {
   }
 }
 
+// Style keys whose local definitions are protected from PostHog overrides.
+const PROTECTED_STYLE_KEYS = ['roast'] as const;
+
 /**
- * Merges style overrides from the local template into a remote template
- * when the remote template doesn't include them. This ensures per-style
- * features (like roast mode) still work even when the remote template
- * only overrides the base prompt sections.
+ * Merges style override records: remote keys win for everything except
+ * protected keys (e.g. "roast"), which always come from the local template.
+ * This lets PostHog freely update balanced/strict/lenient prompts while
+ * guaranteeing roast mode can never be accidentally stripped.
+ */
+function mergeStyleOverrides<V>(
+  local: Record<string, V> | undefined,
+  remote: Record<string, V> | undefined
+): Record<string, V> | undefined {
+  if (!local && !remote) return undefined;
+  const merged = { ...local, ...remote };
+  if (local) {
+    for (const key of PROTECTED_STYLE_KEYS) {
+      if (key in local) {
+        merged[key] = local[key];
+      }
+    }
+  }
+  return merged;
+}
+
+/**
+ * Merges a remote (PostHog) template with the local template.
+ * Remote wins for all base prompt sections and for non-protected
+ * style override keys. Protected keys (like "roast") always come
+ * from the local template so PostHog can never strip them.
  */
 export function resolveTemplate(
   remoteTemplate: PromptTemplate | undefined,
@@ -117,11 +142,15 @@ export function resolveTemplate(
   return {
     template: {
       ...remoteTemplate,
-      styleGuidance: remoteTemplate.styleGuidance ?? localTemplate.styleGuidance,
-      commentFormatOverrides:
-        remoteTemplate.commentFormatOverrides ?? localTemplate.commentFormatOverrides,
-      summaryFormatOverrides:
-        remoteTemplate.summaryFormatOverrides ?? localTemplate.summaryFormatOverrides,
+      styleGuidance: mergeStyleOverrides(localTemplate.styleGuidance, remoteTemplate.styleGuidance),
+      commentFormatOverrides: mergeStyleOverrides(
+        localTemplate.commentFormatOverrides,
+        remoteTemplate.commentFormatOverrides
+      ),
+      summaryFormatOverrides: mergeStyleOverrides(
+        localTemplate.summaryFormatOverrides,
+        remoteTemplate.summaryFormatOverrides
+      ),
     },
     source: 'posthog',
   };

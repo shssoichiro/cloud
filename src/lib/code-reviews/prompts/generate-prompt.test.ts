@@ -18,7 +18,7 @@ const localTemplate = {
   summaryCommandUpdate: 'local update',
   inlineCommentsApi: 'local api',
   fixLinkTemplate: 'local fix',
-  styleGuidance: { roast: 'ROAST MODE ACTIVATED' },
+  styleGuidance: { roast: 'ROAST MODE ACTIVATED', balanced: 'local balanced guidance' },
   commentFormatOverrides: { roast: 'roast comment format' },
   summaryFormatOverrides: { roast: { issuesFound: 'roast issues', noIssues: 'roast no issues' } },
 } satisfies PromptTemplate;
@@ -39,13 +39,23 @@ const remoteTemplateWithoutStyleOverrides = {
   fixLinkTemplate: 'remote fix',
 } satisfies PromptTemplate;
 
-const remoteTemplateWithStyleOverrides = {
+const remoteTemplateWithNewStyleKey = {
+  ...remoteTemplateWithoutStyleOverrides,
+  styleGuidance: { strict: 'REMOTE STRICT GUIDANCE' },
+  commentFormatOverrides: { strict: 'remote strict comment format' },
+  summaryFormatOverrides: {
+    strict: { issuesFound: 'remote strict issues', noIssues: 'remote strict no issues' },
+  },
+} satisfies PromptTemplate;
+
+const remoteTemplateOverridingRoast = {
   ...remoteTemplateWithoutStyleOverrides,
   styleGuidance: { roast: 'REMOTE ROAST GUIDANCE' },
-  commentFormatOverrides: { roast: 'remote roast comment format' },
-  summaryFormatOverrides: {
-    roast: { issuesFound: 'remote roast issues', noIssues: 'remote roast no issues' },
-  },
+} satisfies PromptTemplate;
+
+const remoteTemplateOverridingBalanced = {
+  ...remoteTemplateWithoutStyleOverrides,
+  styleGuidance: { balanced: 'REMOTE BALANCED GUIDANCE' },
 } satisfies PromptTemplate;
 
 // --- resolveTemplate ---
@@ -58,27 +68,51 @@ describe('resolveTemplate', () => {
     expect(result.source).toBe('local');
   });
 
-  it('merges local style overrides into remote template when remote omits them', () => {
+  it('falls back to local style overrides when remote omits them', () => {
     const result = resolveTemplate(remoteTemplateWithoutStyleOverrides, localTemplate);
 
     expect(result.template.version).toBe('remote-v1');
     expect(result.template.systemRole).toBe('remote system role');
-    // Style overrides should come from local
-    expect(result.template.styleGuidance).toBe(localTemplate.styleGuidance);
-    expect(result.template.commentFormatOverrides).toBe(localTemplate.commentFormatOverrides);
-    expect(result.template.summaryFormatOverrides).toBe(localTemplate.summaryFormatOverrides);
+    expect(result.template.styleGuidance).toEqual({
+      roast: 'ROAST MODE ACTIVATED',
+      balanced: 'local balanced guidance',
+    });
+    expect(result.template.commentFormatOverrides).toEqual({ roast: 'roast comment format' });
+    expect(result.template.summaryFormatOverrides).toEqual({
+      roast: { issuesFound: 'roast issues', noIssues: 'roast no issues' },
+    });
   });
 
-  it('preserves remote style overrides when remote includes them', () => {
-    const result = resolveTemplate(remoteTemplateWithStyleOverrides, localTemplate);
+  it('local roast keys win even when remote provides the same key', () => {
+    const result = resolveTemplate(remoteTemplateOverridingRoast, localTemplate);
 
-    expect(result.template.styleGuidance).toBe(remoteTemplateWithStyleOverrides.styleGuidance);
-    expect(result.template.commentFormatOverrides).toBe(
-      remoteTemplateWithStyleOverrides.commentFormatOverrides
-    );
-    expect(result.template.summaryFormatOverrides).toBe(
-      remoteTemplateWithStyleOverrides.summaryFormatOverrides
-    );
+    expect(result.template.styleGuidance?.['roast']).toBe('ROAST MODE ACTIVATED');
+  });
+
+  it('remote wins for non-protected keys that local also defines', () => {
+    const result = resolveTemplate(remoteTemplateOverridingBalanced, localTemplate);
+
+    expect(result.template.styleGuidance?.['balanced']).toBe('REMOTE BALANCED GUIDANCE');
+    // roast is still preserved
+    expect(result.template.styleGuidance?.['roast']).toBe('ROAST MODE ACTIVATED');
+  });
+
+  it('merges remote style keys that local does not define', () => {
+    const result = resolveTemplate(remoteTemplateWithNewStyleKey, localTemplate);
+
+    expect(result.template.styleGuidance).toEqual({
+      roast: 'ROAST MODE ACTIVATED',
+      balanced: 'local balanced guidance',
+      strict: 'REMOTE STRICT GUIDANCE',
+    });
+    expect(result.template.commentFormatOverrides).toEqual({
+      roast: 'roast comment format',
+      strict: 'remote strict comment format',
+    });
+    expect(result.template.summaryFormatOverrides).toEqual({
+      roast: { issuesFound: 'roast issues', noIssues: 'roast no issues' },
+      strict: { issuesFound: 'remote strict issues', noIssues: 'remote strict no issues' },
+    });
   });
 
   it('returns source "posthog" when remote template is provided', () => {
