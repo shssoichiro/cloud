@@ -73,12 +73,14 @@ function getReplicaUrl(): string {
 // cascade can open 100×N connections simultaneously and overwhelm pgbouncer.
 const max = 10;
 
+const idleTimeoutMillis = 30_000;
+
 // Primary pool - always points to Frankfurt (writes go here)
 export const pool = new Pool({
   ...getDatabaseClientConfig(postgresUrl),
   max,
   connectionTimeoutMillis: Number.parseInt(POSTGRES_CONNECT_TIMEOUT || '30000'),
-  idleTimeoutMillis: 3000,
+  idleTimeoutMillis,
   application_name: appName,
 });
 
@@ -91,7 +93,7 @@ const replicaPool = usesSeparateReplica
       ...getDatabaseClientConfig(replicaUrl),
       max,
       connectionTimeoutMillis: Number.parseInt(POSTGRES_CONNECT_TIMEOUT || '30000'),
-      idleTimeoutMillis: 3000,
+      idleTimeoutMillis,
       application_name: `${appName}-replica`,
     })
   : pool; // Reuse primary pool if no separate replica
