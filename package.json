@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:prod-db": "USE_PRODUCTION_DB=true next dev",
-    "build": "next build --webpack",
+    "build": "next build",
     "start": "next start",
     "stripe": "stripe listen --forward-to http://localhost:3000/api/stripe/webhook",
     "lint": "NODE_OPTIONS='--max-old-space-size=8192' eslint --config eslint.config.mjs --cache 'src/**/*.{ts,tsx,js,jsx}' 'cloudflare-ai-attribution/src/**/*.{ts,tsx,js,jsx}' 'cloudflare-deploy-infra/**/src/**/*.{ts,tsx,js,jsx}'",
