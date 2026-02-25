@@ -17,7 +17,12 @@ export function applyCloudAgentPromoLabel<T extends { id: string; name: string }
   options: T[]
 ): T[] {
   if (!isCloudAgentPromoActive()) return options;
+  const endDate = new Date(CLOUD_AGENT_PROMO_END).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+  });
   return options.map(m =>
-    m.id === CLOUD_AGENT_PROMO_MODEL ? { ...m, name: `${m.name} (free)` } : m
+    m.id === CLOUD_AGENT_PROMO_MODEL ? { ...m, name: `${m.name} (free till ${endDate})` } : m
   );
 }
