@@ -74,8 +74,7 @@ const nextConfig = {
     return [
       {
         source: '/cli/install',
-        destination:
-          'https://raw.githubusercontent.com/Kilo-Org/kilo/refs/heads/dev/install',
+        destination: 'https://raw.githubusercontent.com/Kilo-Org/kilo/refs/heads/dev/install',
         permanent: false,
       },
       {
@@ -125,11 +124,6 @@ const nextConfig = {
   productionBrowserSourceMaps: true,
   // Configure `pageExtensions` to include markdown and MDX files
   pageExtensions: ['js', 'jsx', 'md', 'mdx', 'ts', 'tsx'],
-
-  // Disable built-in ESLint integration
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
 
   // Configure webpack to suppress warnings
   webpack: config => {
