@@ -31,7 +31,7 @@ const getModelUserByokProviders_cached = unstable_cache(
     }
     const providers =
       vercelModelMetadata[mapModelIdToVercel(modelId)]?.endpoints
-        .map(ep => UserByokProviderIdSchema.safeParse(ep.tag)?.data)
+        .map(ep => UserByokProviderIdSchema.safeParse(ep.tag).data)
         .filter(providerId => providerId !== undefined) ?? [];
     if (providers.length === 0) {
       console.debug(`[getModelUserByokProviders_cached] no user byok providers for ${modelId}`);
