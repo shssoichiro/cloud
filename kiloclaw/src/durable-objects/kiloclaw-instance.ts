@@ -32,7 +32,6 @@ import {
   type InstanceConfig,
   type PersistedState,
   type EncryptedEnvelope,
-  type ModelEntry,
   type MachineSize,
 } from '../schemas/instance-config';
 import {
@@ -353,8 +352,6 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   private encryptedSecrets: PersistedState['encryptedSecrets'] = null;
   private kilocodeApiKey: PersistedState['kilocodeApiKey'] = null;
   private kilocodeApiKeyExpiresAt: PersistedState['kilocodeApiKeyExpiresAt'] = null;
-  private kilocodeDefaultModel: PersistedState['kilocodeDefaultModel'] = null;
-  private kilocodeModels: PersistedState['kilocodeModels'] = null;
   private channels: PersistedState['channels'] = null;
   private provisionedAt: number | null = null;
   private lastStartedAt: number | null = null;
@@ -394,8 +391,6 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       this.encryptedSecrets = s.encryptedSecrets;
       this.kilocodeApiKey = s.kilocodeApiKey;
       this.kilocodeApiKeyExpiresAt = s.kilocodeApiKeyExpiresAt;
-      this.kilocodeDefaultModel = s.kilocodeDefaultModel;
-      this.kilocodeModels = s.kilocodeModels;
       this.channels = s.channels;
       this.provisionedAt = s.provisionedAt;
       this.lastStartedAt = s.lastStartedAt;
@@ -501,8 +496,6 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       encryptedSecrets: config.encryptedSecrets ?? null,
       kilocodeApiKey: config.kilocodeApiKey ?? null,
       kilocodeApiKeyExpiresAt: config.kilocodeApiKeyExpiresAt ?? null,
-      kilocodeDefaultModel: config.kilocodeDefaultModel ?? null,
-      kilocodeModels: config.kilocodeModels ?? null,
       channels: config.channels ?? null,
       machineSize: config.machineSize ?? this.machineSize ?? null,
     } satisfies Partial<PersistedState>;
@@ -541,8 +534,6 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     this.encryptedSecrets = config.encryptedSecrets ?? null;
     this.kilocodeApiKey = config.kilocodeApiKey ?? null;
     this.kilocodeApiKeyExpiresAt = config.kilocodeApiKeyExpiresAt ?? null;
-    this.kilocodeDefaultModel = config.kilocodeDefaultModel ?? null;
-    this.kilocodeModels = config.kilocodeModels ?? null;
     this.channels = config.channels ?? null;
     this.machineSize = config.machineSize ?? this.machineSize ?? null;
     if (isNew) {
@@ -572,13 +563,9 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   async updateKiloCodeConfig(patch: {
     kilocodeApiKey?: string | null;
     kilocodeApiKeyExpiresAt?: string | null;
-    kilocodeDefaultModel?: string | null;
-    kilocodeModels?: ModelEntry[] | null;
   }): Promise<{
     kilocodeApiKey: string | null;
     kilocodeApiKeyExpiresAt: string | null;
-    kilocodeDefaultModel: string | null;
-    kilocodeModels: ModelEntry[] | null;
   }> {
     await this.loadState();
 
@@ -592,14 +579,6 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       this.kilocodeApiKeyExpiresAt = patch.kilocodeApiKeyExpiresAt;
       pending.kilocodeApiKeyExpiresAt = this.kilocodeApiKeyExpiresAt;
     }
-    if (patch.kilocodeDefaultModel !== undefined) {
-      this.kilocodeDefaultModel = patch.kilocodeDefaultModel;
-      pending.kilocodeDefaultModel = this.kilocodeDefaultModel;
-    }
-    if (patch.kilocodeModels !== undefined) {
-      this.kilocodeModels = patch.kilocodeModels;
-      pending.kilocodeModels = this.kilocodeModels;
-    }
 
     if (Object.keys(pending).length > 0) {
       await this.ctx.storage.put(pending);
@@ -608,8 +587,6 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     return {
       kilocodeApiKey: this.kilocodeApiKey,
       kilocodeApiKeyExpiresAt: this.kilocodeApiKeyExpiresAt,
-      kilocodeDefaultModel: this.kilocodeDefaultModel,
-      kilocodeModels: this.kilocodeModels,
     };
   }
 
@@ -1283,8 +1260,6 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       encryptedSecrets: this.encryptedSecrets ?? undefined,
       kilocodeApiKey: this.kilocodeApiKey ?? undefined,
       kilocodeApiKeyExpiresAt: this.kilocodeApiKeyExpiresAt ?? undefined,
-      kilocodeDefaultModel: this.kilocodeDefaultModel ?? undefined,
-      kilocodeModels: this.kilocodeModels ?? undefined,
       channels: this.channels ?? undefined,
       machineSize: this.machineSize ?? undefined,
     };
@@ -1980,8 +1955,6 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     this.encryptedSecrets = null;
     this.kilocodeApiKey = null;
     this.kilocodeApiKeyExpiresAt = null;
-    this.kilocodeDefaultModel = null;
-    this.kilocodeModels = null;
     this.channels = null;
     this.provisionedAt = null;
     this.lastStartedAt = null;
@@ -2496,8 +2469,6 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         envVars: this.envVars ?? undefined,
         encryptedSecrets: this.encryptedSecrets ?? undefined,
         kilocodeApiKey: this.kilocodeApiKey ?? undefined,
-        kilocodeDefaultModel: this.kilocodeDefaultModel ?? undefined,
-        kilocodeModels: this.kilocodeModels ?? undefined,
         channels: this.channels ?? undefined,
       }
     );

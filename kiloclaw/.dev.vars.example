@@ -10,10 +10,12 @@ GATEWAY_TOKEN_SECRET=dev-gateway-secret-kiloclaw
 # Fly app naming prefix ("dev-") for per-user app creation.
 WORKER_ENV=development
 
-# Optional: Override KiloCode base URL (dev)
-# In dev you'll want to use ngrok or cloudflare tunnel to route back to your nextjs app
+# Optional: Override KiloCode provider base URL (local dev only)
+# OpenClaw's native kilocode provider hardcodes https://api.kilo.ai/api/gateway/.
+# In dev, set this to a Cloudflare tunnel or ngrok URL pointing to your local Next.js app
+# so that Fly machines route model requests through the tunnel instead of production.
 # e.g.: `cloudflared tunnel --url http://localhost:3000`
-# KILOCODE_API_BASE_URL=https://api.kilo.ai/api/openrouter/
+# KILOCODE_API_BASE_URL=https://<tunnel>.trycloudflare.com/api/gateway/
 
 # Fly.io Machines API
 # Get a token (run: `fly tokens create some-name-for-this-dev-token`)

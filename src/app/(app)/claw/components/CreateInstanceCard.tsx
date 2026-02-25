@@ -1,12 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
 import type { useKiloClawMutations } from '@/hooks/useKiloClaw';
-import { useOpenRouterModels } from '@/app/api/openrouter/hooks';
-import { ModelCombobox, type ModelOption } from '@/components/shared/ModelCombobox';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -17,15 +15,8 @@ type ClawMutations = ReturnType<typeof useKiloClawMutations>;
 
 export function CreateInstanceCard({ mutations }: { mutations: ClawMutations }) {
   const posthog = usePostHog();
-  const { data: modelsData, isLoading: isLoadingModels } = useOpenRouterModels();
-  const [selectedModel, setSelectedModel] = useState('');
   const [addedChannels, setAddedChannels] = useState<Set<ChannelType>>(new Set());
   const [tokens, setTokens] = useState<Record<string, string>>({});
-
-  const modelOptions = useMemo<ModelOption[]>(
-    () => (modelsData?.data || []).map(model => ({ id: model.id, name: model.name })),
-    [modelsData]
-  );
 
   function addChannel(channel: ChannelType) {
     setAddedChannels(prev => new Set([...prev, channel]));
@@ -67,14 +58,8 @@ export function CreateInstanceCard({ mutations }: { mutations: ClawMutations }) 
 
   function handleCreate() {
     posthog?.capture('claw_create_instance_clicked', {
-      selected_model: selectedModel || null,
       channels: [...addedChannels],
     });
-
-    if (isLoadingModels) {
-      toast.error('Models are still loading; try again in a moment.');
-      return;
-    }
 
     // Validate Slack requires both tokens
     if (addedChannels.has('slack')) {
@@ -86,11 +71,8 @@ export function CreateInstanceCard({ mutations }: { mutations: ClawMutations }) 
       }
     }
 
-    const modelsPayload = modelOptions.map(({ id, name }) => ({ id, name }));
     mutations.provision.mutate(
       {
-        kilocodeDefaultModel: selectedModel ? `kilocode/${selectedModel}` : null,
-        kilocodeModels: modelsPayload.length > 0 ? modelsPayload : null,
         channels: buildChannelsPayload(),
       },
       {
@@ -106,20 +88,9 @@ export function CreateInstanceCard({ mutations }: { mutations: ClawMutations }) 
     <Card>
       <CardHeader>
         <CardTitle>Create Instance</CardTitle>
-        <CardDescription>
-          Choose a default model to provision your first KiloClaw instance.
-        </CardDescription>
+        <CardDescription>Provision your first KiloClaw instance.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <ModelCombobox
-          label=""
-          models={modelOptions}
-          value={selectedModel}
-          onValueChange={setSelectedModel}
-          isLoading={isLoadingModels}
-          disabled={mutations.provision.isPending || isLoadingModels}
-        />
-
         <div className="space-y-3">
           <Label>Channels (optional)</Label>
 

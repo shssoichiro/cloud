@@ -1,20 +1,19 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { AlertCircle, AlertTriangle, Hash, Save, Square, X } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
 import type { KiloClawDashboardStatus } from '@/lib/kiloclaw/types';
 import type { useKiloClawMutations } from '@/hooks/useKiloClaw';
 import { useKiloClawConfig } from '@/hooks/useKiloClaw';
-import { useOpenRouterModels } from '@/app/api/openrouter/hooks';
-import { ModelCombobox, type ModelOption } from '@/components/shared/ModelCombobox';
+
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DetailTile } from './DetailTile';
-import { useDefaultModelSelection } from '../hooks/useDefaultModelSelection';
+
 import { ChannelTokenInput } from './ChannelTokenInput';
 import { CHANNELS, CHANNEL_TYPES, type ChannelDefinition } from './channel-config';
 
@@ -165,18 +164,7 @@ export function SettingsTab({
 }) {
   const posthog = usePostHog();
   const { data: config } = useKiloClawConfig();
-  const { data: modelsData, isLoading: isLoadingModels } = useOpenRouterModels();
   const [confirmDestroy, setConfirmDestroy] = useState(false);
-
-  const modelOptions = useMemo<ModelOption[]>(
-    () => (modelsData?.data || []).map(model => ({ id: model.id, name: model.name })),
-    [modelsData]
-  );
-
-  const { selectedModel, setSelectedModel } = useDefaultModelSelection(
-    config?.kilocodeDefaultModel,
-    modelOptions
-  );
 
   const isSaving = mutations.patchConfig.isPending;
   const isDestroying = status.status === 'destroying';
@@ -191,26 +179,13 @@ export function SettingsTab({
 
   function handleSave() {
     posthog?.capture('claw_save_config_clicked', {
-      selected_model: selectedModel || null,
       instance_status: status.status,
     });
 
-    if (isLoadingModels) {
-      toast.error('Models are still loading; try again in a moment.');
-      return;
-    }
-
-    const modelsPayload = modelOptions.map(({ id, name }) => ({ id, name }));
-    mutations.patchConfig.mutate(
-      {
-        kilocodeDefaultModel: selectedModel ? `kilocode/${selectedModel}` : null,
-        kilocodeModels: modelsPayload.length > 0 ? modelsPayload : null,
-      },
-      {
-        onSuccess: () => toast.success('Configuration saved'),
-        onError: err => toast.error(`Failed to save: ${err.message}`),
-      }
-    );
+    mutations.patchConfig.mutate(undefined, {
+      onSuccess: () => toast.success('Configuration saved'),
+      onError: err => toast.error(`Failed to save: ${err.message}`),
+    });
   }
 
   return (
@@ -230,27 +205,12 @@ export function SettingsTab({
         </p>
 
         <div className="space-y-4">
-          <ModelCombobox
-            label=""
-            models={modelOptions}
-            value={selectedModel}
-            onValueChange={setSelectedModel}
-            isLoading={isLoadingModels}
-            disabled={isSaving || isLoadingModels}
-          />
-
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={handleSave} disabled={isSaving}>
               <Save className="h-4 w-4" />
               {isSaving ? 'Saving...' : 'Save & Provision'}
             </Button>
           </div>
-
-          {config && (
-            <p className="text-muted-foreground text-xs">
-              Current default model: {config.kilocodeDefaultModel || 'not set'}
-            </p>
-          )}
         </div>
       </div>
 

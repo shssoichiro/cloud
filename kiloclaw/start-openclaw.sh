@@ -127,7 +127,8 @@ if [ ! -f "$CONFIG_FILE" ]; then
         --gateway-bind loopback \
         --skip-channels \
         --skip-skills \
-        --skip-health
+        --skip-health \
+        --kilocode-api-key "$KILOCODE_API_KEY"
 
     echo "Onboard completed"
 else
@@ -136,12 +137,15 @@ else
 fi
 
 # ============================================================
-# PATCH CONFIG (channels, gateway auth, trusted proxies)
+# PATCH CONFIG (channels, gateway auth, exec policy)
 # ============================================================
-# openclaw onboard handles provider/model config, but we need to patch in:
-# - Channel config (Telegram, Discord, Slack)
+# openclaw onboard handles provider/model config natively (kilocode provider,
+# default model, model catalog). We still need to patch in:
 # - Gateway token auth
-# - KiloCode provider + model config
+# - Channel config (Telegram, Discord, Slack)
+# - Exec policy (no Docker sandbox on Fly machines)
+# - Control UI settings (allowed origins, insecure auth for dev)
+# - Base URL override for local dev (see note below)
 node << 'EOFPATCH'
 const fs = require('fs');
 
@@ -189,57 +193,19 @@ if (process.env.OPENCLAW_ALLOWED_ORIGINS) {
         .map(function(s) { return s.trim(); });
 }
 
-// KiloCode provider configuration (required)
-const providerName = 'kilocode';
-const baseUrl = process.env.KILOCODE_API_BASE_URL || 'https://api.kilo.ai/api/openrouter/';
-const defaultModel =
-    process.env.KILOCODE_DEFAULT_MODEL || providerName + '/anthropic/claude-opus-4.5';
-const modelsPath = '/root/.openclaw/kilocode-models.json';
-const defaultModels = [
-    { id: 'anthropic/claude-opus-4.5', name: 'Anthropic: Claude Opus 4.5' },
-    { id: 'minimax/minimax-m2.1:free', name: 'Minimax: Minimax M2.1' },
-    { id: 'z-ai/glm-4.7:free', name: 'GLM-4.7 (Free - Exclusive to Kilo)' },
-];
-let models = defaultModels;
-
-// Prefer KILOCODE_MODELS_JSON env var (set by buildEnvVars from DO config).
-// Falls back to file-based override for manual use, then baked-in defaults.
-if (process.env.KILOCODE_MODELS_JSON) {
-    try {
-        const parsed = JSON.parse(process.env.KILOCODE_MODELS_JSON);
-        models = Array.isArray(parsed) ? parsed : defaultModels;
-        console.log('Using model list from KILOCODE_MODELS_JSON (' + models.length + ' models)');
-    } catch (error) {
-        console.warn('Failed to parse KILOCODE_MODELS_JSON, using defaults:', error);
-    }
-} else if (fs.existsSync(modelsPath)) {
-    const rawModels = fs.readFileSync(modelsPath, 'utf8');
-    if (rawModels.trim().length === 0) {
-        models = [];
-    } else {
-        try {
-            const parsed = JSON.parse(rawModels);
-            models = Array.isArray(parsed) ? parsed : [];
-        } catch (error) {
-            console.warn('Failed to parse KiloCode models file, using empty list:', error);
-            models = [];
-        }
-    }
+// KiloCode provider base URL override (local dev only).
+// OpenClaw's native kilocode provider hardcodes https://api.kilo.ai/api/gateway/.
+// In local dev, Fly machines need to route through a Cloudflare tunnel back to
+// localhost, so we override the base URL when KILOCODE_API_BASE_URL is set.
+// TODO: Upstream KILOCODE_API_BASE_URL env var support into OpenClaw's kilocode
+// provider so this config patch can be removed entirely.
+if (process.env.KILOCODE_API_BASE_URL) {
+    config.models = config.models || {};
+    config.models.providers = config.models.providers || {};
+    config.models.providers.kilocode = config.models.providers.kilocode || {};
+    config.models.providers.kilocode.baseUrl = process.env.KILOCODE_API_BASE_URL;
+    console.log('Overriding kilocode base URL: ' + process.env.KILOCODE_API_BASE_URL);
 }
-
-config.models = config.models || {};
-config.models.providers = config.models.providers || {};
-config.models.providers[providerName] = {
-    baseUrl: baseUrl,
-    apiKey: process.env.KILOCODE_API_KEY,
-    api: 'openai-completions',
-    models: models,
-};
-
-config.agents = config.agents || {};
-config.agents.defaults = config.agents.defaults || {};
-config.agents.defaults.model = { primary: defaultModel };
-console.log('KiloCode provider configured with base URL ' + baseUrl);
 
 // Exec: KiloClaw machines have no Docker sandbox, so exec must target the
 // gateway host directly. Allowlist mode gates unknown commands via the

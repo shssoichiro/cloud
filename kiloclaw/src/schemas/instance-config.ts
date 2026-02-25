@@ -7,10 +7,6 @@ export const EncryptedEnvelopeSchema = z.object({
   version: z.literal(1),
 });
 
-export type ModelEntry = { id: string; name: string };
-
-const ModelEntrySchema = z.object({ id: z.string(), name: z.string() });
-
 const MachineSizeSchema = z.object({
   cpus: z.number().int().min(1).max(8),
   memory_mb: z.number().int().min(256).max(16384),
@@ -37,8 +33,6 @@ export const InstanceConfigSchema = z.object({
   encryptedSecrets: z.record(envVarNameSchema, EncryptedEnvelopeSchema).optional(),
   kilocodeApiKey: z.string().nullable().optional(),
   kilocodeApiKeyExpiresAt: z.string().nullable().optional(),
-  kilocodeDefaultModel: z.string().nullable().optional(),
-  kilocodeModels: z.array(ModelEntrySchema).nullable().optional(),
   channels: z
     .object({
       telegramBotToken: EncryptedEnvelopeSchema.optional(),
@@ -99,8 +93,6 @@ export const PersistedStateSchema = z.object({
   encryptedSecrets: z.record(z.string(), EncryptedEnvelopeSchema).nullable().default(null),
   kilocodeApiKey: z.string().nullable().default(null),
   kilocodeApiKeyExpiresAt: z.string().nullable().default(null),
-  kilocodeDefaultModel: z.string().nullable().default(null),
-  kilocodeModels: z.array(ModelEntrySchema).nullable().default(null),
   channels: z
     .object({
       telegramBotToken: EncryptedEnvelopeSchema.optional(),

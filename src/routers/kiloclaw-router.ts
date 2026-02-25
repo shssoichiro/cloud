@@ -14,8 +14,6 @@ import {
   restoreDestroyedInstance,
 } from '@/lib/kiloclaw/instance-registry';
 
-const modelEntrySchema = z.object({ id: z.string(), name: z.string() });
-
 const updateConfigSchema = z.object({
   envVars: z.record(z.string(), z.string()).optional(),
   secrets: z.record(z.string(), z.string()).optional(),
@@ -27,27 +25,6 @@ const updateConfigSchema = z.object({
       slackAppToken: z.string().optional(),
     })
     .optional(),
-  kilocodeDefaultModel: z
-    .string()
-    .regex(
-      /^kilocode\/[^/]+\/.+$/,
-      'kilocodeDefaultModel must start with kilocode/ and include a provider'
-    )
-    .nullable()
-    .optional(),
-  kilocodeModels: z.array(modelEntrySchema).nullable().optional(),
-});
-
-const updateKiloCodeConfigSchema = z.object({
-  kilocodeDefaultModel: z
-    .string()
-    .regex(
-      /^kilocode\/[^/]+\/.+$/,
-      'kilocodeDefaultModel must start with kilocode/ and include a provider'
-    )
-    .nullable()
-    .optional(),
-  kilocodeModels: z.array(modelEntrySchema).nullable().optional(),
 });
 
 const patchChannelsSchema = z.object({
@@ -93,18 +70,13 @@ function buildWorkerChannelsPatch(channels: z.infer<typeof patchChannelsSchema>)
   return result;
 }
 
-type KiloCodeConfigPublicResponse = Pick<
-  KiloCodeConfigResponse,
-  'kilocodeApiKeyExpiresAt' | 'kilocodeDefaultModel' | 'kilocodeModels'
->;
+type KiloCodeConfigPublicResponse = Pick<KiloCodeConfigResponse, 'kilocodeApiKeyExpiresAt'>;
 
 function sanitizeKiloCodeConfigResponse(
   response: KiloCodeConfigResponse
 ): KiloCodeConfigPublicResponse {
   return {
     kilocodeApiKeyExpiresAt: response.kilocodeApiKeyExpiresAt,
-    kilocodeDefaultModel: response.kilocodeDefaultModel,
-    kilocodeModels: response.kilocodeModels,
   };
 }
 
@@ -133,14 +105,11 @@ async function provisionInstance(
     channels: buildWorkerChannels(input.channels),
     kilocodeApiKey,
     kilocodeApiKeyExpiresAt,
-    kilocodeDefaultModel: input.kilocodeDefaultModel ?? undefined,
-    kilocodeModels: input.kilocodeModels ?? undefined,
   });
 }
 
 async function patchConfig(
-  user: Parameters<typeof generateApiToken>[0],
-  input: z.infer<typeof updateKiloCodeConfigSchema>
+  user: Parameters<typeof generateApiToken>[0]
 ): Promise<KiloCodeConfigPublicResponse> {
   const client = new KiloClawInternalClient();
   const expiresInSeconds = TOKEN_EXPIRY.thirtyDays;
@@ -150,7 +119,6 @@ async function patchConfig(
   const kilocodeApiKeyExpiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 
   const response = await client.patchKiloCodeConfig(user.id, {
-    ...input,
     kilocodeApiKey,
     kilocodeApiKeyExpiresAt,
   });
@@ -209,8 +177,8 @@ export const kiloclawRouter = createTRPCRouter({
     return provisionInstance(ctx.user, input);
   }),
 
-  patchConfig: baseProcedure.input(updateKiloCodeConfigSchema).mutation(async ({ ctx, input }) => {
-    return patchConfig(ctx.user, input);
+  patchConfig: baseProcedure.mutation(async ({ ctx }) => {
+    return patchConfig(ctx.user);
   }),
 
   // Backward-compatible aliases.
@@ -218,11 +186,9 @@ export const kiloclawRouter = createTRPCRouter({
     return provisionInstance(ctx.user, input);
   }),
 
-  updateKiloCodeConfig: baseProcedure
-    .input(updateKiloCodeConfigSchema)
-    .mutation(async ({ ctx, input }) => {
-      return patchConfig(ctx.user, input);
-    }),
+  updateKiloCodeConfig: baseProcedure.mutation(async ({ ctx }) => {
+    return patchConfig(ctx.user);
+  }),
 
   patchChannels: baseProcedure.input(patchChannelsSchema).mutation(async ({ ctx, input }) => {
     const client = new KiloClawInternalClient();

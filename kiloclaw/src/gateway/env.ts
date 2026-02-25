@@ -12,8 +12,6 @@ export type UserConfig = {
   envVars?: Record<string, string>;
   encryptedSecrets?: Record<string, EncryptedEnvelope>;
   kilocodeApiKey?: string | null;
-  kilocodeDefaultModel?: string | null;
-  kilocodeModels?: Array<{ id: string; name: string }> | null;
   channels?: EncryptedChannelTokens;
 };
 
@@ -111,12 +109,6 @@ export async function buildEnvVars(
 
     if (userConfig.kilocodeApiKey) {
       sensitive.KILOCODE_API_KEY = userConfig.kilocodeApiKey;
-    }
-    if (userConfig.kilocodeDefaultModel) {
-      plainEnv.KILOCODE_DEFAULT_MODEL = userConfig.kilocodeDefaultModel;
-    }
-    if (userConfig.kilocodeModels) {
-      plainEnv.KILOCODE_MODELS_JSON = JSON.stringify(userConfig.kilocodeModels);
     }
 
     // Layer 4: Decrypt channel tokens and map to container env var names
