@@ -200,7 +200,7 @@ function buildMachineConfig(
         path: '/_kilo/health',
         interval: '30s',
         timeout: '5s',
-        grace_period: '60s',
+        grace_period: '120s',
       },
     },
     mounts: flyVolumeId ? [{ volume: flyVolumeId, path: '/root' }] : [],
