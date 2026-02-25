@@ -58,6 +58,7 @@ import {
 import type { AnyPgColumn as DrizzleAnyPgColumn } from 'drizzle-orm/pg-core';
 import { FeedbackFor, FeedbackSource } from '@/lib/feedback/enums';
 import type { Tool } from '@/lib/organizations/model-settings';
+import type { StoredModel } from '@/lib/providers/vercel/types';
 
 /**
  * Generates a complete check constraint for an enum column.
@@ -1954,6 +1955,8 @@ export type NewModelStats = typeof modelStats.$inferInsert;
 export const modelsByProvider = pgTable('models_by_provider', {
   id: serial().notNull().primaryKey(),
   data: jsonb('data').$type<NormalizedOpenRouterResponse>().notNull(),
+  openrouter: jsonb('openrouter').$type<Record<string, StoredModel>>(),
+  vercel: jsonb('vercel').$type<Record<string, StoredModel>>(),
 });
 
 export const cloud_agent_code_reviews = pgTable(
