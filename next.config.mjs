@@ -22,7 +22,7 @@ validateGitLfs();
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  cacheComponents: true,
+
   reactCompiler: true,
   devIndicators: { position: 'bottom-right' },
 
