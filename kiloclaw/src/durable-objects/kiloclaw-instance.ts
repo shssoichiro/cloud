@@ -425,7 +425,10 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
    * Provision or update config for a user's instance.
    * Creates a Fly Volume on first provision. Allows re-provisioning (config update).
    */
-  async provision(userId: string, config: InstanceConfig): Promise<{ sandboxId: string }> {
+  async provision(
+    userId: string,
+    config: InstanceConfig
+  ): Promise<{ sandboxId: string; autoStartFailed: boolean }> {
     await this.loadState();
 
     if (this.status === 'destroying') {
@@ -551,12 +554,21 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     }
 
     // Auto-start machine after fresh provision so users don't have to
-    // manually click "Start" after creating an instance
+    // manually click "Start" after creating an instance.
+    // Failures are isolated so provisioning still succeeds — the user
+    // can retry via the Start button.
+    let autoStartFailed = false;
     if (isNew) {
-      await this.start(userId);
+      try {
+        await this.start(userId);
+      } catch (err) {
+        autoStartFailed = true;
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[DO] Auto-start after provision failed:', message);
+      }
     }
 
-    return { sandboxId };
+    return { sandboxId, autoStartFailed };
   }
 
   async updateKiloCodeConfig(patch: {
