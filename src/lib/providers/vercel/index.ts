@@ -136,7 +136,7 @@ export function applyVercelSettings(
         });
       }
       list.push({ apiKey: provider.decryptedAPIKey });
-      byokProviders[key] = list;
+      byokProviders[key] = [...(byokProviders[key] ?? []), ...list];
     }
 
     // this is vercel specific BYOK configuration to force vercel gateway to use the BYOK API key
