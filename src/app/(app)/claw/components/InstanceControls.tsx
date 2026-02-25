@@ -48,8 +48,11 @@ export function InstanceControls({
 }) {
   const posthog = usePostHog();
   const isRunning = status.status === 'running';
-  const isStopped = status.status === 'stopped' || status.status === 'provisioned';
+  const isProvisioned = status.status === 'provisioned';
+  const isStopped = status.status === 'stopped' || isProvisioned;
   const isDestroying = status.status === 'destroying';
+  // Auto-start runs only on fresh provision (status=provisioned), not re-provision
+  const isAutoStarting = isProvisioned && mutations.provision.isPending;
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [confirmRedeploy, setConfirmRedeploy] = useState(false);
@@ -78,16 +81,14 @@ export function InstanceControls({
           size="sm"
           variant="outline"
           className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-          disabled={
-            !isStopped || mutations.start.isPending || mutations.provision.isPending || isDestroying
-          }
+          disabled={!isStopped || mutations.start.isPending || isAutoStarting || isDestroying}
           onClick={() => {
             posthog?.capture('claw_start_instance_clicked', { instance_status: status.status });
             mutations.start.mutate();
           }}
         >
           <Play className="h-4 w-4" />
-          {mutations.start.isPending || mutations.provision.isPending ? (
+          {mutations.start.isPending || isAutoStarting ? (
             <>
               Starting
               <AnimatedDots />
