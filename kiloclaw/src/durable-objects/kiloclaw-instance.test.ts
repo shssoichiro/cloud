@@ -669,7 +669,7 @@ describe('createNewMachine: persist ID before waitForState', () => {
             path: '/_kilo/health',
             interval: '30s',
             timeout: '5s',
-            grace_period: '60s',
+            grace_period: '120s',
           },
         },
       }),
