@@ -1,16 +1,10 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { cacheLife } from 'next/cache';
 import { captureException } from '@sentry/nextjs';
 import type { OpenRouterModelsResponse } from '@/lib/organizations/organization-types';
 import { getEnhancedOpenRouterModels } from '@/lib/providers/openrouter';
 
-async function getCachedModels() {
-  'use cache';
-  cacheLife({ revalidate: 60 });
-
-  return getEnhancedOpenRouterModels();
-}
+export const revalidate = 60;
 
 /**
  * Test using:
@@ -20,7 +14,7 @@ export async function GET(
   _request: NextRequest
 ): Promise<NextResponse<{ error: string; message: string } | OpenRouterModelsResponse>> {
   try {
-    const data = await getCachedModels();
+    const data = await getEnhancedOpenRouterModels();
     return NextResponse.json(data);
   } catch (error) {
     captureException(error, {

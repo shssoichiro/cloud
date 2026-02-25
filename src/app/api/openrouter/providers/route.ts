@@ -1,32 +1,38 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { cacheLife, cacheTag } from 'next/cache';
+import { unstable_cache } from 'next/cache';
 import { captureException } from '@sentry/nextjs';
 import type { OpenRouterProvider } from '@/lib/organizations/organization-types';
 
-async function getCachedProviders() {
-  'use cache';
-  cacheLife({ revalidate: 86400 });
-  cacheTag('openrouter-providers');
+export const revalidate = 86400; // 24 hours
 
-  const response = await fetch('https://openrouter.ai/api/frontend/all-providers', {
-    method: 'GET',
-  });
-
-  if (!response.ok) {
-    const errorMessage = `Failed to fetch OpenRouter providers: ${response.status} ${response.statusText}`;
-    captureException(new Error(errorMessage), {
-      tags: { endpoint: 'openrouter/providers', source: 'openrouter_public_api' },
-      extra: {
-        status: response.status,
-        statusText: response.statusText,
-      },
+// Cache the providers fetch for 24 hours
+const getCachedProviders = unstable_cache(
+  async () => {
+    const response = await fetch('https://openrouter.ai/api/frontend/all-providers', {
+      method: 'GET',
     });
-    throw new Error(errorMessage);
-  }
 
-  return response.json() as Promise<OpenRouterProvider[]>;
-}
+    if (!response.ok) {
+      const errorMessage = `Failed to fetch OpenRouter providers: ${response.status} ${response.statusText}`;
+      captureException(new Error(errorMessage), {
+        tags: { endpoint: 'openrouter/providers', source: 'openrouter_public_api' },
+        extra: {
+          status: response.status,
+          statusText: response.statusText,
+        },
+      });
+      throw new Error(errorMessage);
+    }
+
+    return response.json() as Promise<OpenRouterProvider[]>;
+  },
+  ['openrouter-providers'], // Cache key
+  {
+    revalidate: 86400, // 24 hours in seconds
+    tags: ['openrouter-providers'], // Cache tags for granular invalidation
+  }
+);
 
 /**
  * Test using:

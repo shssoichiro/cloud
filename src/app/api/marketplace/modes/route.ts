@@ -1,32 +1,30 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { cacheLife } from 'next/cache';
 
 const GITHUB_RAW_URL =
   'https://raw.githubusercontent.com/Kilo-Org/kilo-marketplace/main/modes/marketplace.yaml';
 
-async function fetchMarketplaceYaml() {
-  'use cache';
-  cacheLife({ revalidate: 3600 });
+export const revalidate = 3600; // 1 hour
 
-  const response = await fetch(GITHUB_RAW_URL);
-  if (!response.ok) {
-    console.error(`Failed to fetch modes from GitHub: ${response.status} ${response.statusText}`);
-    return null;
-  }
-  return response.text();
-}
-
+/**
+ * Modes Marketplace API Route
+ *
+ * Fetches modes.yaml directly from kilo-marketplace GitHub repo.
+ * Uses Next.js ISR with 1 hour revalidation for caching.
+ */
 export async function GET(_request: NextRequest) {
   try {
-    const yamlContent = await fetchMarketplaceYaml();
+    const response = await fetch(GITHUB_RAW_URL);
 
-    if (!yamlContent) {
+    if (!response.ok) {
+      console.error(`Failed to fetch modes from GitHub: ${response.status} ${response.statusText}`);
       return new NextResponse('items: []\n', {
-        status: 502,
+        status: response.status,
         headers: { 'Content-Type': 'application/x-yaml' },
       });
     }
+
+    const yamlContent = await response.text();
 
     return new NextResponse(yamlContent, {
       headers: {
