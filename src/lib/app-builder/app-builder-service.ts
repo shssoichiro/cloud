@@ -29,6 +29,10 @@ import { createDeployment, getDeployment } from '@/lib/user-deployments/deployme
 import type { DeploymentSource } from '@/lib/user-deployments/types';
 import { getHistoricalMessages } from '@/lib/app-builder/historical-messages';
 import type { Images } from '@/lib/images-schema';
+import { generateImageMCPToken } from '@/lib/app-builder/image-mcp-token';
+import { buildImageContextFromAttachments } from '@/lib/app-builder/image-context';
+import { deleteProjectAssets } from '@/lib/r2/app-builder-assets';
+import { getEnvVariable } from '@/lib/dotenvx';
 
 import type {
   AppBuilderProject,
@@ -195,9 +199,35 @@ async function shouldCreateNewSession(
   return { createNew: false, workerVersion: currentWorkerVersion };
 }
 
+function buildMCPServersConfig(params: {
+  userId: string;
+  projectId: string;
+  owner: Owner;
+}): Record<string, { type: 'remote'; url: string; headers: Record<string, string> }> | undefined {
+  const mcpUrl = getEnvVariable('CLOUD_AGENT_IMAGES_MCP_URL');
+  if (!mcpUrl) return undefined;
+
+  try {
+    const token = generateImageMCPToken(params);
+    return {
+      'app-builder-images': {
+        type: 'remote',
+        url: mcpUrl,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    };
+  } catch {
+    // If token generation fails, skip MCP config
+    return undefined;
+  }
+}
+
 type CreateSessionParams = {
   projectId: string;
   currentSessionId: string;
+  createdByUserId: string;
   owner: Owner;
   message: string;
   model: string;
@@ -211,6 +241,7 @@ async function createV1Session(params: CreateSessionParams): Promise<InitiateSes
   const {
     projectId,
     currentSessionId,
+    createdByUserId: _createdByUserId,
     owner,
     message,
     model,
@@ -296,6 +327,7 @@ async function createV2Session(params: CreateSessionParams): Promise<InitiateSes
   const {
     projectId,
     currentSessionId,
+    createdByUserId,
     owner,
     message,
     model,
@@ -306,11 +338,13 @@ async function createV2Session(params: CreateSessionParams): Promise<InitiateSes
   } = params;
   const v2Client = createAppBuilderCloudAgentNextClient(authToken);
 
+  const augmentedMessage = message + buildImageContextFromAttachments(images);
+
   let prepareParams: Parameters<typeof v2Client.prepareSession>[0];
   if (gitRepoFullName) {
     prepareParams = {
       githubRepo: gitRepoFullName,
-      prompt: message,
+      prompt: augmentedMessage,
       mode: 'build',
       model,
       upstreamBranch: 'main',
@@ -319,13 +353,14 @@ async function createV2Session(params: CreateSessionParams): Promise<InitiateSes
       kilocodeOrganizationId: owner.type === 'org' ? owner.id : undefined,
       images,
       appendSystemPrompt: APP_BUILDER_APPEND_SYSTEM_PROMPT,
+      mcpServers: buildMCPServersConfig({ userId: createdByUserId, projectId, owner }),
     };
   } else {
     const { token: gitToken } = await appBuilderClient.generateGitToken(projectId, 'full');
     prepareParams = {
       gitUrl: getProjectGitUrl(projectId),
       gitToken,
-      prompt: message,
+      prompt: augmentedMessage,
       mode: 'build',
       model,
       upstreamBranch: 'main',
@@ -334,6 +369,7 @@ async function createV2Session(params: CreateSessionParams): Promise<InitiateSes
       kilocodeOrganizationId: owner.type === 'org' ? owner.id : undefined,
       images,
       appendSystemPrompt: APP_BUILDER_APPEND_SYSTEM_PROMPT,
+      mcpServers: buildMCPServersConfig({ userId: createdByUserId, projectId, owner }),
     };
   }
 
@@ -421,6 +457,8 @@ async function sendToExistingV2Session(
 ): Promise<InitiateSessionV2OutputNext> {
   const { projectId, sessionId, message, model, authToken, gitRepoFullName, images } = params;
 
+  const imageContext = buildImageContextFromAttachments(images);
+
   let gitToken: string | undefined;
   if (!gitRepoFullName) {
     const tokenResult = await appBuilderClient.generateGitToken(projectId, 'full');
@@ -430,7 +468,7 @@ async function sendToExistingV2Session(
   const v2Client = createAppBuilderCloudAgentNextClient(authToken);
   const result = await v2Client.sendMessage({
     cloudAgentSessionId: sessionId,
-    prompt: message,
+    prompt: message + imageContext,
     mode: 'code',
     model,
     autoCommit: true,
@@ -492,7 +530,7 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
     const sharedParams = {
       gitUrl,
       gitToken,
-      prompt,
+      prompt: prompt + buildImageContextFromAttachments(images),
       model,
       upstreamBranch: 'main' as const,
       autoCommit: true,
@@ -510,6 +548,7 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
       const result = await client.prepareSession({
         ...sharedParams,
         mode: mode === 'ask' ? 'plan' : 'build',
+        mcpServers: buildMCPServersConfig({ userId: createdByUserId, projectId, owner }),
       });
       cloudAgentSessionId = result.cloudAgentSessionId;
     } else {
@@ -811,6 +850,11 @@ export async function generateCloneToken(
 export async function deleteProject(projectId: string, owner: Owner): Promise<void> {
   await getProjectWithOwnershipCheck(projectId, owner);
 
+  // Delete public assets from R2 (best-effort, don't block project deletion)
+  await deleteProjectAssets(projectId, owner).catch(err => {
+    console.error('Failed to delete project assets from R2:', err);
+  });
+
   await appBuilderClient.deleteProject(projectId);
   await db.delete(app_builder_projects).where(eq(app_builder_projects.id, projectId));
 }
@@ -960,6 +1004,7 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
     const createParams = {
       projectId,
       currentSessionId,
+      createdByUserId: project.created_by_user_id ?? owner.id,
       owner,
       message,
       model: effectiveModel,
