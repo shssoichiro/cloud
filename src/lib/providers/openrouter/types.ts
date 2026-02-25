@@ -13,7 +13,9 @@ export type OpenRouterProviderConfig = {
   zdr?: boolean;
 };
 
-export type VercelInferenceProviderConfig = { apiKey: string; baseURL?: string };
+export type VercelInferenceProviderConfig =
+  | { apiKey: string; baseURL?: string }
+  | { accessKeyId: string; secretAccessKey: string; region?: string };
 
 export type VercelProviderConfig = {
   gateway?: GatewayProviderOptions & {

@@ -25,7 +25,7 @@ import type { CustomLlm } from '@/db/schema';
 import { custom_llm, type User } from '@/db/schema';
 import type { OpenRouterInferenceProviderId } from '@/lib/providers/openrouter/inference-provider-id';
 import {
-  inferUserByokProviderForModel,
+  inferUserByokProvidersForModel,
   OpenRouterInferenceProviderIdSchema,
 } from '@/lib/providers/openrouter/inference-provider-id';
 import { applyCoreThinkProviderSettings } from '@/lib/providers/corethink';
@@ -94,14 +94,14 @@ export async function getProvider(
   taskId: string | undefined
 ): Promise<{ provider: Provider; userByok: BYOKResult | null; customLlm: CustomLlm | null }> {
   if (!isAnonymousContext(user)) {
-    const modelProvider = inferUserByokProviderForModel(requestedModel);
-    const userByok = !modelProvider
-      ? null
-      : organizationId
+    const byokProviders = inferUserByokProvidersForModel(requestedModel);
+    for (const modelProvider of byokProviders) {
+      const userByok = organizationId
         ? await getBYOKforOrganization(db, organizationId, modelProvider)
         : await getBYOKforUser(db, user.id, modelProvider);
-    if (userByok) {
-      return { provider: PROVIDERS.VERCEL_AI_GATEWAY, userByok, customLlm: null };
+      if (userByok) {
+        return { provider: PROVIDERS.VERCEL_AI_GATEWAY, userByok, customLlm: null };
+      }
     }
   }
 

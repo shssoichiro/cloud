@@ -138,14 +138,23 @@ export function applyVercelSettings(
         ? VercelUserByokInferenceProviderIdSchema.enum.mistral
         : userByok.providerId;
     const list = new Array<VercelInferenceProviderConfig>();
-    // Z.AI Coding Plan support
-    if (provider === VercelUserByokInferenceProviderIdSchema.enum.zai) {
-      list.push({
-        apiKey: userByok.decryptedAPIKey,
-        baseURL: 'https://api.z.ai/api/coding/paas/v4',
-      });
+    if (provider === VercelUserByokInferenceProviderIdSchema.enum.bedrock) {
+      const { accessKeyId, secretAccessKey, region } = JSON.parse(userByok.decryptedAPIKey) as {
+        accessKeyId: string;
+        secretAccessKey: string;
+        region?: string;
+      };
+      list.push({ accessKeyId, secretAccessKey, region });
+    } else {
+      // Z.AI Coding Plan support
+      if (provider === VercelUserByokInferenceProviderIdSchema.enum.zai) {
+        list.push({
+          apiKey: userByok.decryptedAPIKey,
+          baseURL: 'https://api.z.ai/api/coding/paas/v4',
+        });
+      }
+      list.push({ apiKey: userByok.decryptedAPIKey });
     }
-    list.push({ apiKey: userByok.decryptedAPIKey });
 
     // this is vercel specific BYOK configuration to force vercel gateway to use the BYOK API key
     // for the user/org. If the key is invalid the request will faill - it will not fall back to bill our API key.

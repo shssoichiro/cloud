@@ -25,6 +25,7 @@ export const OpenRouterInferenceProviderIdSchema = z.enum([
 
 export const VercelUserByokInferenceProviderIdSchema = z.enum([
   'anthropic',
+  'bedrock',
   'google', // Google AI Studio
   'openai',
   'minimax',
@@ -47,7 +48,7 @@ export const UserByokProviderIdSchema = VercelUserByokInferenceProviderIdSchema.
 
 export type UserByokProviderId = z.infer<typeof UserByokProviderIdSchema>;
 
-export const VercelNonUserByokInferenceProviderIdSchema = z.enum(['alibaba', 'bedrock', 'vertex']);
+export const VercelNonUserByokInferenceProviderIdSchema = z.enum(['alibaba', 'vertex']);
 
 export const VercelInferenceProviderIdSchema = VercelUserByokInferenceProviderIdSchema.or(
   VercelNonUserByokInferenceProviderIdSchema
@@ -59,7 +60,7 @@ export type VercelInferenceProviderId = z.infer<typeof VercelInferenceProviderId
 
 const openRouterToVercelInferenceProviderMapping = {
   [OpenRouterInferenceProviderIdSchema.enum['amazon-bedrock']]:
-    VercelNonUserByokInferenceProviderIdSchema.enum.bedrock,
+    VercelUserByokInferenceProviderIdSchema.enum.bedrock,
   [OpenRouterInferenceProviderIdSchema.enum['google-ai-studio']]:
     VercelUserByokInferenceProviderIdSchema.enum.google,
   [OpenRouterInferenceProviderIdSchema.enum['google-vertex']]:
@@ -88,11 +89,25 @@ const modelPrefixToVercelInferenceProviderMapping = {
 } as Record<string, VercelInferenceProviderId | undefined>;
 
 export function inferUserByokProviderForModel(model: string): UserByokProviderId | null {
-  return model.startsWith('mistralai/codestral')
-    ? AutocompleteUserByokProviderIdSchema.enum.codestral
-    : (VercelUserByokInferenceProviderIdSchema.safeParse(
-        inferVercelFirstPartyInferenceProviderForModel(model)
-      ).data ?? null);
+  return inferUserByokProvidersForModel(model)[0] ?? null;
+}
+
+// Bedrock can serve Anthropic models, so it's a fallback for the anthropic prefix.
+// Returns candidates in priority order: direct provider first, then bedrock.
+export function inferUserByokProvidersForModel(model: string): UserByokProviderId[] {
+  if (model.startsWith('mistralai/codestral')) {
+    return [AutocompleteUserByokProviderIdSchema.enum.codestral];
+  }
+  const primary = VercelUserByokInferenceProviderIdSchema.safeParse(
+    inferVercelFirstPartyInferenceProviderForModel(model)
+  ).data;
+  if (!primary) {
+    return [];
+  }
+  if (primary === VercelUserByokInferenceProviderIdSchema.enum.anthropic) {
+    return [primary, VercelUserByokInferenceProviderIdSchema.enum.bedrock];
+  }
+  return [primary];
 }
 
 export function inferVercelFirstPartyInferenceProviderForModel(
