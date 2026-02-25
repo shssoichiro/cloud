@@ -3156,3 +3156,21 @@ export const kiloclaw_image_catalog = pgTable(
 );
 
 export type KiloClawImageCatalogEntry = typeof kiloclaw_image_catalog.$inferSelect;
+
+// Discord Gateway Listener coordination
+// Single-row table that tracks the currently active Gateway listener.
+// Used to ensure only one Gateway WebSocket connection is active at a time
+// across multiple serverless instances. New listeners atomically claim the
+// active slot, and existing listeners poll to detect they've been superseded.
+export const discord_gateway_listener = pgTable('discord_gateway_listener', {
+  // Singleton: always id = 1
+  id: integer().primaryKey().default(1),
+  // Unique identifier for the currently active listener instance
+  listener_id: text().notNull(),
+  // When this listener started
+  started_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  // When this listener is expected to stop (started_at + duration)
+  expires_at: timestamp({ withTimezone: true, mode: 'string' }).notNull(),
+});
+
+export type DiscordGatewayListener = typeof discord_gateway_listener.$inferSelect;

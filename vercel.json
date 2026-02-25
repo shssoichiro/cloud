@@ -35,11 +35,18 @@
     {
       "path": "/api/cron/oss-monthly-reset",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/discord/gateway",
+      "schedule": "*/9 * * * *"
     }
   ],
   "functions": {
     "src/app/api/openrouter/[...path]/route.ts": {
       "maxDuration": 800
+    },
+    "src/app/api/discord/gateway/route.ts": {
+      "maxDuration": 300
     },
     "src/app/slack/webhook/route.ts": {
       "maxDuration": 800
