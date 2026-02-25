@@ -37,6 +37,10 @@ const getModelUserByokProviders_cached = unstable_cache(
       console.debug(`[getModelUserByokProviders_cached] no user byok providers for ${modelId}`);
       return [];
     }
+    console.debug(
+      `[getModelUserByokProviders_cached] found user byok providers for ${modelId}`,
+      providers
+    );
     return providers;
   },
   undefined,
@@ -44,10 +48,7 @@ const getModelUserByokProviders_cached = unstable_cache(
 );
 
 export async function getModelUserByokProviders(model: string): Promise<UserByokProviderId[]> {
-  if (isCodestralModel(model)) {
-    return ['codestral'];
-  }
-  return await getModelUserByokProviders_cached(model);
+  return isCodestralModel(model) ? ['codestral'] : await getModelUserByokProviders_cached(model);
 }
 
 export async function getBYOKforUser(
