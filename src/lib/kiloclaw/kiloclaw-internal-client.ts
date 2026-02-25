@@ -58,7 +58,7 @@ export class KiloClawInternalClient {
   async provision(
     userId: string,
     config: ProvisionInput
-  ): Promise<{ sandboxId: string; autoStartFailed?: boolean }> {
+  ): Promise<{ sandboxId: string; autoStartFailed: boolean }> {
     return this.request('/api/platform/provision', {
       method: 'POST',
       body: JSON.stringify({ userId, ...config }),
