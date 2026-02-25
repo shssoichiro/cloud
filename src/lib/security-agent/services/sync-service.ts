@@ -416,22 +416,25 @@ export async function runFullSync(): Promise<{
         'organizationId' in config.owner
           ? (config.owner.organizationId ?? 'unknown')
           : (config.owner.userId ?? 'unknown');
-      await logSecurityAuditAndWait({
-        owner: config.owner,
-        actor_id: null,
-        actor_email: null,
-        actor_name: null,
-        action: SecurityAuditLogAction.SyncCompleted,
-        resource_type: 'agent_config',
-        resource_id: ownerId,
-        metadata: {
-          source: 'system',
-          trigger: 'cron',
-          synced: result.synced,
-          errors: result.errors,
-          repoCount: config.repositories.length,
+      await logSecurityAuditAndWait(
+        {
+          owner: config.owner,
+          actor_id: null,
+          actor_email: null,
+          actor_name: null,
+          action: SecurityAuditLogAction.SyncCompleted,
+          resource_type: 'agent_config',
+          resource_id: ownerId,
+          metadata: {
+            source: 'system',
+            trigger: 'cron',
+            synced: result.synced,
+            errors: result.errors,
+            repoCount: config.repositories.length,
+          },
         },
-      });
+        1500
+      );
     } catch (error) {
       totalErrors++;
       captureException(error, {

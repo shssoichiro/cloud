@@ -84,14 +84,30 @@ export function logSecurityAudit(params: CreateSecurityAuditLogParams): void {
   });
 }
 
-export async function logSecurityAuditAndWait(params: CreateSecurityAuditLogParams): Promise<void> {
+export async function logSecurityAuditAndWait(
+  params: CreateSecurityAuditLogParams,
+  timeoutMs = 1500
+): Promise<void> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
   try {
-    await createSecurityAuditLog(params);
+    await Promise.race([
+      createSecurityAuditLog(params),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`Security audit log write timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
   } catch (error) {
     captureException(error, {
       tags: { operation: 'createSecurityAuditLog' },
       extra: { action: params.action, resource_type: params.resource_type },
     });
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
