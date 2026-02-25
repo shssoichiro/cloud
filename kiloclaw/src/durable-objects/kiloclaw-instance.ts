@@ -561,6 +561,11 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       await this.scheduleAlarm();
     }
 
+    // Auto-start machine after provision so users don't have to click Start
+    if (isNew) {
+      await this.start(userId);
+    }
+
     return { sandboxId };
   }
 
