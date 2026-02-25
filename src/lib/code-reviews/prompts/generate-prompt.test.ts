@@ -159,4 +159,46 @@ describe('generateReviewPrompt', () => {
 
     expect(prompt).not.toContain('ROAST MODE ACTIVATED');
   });
+
+  it('includes strict style guidance when review_style is "strict"', async () => {
+    const strictConfig = {
+      ...baseConfig,
+      review_style: 'strict' as const,
+    } satisfies CodeReviewAgentConfig;
+    const { prompt } = await generateReviewPrompt(strictConfig, 'owner/repo', 1);
+
+    expect(prompt).toContain('STRICT REVIEW MODE');
+  });
+
+  it('strict prompt does not contain lenient or roast guidance', async () => {
+    const strictConfig = {
+      ...baseConfig,
+      review_style: 'strict' as const,
+    } satisfies CodeReviewAgentConfig;
+    const { prompt } = await generateReviewPrompt(strictConfig, 'owner/repo', 1);
+
+    expect(prompt).not.toContain('LENIENT REVIEW MODE');
+    expect(prompt).not.toContain('ROAST MODE ACTIVATED');
+  });
+
+  it('includes lenient style guidance when review_style is "lenient"', async () => {
+    const lenientConfig = {
+      ...baseConfig,
+      review_style: 'lenient' as const,
+    } satisfies CodeReviewAgentConfig;
+    const { prompt } = await generateReviewPrompt(lenientConfig, 'owner/repo', 1);
+
+    expect(prompt).toContain('LENIENT REVIEW MODE');
+  });
+
+  it('lenient prompt does not contain strict or roast guidance', async () => {
+    const lenientConfig = {
+      ...baseConfig,
+      review_style: 'lenient' as const,
+    } satisfies CodeReviewAgentConfig;
+    const { prompt } = await generateReviewPrompt(lenientConfig, 'owner/repo', 1);
+
+    expect(prompt).not.toContain('STRICT REVIEW MODE');
+    expect(prompt).not.toContain('ROAST MODE ACTIVATED');
+  });
 });
