@@ -65,5 +65,5 @@ export const KILO_AUTO_SMALL_MODEL: AutoModel = {
 export const AUTO_MODELS = [KILO_AUTO_FRONTIER_MODEL, KILO_AUTO_FREE_MODEL, KILO_AUTO_SMALL_MODEL];
 
 export function isKiloAutoModel(model: string) {
-  return model.startsWith('kilo/auto');
+  return AUTO_MODELS.some(m => m.id === model);
 }
