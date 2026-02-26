@@ -14,7 +14,6 @@ import {
   DestroyRequestSchema,
   ChannelsPatchSchema,
 } from '../schemas/instance-config';
-import type { ModelEntry } from '../schemas/instance-config';
 import {
   ImageVersionEntrySchema,
   imageVersionKey,
@@ -23,11 +22,6 @@ import {
 import { z } from 'zod';
 import { withDORetry } from '../util/do-retry';
 import { deriveGatewayToken } from '../auth/gateway-token';
-
-const modelEntrySchema: z.ZodType<ModelEntry> = z.object({
-  id: z.string(),
-  name: z.string(),
-});
 
 const KiloCodeConfigPatchSchema = z.object({
   userId: z.string().min(1),
@@ -41,7 +35,6 @@ const KiloCodeConfigPatchSchema = z.object({
     )
     .nullable()
     .optional(),
-  kilocodeModels: z.array(modelEntrySchema).nullable().optional(),
 });
 
 const platform = new Hono<AppEnv>();
@@ -112,7 +105,6 @@ platform.post('/provision', async c => {
     kilocodeApiKey,
     kilocodeApiKeyExpiresAt,
     kilocodeDefaultModel,
-    kilocodeModels,
     machineSize,
     region,
   } = result.data;
@@ -128,7 +120,6 @@ platform.post('/provision', async c => {
           kilocodeApiKey,
           kilocodeApiKeyExpiresAt,
           kilocodeDefaultModel,
-          kilocodeModels,
           machineSize,
           region,
         }),
@@ -150,8 +141,7 @@ platform.patch('/kilocode-config', async c => {
   const result = await parseBody(c, KiloCodeConfigPatchSchema);
   if ('error' in result) return result.error;
 
-  const { userId, kilocodeApiKey, kilocodeApiKeyExpiresAt, kilocodeDefaultModel, kilocodeModels } =
-    result.data;
+  const { userId, kilocodeApiKey, kilocodeApiKeyExpiresAt, kilocodeDefaultModel } = result.data;
 
   try {
     const updated = await withDORetry(
@@ -161,7 +151,6 @@ platform.patch('/kilocode-config', async c => {
           kilocodeApiKey,
           kilocodeApiKeyExpiresAt,
           kilocodeDefaultModel,
-          kilocodeModels,
         }),
       'updateKiloCodeConfig'
     );

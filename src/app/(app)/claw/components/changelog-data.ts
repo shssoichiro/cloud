@@ -13,6 +13,13 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-02-26',
     description:
+      'Updated OpenClaw to the latest version. Changing the default model in the dashboard now takes effect immediately without requiring a redeploy.',
+    category: 'feature',
+    deployHint: 'redeploy_required',
+  },
+  {
+    date: '2026-02-26',
+    description:
       'Added ripgrep (rg), GitHub CLI (gh), rsync, zstd, and ClawHub CLI to the default image.',
     category: 'feature',
     deployHint: null,

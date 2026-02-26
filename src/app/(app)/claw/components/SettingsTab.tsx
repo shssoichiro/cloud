@@ -1,20 +1,22 @@
 'use client';
 
-import { useMemo, useState } from 'react';
 import { AlertCircle, AlertTriangle, Hash, Save, Square, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
+import { useOpenRouterModels } from '@/app/api/openrouter/hooks';
+import { ModelCombobox, type ModelOption } from '@/components/shared/ModelCombobox';
 import type { KiloClawDashboardStatus } from '@/lib/kiloclaw/types';
 import type { useKiloClawMutations } from '@/hooks/useKiloClaw';
 import { useKiloClawConfig } from '@/hooks/useKiloClaw';
-import { useOpenRouterModels } from '@/app/api/openrouter/hooks';
-import { ModelCombobox, type ModelOption } from '@/components/shared/ModelCombobox';
+import { useDefaultModelSelection } from '../hooks/useDefaultModelSelection';
+
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DetailTile } from './DetailTile';
-import { useDefaultModelSelection } from '../hooks/useDefaultModelSelection';
+
 import { ChannelTokenInput } from './ChannelTokenInput';
 import { CHANNELS, CHANNEL_TYPES, type ChannelDefinition } from './channel-config';
 
@@ -203,24 +205,22 @@ export function SettingsTab({
   };
 
   function handleSave() {
-    posthog?.capture('claw_save_config_clicked', {
-      selected_model: selectedModel || null,
-      instance_status: status.status,
-    });
-
     if (isLoadingModels) {
       toast.error('Models are still loading; try again in a moment.');
       return;
     }
 
-    const modelsPayload = modelOptions.map(({ id, name }) => ({ id, name }));
+    posthog?.capture('claw_save_config_clicked', {
+      selected_model: selectedModel || null,
+      instance_status: status.status,
+    });
+
     mutations.patchConfig.mutate(
       {
         kilocodeDefaultModel: selectedModel ? `kilocode/${selectedModel}` : null,
-        kilocodeModels: modelsPayload.length > 0 ? modelsPayload : null,
       },
       {
-        onSuccess: () => toast.success('Configuration saved'),
+        onSuccess: () => toast.success('Configuration saved. Model change applied.'),
         onError: err => toast.error(`Failed to save: ${err.message}`),
       }
     );

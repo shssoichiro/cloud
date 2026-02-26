@@ -31,7 +31,7 @@ RUN npm install -g pnpm
 
 # Install OpenClaw
 # Pin to specific version for reproducible builds
-RUN npm install -g openclaw@2026.2.22 \
+RUN npm install -g openclaw@2026.2.25 \
     && openclaw --version
 
 # Install ClawHub CLI
@@ -55,8 +55,8 @@ RUN mkdir -p /root/.openclaw \
     && mkdir -p /root/clawd/skills
 
 # Copy startup script
-# Build cache bust: 2026-02-26-v53-add-rg-gh
-RUN echo "4"
+# Build cache bust: 2026-02-26-v54-native-kilocode-provider-migration
+RUN echo "5"
 COPY start-openclaw.sh /usr/local/bin/start-openclaw.sh
 COPY openclaw-pairing-list.js /usr/local/bin/openclaw-pairing-list.js
 COPY openclaw-device-pairing-list.js /usr/local/bin/openclaw-device-pairing-list.js

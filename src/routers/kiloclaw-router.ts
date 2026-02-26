@@ -14,8 +14,6 @@ import {
   restoreDestroyedInstance,
 } from '@/lib/kiloclaw/instance-registry';
 
-const modelEntrySchema = z.object({ id: z.string(), name: z.string() });
-
 const updateConfigSchema = z.object({
   envVars: z.record(z.string(), z.string()).optional(),
   secrets: z.record(z.string(), z.string()).optional(),
@@ -35,7 +33,6 @@ const updateConfigSchema = z.object({
     )
     .nullable()
     .optional(),
-  kilocodeModels: z.array(modelEntrySchema).nullable().optional(),
 });
 
 const updateKiloCodeConfigSchema = z.object({
@@ -47,7 +44,6 @@ const updateKiloCodeConfigSchema = z.object({
     )
     .nullable()
     .optional(),
-  kilocodeModels: z.array(modelEntrySchema).nullable().optional(),
 });
 
 const patchChannelsSchema = z.object({
@@ -95,7 +91,7 @@ function buildWorkerChannelsPatch(channels: z.infer<typeof patchChannelsSchema>)
 
 type KiloCodeConfigPublicResponse = Pick<
   KiloCodeConfigResponse,
-  'kilocodeApiKeyExpiresAt' | 'kilocodeDefaultModel' | 'kilocodeModels'
+  'kilocodeApiKeyExpiresAt' | 'kilocodeDefaultModel'
 >;
 
 function sanitizeKiloCodeConfigResponse(
@@ -104,7 +100,6 @@ function sanitizeKiloCodeConfigResponse(
   return {
     kilocodeApiKeyExpiresAt: response.kilocodeApiKeyExpiresAt,
     kilocodeDefaultModel: response.kilocodeDefaultModel,
-    kilocodeModels: response.kilocodeModels,
   };
 }
 
@@ -134,7 +129,6 @@ async function provisionInstance(
     kilocodeApiKey,
     kilocodeApiKeyExpiresAt,
     kilocodeDefaultModel: input.kilocodeDefaultModel ?? undefined,
-    kilocodeModels: input.kilocodeModels ?? undefined,
   });
 }
 
