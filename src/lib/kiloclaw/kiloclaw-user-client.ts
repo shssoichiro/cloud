@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { KILOCLAW_API_URL } from '@/lib/config.server';
+import { KiloClawApiError } from './kiloclaw-internal-client';
 import type { UserConfigResponse, PlatformStatusResponse, RestartGatewayResponse } from './types';
 
 /**
@@ -35,7 +36,7 @@ export class KiloClawUserClient {
         `KiloClaw API error (${res.status}) ${options?.method ?? 'GET'} ${path}:`,
         body
       );
-      throw new Error(`KiloClaw API error (${res.status})`);
+      throw new KiloClawApiError(res.status);
     }
 
     return res.json() as Promise<T>;
