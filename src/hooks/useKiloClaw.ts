@@ -143,5 +143,18 @@ export function useKiloClawMutations() {
     runDoctor: useMutation(
       trpc.kiloclaw.runDoctor.mutationOptions({ onSuccess: invalidateStatus })
     ),
+    restoreConfig: useMutation(
+      trpc.kiloclaw.restoreConfig.mutationOptions({
+        onSuccess: async () => {
+          await invalidateStatus();
+          await queryClient.invalidateQueries({
+            queryKey: trpc.kiloclaw.gatewayStatus.queryKey(),
+          });
+          await queryClient.invalidateQueries({
+            queryKey: trpc.kiloclaw.getConfig.queryKey(),
+          });
+        },
+      })
+    ),
   };
 }

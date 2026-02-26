@@ -824,6 +824,42 @@ describe('gateway process control via controller', () => {
     fetchSpy.mockRestore();
   });
 
+  it('restoreConfig calls the controller config restore endpoint and preserves signaled', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, { flyMachineId: 'machine-1', flyAppName: 'acct-test' });
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, signaled: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    const result = await instance.restoreConfig('base');
+
+    expect(result).toEqual({ ok: true, signaled: true });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://acct-test.fly.dev/_kilo/config/restore/base');
+    fetchSpy.mockRestore();
+  });
+
+  it('restoreConfig surfaces signaled: false when gateway was not running', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, { flyMachineId: 'machine-1', flyAppName: 'acct-test' });
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, signaled: false }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    const result = await instance.restoreConfig('base');
+
+    expect(result).toEqual({ ok: true, signaled: false });
+    fetchSpy.mockRestore();
+  });
+
   it('rejects invalid controller success payload shape', async () => {
     const { instance, storage } = createInstance();
     await seedRunning(storage, { flyMachineId: 'machine-1', flyAppName: 'acct-test' });

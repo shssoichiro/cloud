@@ -371,6 +371,33 @@ platform.post('/gateway/restart', async c => {
   }
 });
 
+// POST /api/platform/config/restore
+const ConfigRestoreSchema = z.object({
+  userId: z.string().min(1),
+  version: z.literal('base'),
+});
+
+platform.post('/config/restore', async c => {
+  const result = await parseBody(c, ConfigRestoreSchema);
+  if ('error' in result) return result.error;
+
+  const { userId, version } = result.data;
+
+  try {
+    const response = await withDORetry(
+      instanceStubFactory(c.env, userId),
+      stub => stub.restoreConfig(version),
+      'restoreConfig'
+    );
+    return c.json(response, 200);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    const status = statusCodeFromError(err);
+    console.error('[platform] config restore failed:', message);
+    return jsonError(message, status);
+  }
+});
+
 // POST /api/platform/doctor
 platform.post('/doctor', async c => {
   const result = await parseBody(c, UserIdRequestSchema);

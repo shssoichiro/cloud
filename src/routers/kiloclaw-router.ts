@@ -288,4 +288,9 @@ export const kiloclawRouter = createTRPCRouter({
     const client = new KiloClawInternalClient();
     return client.runDoctor(ctx.user.id);
   }),
+
+  restoreConfig: baseProcedure.mutation(async ({ ctx }) => {
+    const client = new KiloClawInternalClient();
+    return client.restoreConfig(ctx.user.id);
+  }),
 });

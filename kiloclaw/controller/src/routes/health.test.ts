@@ -9,6 +9,7 @@ function createMockSupervisor(): Supervisor {
     stop: async () => true,
     restart: async () => true,
     shutdown: async () => undefined,
+    signal: () => true,
     getState: () => 'running',
     getStats: () => ({
       state: 'running',

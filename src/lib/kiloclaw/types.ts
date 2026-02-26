@@ -181,6 +181,12 @@ export type GatewayProcessActionResponse = {
   ok: boolean;
 };
 
+/** Response from POST /api/platform/config/restore */
+export type ConfigRestoreResponse = {
+  ok: boolean;
+  signaled: boolean;
+};
+
 /** Combined status + gateway token returned by tRPC getStatus */
 export type KiloClawDashboardStatus = PlatformStatusResponse & {
   gatewayToken: string | null;

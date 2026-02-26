@@ -16,6 +16,7 @@ import type {
   DoctorResponse,
   GatewayProcessStatusResponse,
   GatewayProcessActionResponse,
+  ConfigRestoreResponse,
 } from './types';
 
 /**
@@ -177,6 +178,13 @@ export class KiloClawInternalClient {
     return this.request('/api/platform/gateway/restart', {
       method: 'POST',
       body: JSON.stringify({ userId }),
+    });
+  }
+
+  async restoreConfig(userId: string, version = 'base'): Promise<ConfigRestoreResponse> {
+    return this.request('/api/platform/config/restore', {
+      method: 'POST',
+      body: JSON.stringify({ userId, version }),
     });
   }
 }

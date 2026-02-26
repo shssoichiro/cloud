@@ -104,6 +104,11 @@ const GatewayCommandResponseSchema = z.object({
   ok: z.boolean(),
 });
 
+const ConfigRestoreResponseSchema = z.object({
+  ok: z.boolean(),
+  signaled: z.boolean(),
+});
+
 class GatewayControllerError extends Error {
   readonly status: number;
 
@@ -1416,6 +1421,15 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       '/_kilo/gateway/restart',
       'POST',
       GatewayCommandResponseSchema
+    );
+  }
+
+  async restoreConfig(version: string): Promise<{ ok: boolean; signaled: boolean }> {
+    await this.loadState();
+    return this.callGatewayController(
+      `/_kilo/config/restore/${encodeURIComponent(version)}`,
+      'POST',
+      ConfigRestoreResponseSchema
     );
   }
 

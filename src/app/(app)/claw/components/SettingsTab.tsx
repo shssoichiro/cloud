@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Hash, Save, Square, X } from 'lucide-react';
+import { AlertTriangle, Hash, RotateCcw, Save, Square, X } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
 import type { KiloClawDashboardStatus } from '@/lib/kiloclaw/types';
@@ -16,6 +16,7 @@ import { DetailTile } from './DetailTile';
 import { useDefaultModelSelection } from '../hooks/useDefaultModelSelection';
 import { ChannelTokenInput } from './ChannelTokenInput';
 import { CHANNELS, CHANNEL_TYPES, type ChannelDefinition } from './channel-config';
+import { ConfirmActionDialog } from './ConfirmActionDialog';
 
 type ClawMutations = ReturnType<typeof useKiloClawMutations>;
 
@@ -149,6 +150,7 @@ export function SettingsTab({
   const { data: config } = useKiloClawConfig();
   const { data: modelsData, isLoading: isLoadingModels } = useOpenRouterModels();
   const [confirmDestroy, setConfirmDestroy] = useState(false);
+  const [confirmRestore, setConfirmRestore] = useState(false);
   const [channelsDirty, setChannelsDirty] = useState(false);
 
   const modelOptions = useMemo<ModelOption[]>(
@@ -270,9 +272,25 @@ export function SettingsTab({
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-medium text-red-400">Danger Zone</h3>
             <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-              Stop or destroy this instance. Destroy permanently removes associated data.
+              Restore config, stop, or destroy this instance. Destroy permanently removes associated
+              data.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!isRunning || mutations.restoreConfig.isPending || isDestroying}
+                onClick={() => {
+                  posthog?.capture('claw_restore_config_clicked', {
+                    instance_status: status.status,
+                  });
+                  setConfirmRestore(true);
+                }}
+              >
+                <RotateCcw className="h-4 w-4" />
+                Restore Default Config
+              </Button>
+
               <Button
                 variant="outline"
                 size="sm"
@@ -343,6 +361,35 @@ export function SettingsTab({
           </div>
         </div>
       </div>
+
+      <ConfirmActionDialog
+        open={confirmRestore}
+        onOpenChange={setConfirmRestore}
+        title="Restore Default Config"
+        description="This will rewrite openclaw.json to defaults based on the machine's current environment variables and restart the gateway process. Any manual config changes made via the Control UI will be lost. This does not pull fresh settings from your dashboard — use Redeploy for that."
+        confirmLabel="Restore & Restart"
+        confirmIcon={<RotateCcw className="mr-1 h-4 w-4" />}
+        isPending={mutations.restoreConfig.isPending}
+        pendingLabel="Restoring..."
+        onConfirm={() => {
+          posthog?.capture('claw_restore_config_confirmed', {
+            instance_status: status.status,
+          });
+          mutations.restoreConfig.mutate(undefined, {
+            onSuccess: data => {
+              if (data.signaled) {
+                toast.success('Config restored and gateway restarting');
+              } else {
+                toast.success(
+                  'Config restored, but the gateway was not running — restart the instance to apply'
+                );
+              }
+              setConfirmRestore(false);
+            },
+            onError: err => toast.error(`Failed to restore config: ${err.message}`),
+          });
+        }}
+      />
     </div>
   );
 }
