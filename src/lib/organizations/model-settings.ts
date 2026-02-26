@@ -13,9 +13,11 @@ export const ToolSchema = z.enum([
 
 export type Tool = z.infer<typeof ToolSchema>;
 
+export const ToolArraySchema = z.array(ToolSchema);
+
 export const ModelSettingsSchema = z.object({
-  included_tools: z.array(ToolSchema), // adds to the standard tool set
-  excluded_tools: z.array(ToolSchema), // removes from the standard tool set
+  included_tools: ToolArraySchema, // adds to the standard tool set
+  excluded_tools: ToolArraySchema, // removes from the standard tool set
 });
 
 export type ModelSettings = z.infer<typeof ModelSettingsSchema>;
@@ -39,12 +41,20 @@ export const OpenCodeFamilySchema = z.enum(['claude', 'gpt', 'gemini', 'llama', 
 
 export type OpenCodeFamily = z.infer<typeof OpenCodeFamilySchema>;
 
+export const VerbositySchema = z.enum(['low', 'medium', 'high', 'max']);
+
+export type Verbosity = z.infer<typeof VerbositySchema>;
+
+export const ReasoningEffortSchema = z.enum(['none', 'low', 'medium', 'high', 'xhigh']);
+
+export type ReasoningEffort = z.infer<typeof ReasoningEffortSchema>;
+
 export const OpenCodeVariantSchema = z.object({
-  verbosity: z.enum(['low', 'medium', 'high', 'max']).optional(),
+  verbosity: VerbositySchema.optional(),
   reasoning: z
     .object({
       enabled: z.boolean().optional(),
-      effort: z.enum(['none', 'low', 'medium', 'high', 'xhigh']).optional(),
+      effort: ReasoningEffortSchema.optional(),
     })
     .optional(),
 });
