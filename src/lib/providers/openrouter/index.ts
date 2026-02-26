@@ -26,7 +26,7 @@ function buildAutoModels(): OpenRouterModel[] {
     created: 0,
     description: m.description,
     architecture: {
-      input_modalities: ['text', 'image'],
+      input_modalities: m.supports_images ? ['text', 'image'] : ['text'],
       output_modalities: ['text'],
       tokenizer: 'Other',
     },
@@ -45,6 +45,8 @@ function buildAutoModels(): OpenRouterModel[] {
     },
     context_length: m.context_length,
     supported_parameters: ['max_tokens', 'temperature', 'tools', 'reasoning', 'include_reasoning'],
+    settings: m.roocode_settings,
+    opencode: m.opencode_settings,
   }));
 }
 
