@@ -317,9 +317,6 @@ export function createConnectionManager(
           // Check for completion events using typed event guards
           if (isMessageUpdatedEvent(data)) {
             const { info } = data.properties;
-            logToFile(
-              `message.updated: role=${info.role} hasCompleted=${typeof info.time?.completed === 'number'} msgId=${info.id}`
-            );
             if (isCompletedAssistantMessage(info)) {
               // Guard: only process completions for our current session
               const currentSessionId = state.currentJob?.kiloSessionId;
@@ -331,10 +328,8 @@ export function createConnectionManager(
               }
 
               logToFile(`assistant message completed: ${info.id}`);
-              // Signal completion for post-processing waiters
-              callbacks.onCompletionSignal();
-              // Note: We don't call onMessageComplete here because kilo's assistant message ID
-              // differs from our tracked user message ID. session.idle handles inflight cleanup.
+              // Don't call onCompletionSignal here — the CLI may use multiple turns.
+              // Only session.idle means all turns are done (see below).
             }
           }
 
