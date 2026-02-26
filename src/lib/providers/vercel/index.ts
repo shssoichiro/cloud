@@ -105,9 +105,8 @@ function convertProviderOptions(
 function parseAwsCredentials(input: string) {
   try {
     return AwsCredentialsSchema.parse(JSON.parse(input));
-  } catch (e) {
-    console.error('[parseAwsCredentials] failed to parse input: ', input, ', exception: ', e);
-    return undefined;
+  } catch {
+    throw new Error('Failed to parse AWS credentials');
   }
 }
 
@@ -148,8 +147,7 @@ export function applyVercelSettings(
       }
 
       if (key === VercelUserByokInferenceProviderIdSchema.enum.bedrock) {
-        const credentials = parseAwsCredentials(provider.decryptedAPIKey);
-        if (credentials) list.push(credentials);
+        list.push(parseAwsCredentials(provider.decryptedAPIKey));
       } else {
         list.push({ apiKey: provider.decryptedAPIKey });
       }
