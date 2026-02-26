@@ -505,6 +505,7 @@ function createStreamPartConverter(userId: string, taskId: string | undefined, m
         responseId = part.response.id;
         const cacheReadTokens = part.usage.inputTokenDetails.cacheReadTokens;
         const cacheWriteTokens = part.usage.inputTokenDetails.cacheWriteTokens;
+        const reasoningTokens = part.usage.outputTokenDetails.reasoningTokens;
         return {
           id: responseId,
           model,
@@ -523,6 +524,13 @@ function createStreamPartConverter(userId: string, taskId: string | undefined, m
                   prompt_tokens_details: {
                     cached_tokens: cacheReadTokens ?? 0,
                     ...(cacheWriteTokens != null && { cache_write_tokens: cacheWriteTokens }),
+                  },
+                }
+              : {}),
+            ...(reasoningTokens != null
+              ? {
+                  completion_tokens_details: {
+                    reasoning_tokens: reasoningTokens,
                   },
                 }
               : {}),
@@ -641,6 +649,13 @@ function convertGenerateResultToResponse(
               ...(result.usage.inputTokenDetails.cacheWriteTokens != null && {
                 cache_write_tokens: result.usage.inputTokenDetails.cacheWriteTokens,
               }),
+            },
+          }
+        : {}),
+      ...(result.usage.outputTokenDetails.reasoningTokens != null
+        ? {
+            completion_tokens_details: {
+              reasoning_tokens: result.usage.outputTokenDetails.reasoningTokens,
             },
           }
         : {}),
