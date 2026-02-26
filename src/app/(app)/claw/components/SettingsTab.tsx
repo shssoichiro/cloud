@@ -152,7 +152,7 @@ function ChannelSection({
 
       <p className="text-muted-foreground text-xs">
         {channel.help}
-        {channelsDirty && ' Hit Redeploy to apply channel changes.'}
+        {dirtyChannels.size > 0 && ' Hit Redeploy to apply channel changes.'}
       </p>
     </div>
   );
