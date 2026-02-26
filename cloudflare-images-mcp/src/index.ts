@@ -19,7 +19,12 @@ function createMCPServer(env: Env, claims: ImageMCPTokenClaims): McpServer {
     endpoint: env.R2_ENDPOINT,
   });
 
-  const bucketPublicUrls: Record<string, string> = JSON.parse(env.BUCKET_PUBLIC_URLS);
+  let bucketPublicUrls: Record<string, string>;
+  try {
+    bucketPublicUrls = JSON.parse(env.BUCKET_PUBLIC_URLS);
+  } catch {
+    throw new Error('BUCKET_PUBLIC_URLS env var is not valid JSON');
+  }
 
   server.tool(
     'transfer_image',

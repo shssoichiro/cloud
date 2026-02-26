@@ -2,6 +2,7 @@ import type { ImageMCPTokenClaims } from '../auth/jwt';
 import type { createR2Client } from '../r2/client';
 
 const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const MAX_IMAGE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
 type MCPImageContent = {
   type: 'image';
@@ -35,6 +36,13 @@ async function getImage(params: GetImageParams): Promise<MCPImageContent> {
   const contentType = sourceObject.contentType;
   if (!contentType || !ALLOWED_MIME_TYPES.includes(contentType)) {
     throw new Error(`Invalid file type: ${contentType}. Only images are allowed.`);
+  }
+
+  // Reject oversized objects to avoid memory pressure
+  if (sourceObject.contentLength > MAX_IMAGE_SIZE_BYTES) {
+    throw new Error(
+      `Image too large (${sourceObject.contentLength} bytes). Maximum size is ${MAX_IMAGE_SIZE_BYTES} bytes.`
+    );
   }
 
   // Convert to base64

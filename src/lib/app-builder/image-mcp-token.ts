@@ -33,7 +33,7 @@ function generateImageMCPToken(params: GenerateImageMCPTokenParams): string {
 
   return jwt.sign(payload, NEXTAUTH_SECRET, {
     algorithm: 'HS256',
-    expiresIn: '24h',
+    expiresIn: '5d',
   });
 }
 

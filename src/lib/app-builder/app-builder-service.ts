@@ -218,8 +218,8 @@ function buildMCPServersConfig(params: {
         },
       },
     };
-  } catch {
-    // If token generation fails, skip MCP config
+  } catch (error) {
+    console.error('Failed to build MCP servers config:', error);
     return undefined;
   }
 }
