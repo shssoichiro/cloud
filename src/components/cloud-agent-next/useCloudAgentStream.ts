@@ -24,7 +24,6 @@ import {
 import type { CloudAgentEvent, StreamError } from '@/lib/cloud-agent-next/event-types';
 import { createEventProcessor, type EventProcessor } from '@/lib/cloud-agent-next/processor';
 import type { EventProcessorCallbacks } from '@/lib/cloud-agent-next/processor';
-import type { AutocommitStatus } from './store/atoms';
 import {
   currentSessionIdAtom,
   isStreamingAtom,
