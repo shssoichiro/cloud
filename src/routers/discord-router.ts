@@ -1,6 +1,7 @@
 import 'server-only';
 import { baseProcedure, createTRPCRouter } from '@/lib/trpc/init';
 import * as discordService from '@/lib/integrations/discord-service';
+import { createOAuthState } from '@/lib/integrations/oauth-state';
 import { TRPCError } from '@trpc/server';
 
 export const discordRouter = createTRPCRouter({
@@ -34,7 +35,7 @@ export const discordRouter = createTRPCRouter({
 
   // Get OAuth URL for initiating Discord OAuth flow
   getOAuthUrl: baseProcedure.query(({ ctx }) => {
-    const state = `user_${ctx.user.id}`;
+    const state = createOAuthState(`user_${ctx.user.id}`, ctx.user.id);
     return {
       url: discordService.getDiscordOAuthUrl(state),
     };

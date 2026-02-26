@@ -5,13 +5,19 @@ import { ensureOrganizationAccess } from '@/routers/organizations/utils';
 import type { Owner } from '@/lib/integrations/core/types';
 import { captureException, captureMessage } from '@sentry/nextjs';
 import { exchangeDiscordCode, upsertDiscordInstallation } from '@/lib/integrations/discord-service';
+import { verifyOAuthState } from '@/lib/integrations/oauth-state';
 import { APP_URL } from '@/lib/constants';
 
 const buildDiscordRedirectPath = (state: string | null, queryParam: string): string => {
-  if (state?.startsWith('org_')) {
-    return `/organizations/${state.replace('org_', '')}/integrations/discord?${queryParam}`;
+  // Try to extract the owner from a signed state for best-effort redirects on error paths.
+  // We use verifyOAuthState so we don't trust unsigned/tampered values for routing.
+  const verified = state ? verifyOAuthState(state) : null;
+  const owner = verified?.owner;
+
+  if (owner?.startsWith('org_')) {
+    return `/organizations/${owner.replace('org_', '')}/integrations/discord?${queryParam}`;
   }
-  if (state?.startsWith('user_')) {
+  if (owner?.startsWith('user_')) {
     return `/integrations/discord?${queryParam}`;
   }
   return `/integrations?${queryParam}`;
@@ -62,18 +68,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 3. Parse owner from state
-    let owner: Owner;
-    let ownerId: string;
-
-    if (state?.startsWith('org_')) {
-      ownerId = state.replace('org_', '');
-      owner = { type: 'org', id: ownerId };
-    } else if (state?.startsWith('user_')) {
-      ownerId = state.replace('user_', '');
-      owner = { type: 'user', id: ownerId };
-    } else {
-      captureMessage('Discord callback missing or invalid owner in state', {
+    // 3. Verify signed state (CSRF protection)
+    const verified = verifyOAuthState(state);
+    if (!verified) {
+      captureMessage('Discord callback invalid or tampered state signature', {
         level: 'warning',
         tags: { endpoint: 'discord/callback', source: 'discord_oauth' },
         extra: { code: '***', state, allParams: Object.fromEntries(searchParams.entries()) },
@@ -81,7 +79,36 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/integrations?error=invalid_state', APP_URL));
     }
 
-    // 4. Verify user has access to the owner
+    // 4. Verify the user completing the flow is the same user who initiated it
+    if (verified.userId !== user.id) {
+      captureMessage('Discord callback user mismatch (possible CSRF)', {
+        level: 'warning',
+        tags: { endpoint: 'discord/callback', source: 'discord_oauth' },
+        extra: { stateUserId: verified.userId, sessionUserId: user.id },
+      });
+      return NextResponse.redirect(new URL('/integrations?error=unauthorized', APP_URL));
+    }
+
+    // 5. Parse owner from verified state payload
+    let owner: Owner;
+    const ownerStr = verified.owner;
+
+    if (ownerStr.startsWith('org_')) {
+      const ownerId = ownerStr.replace('org_', '');
+      owner = { type: 'org', id: ownerId };
+    } else if (ownerStr.startsWith('user_')) {
+      const ownerId = ownerStr.replace('user_', '');
+      owner = { type: 'user', id: ownerId };
+    } else {
+      captureMessage('Discord callback missing or invalid owner in state', {
+        level: 'warning',
+        tags: { endpoint: 'discord/callback', source: 'discord_oauth' },
+        extra: { code: '***', owner: ownerStr },
+      });
+      return NextResponse.redirect(new URL('/integrations?error=invalid_state', APP_URL));
+    }
+
+    // 6. Verify user has access to the owner
     if (owner.type === 'org') {
       await ensureOrganizationAccess({ user }, owner.id);
     } else {
@@ -91,13 +118,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 5. Exchange code for access token
+    // 7. Exchange code for access token
     const oauthData = await exchangeDiscordCode(code);
 
-    // 6. Store installation in database
+    // 8. Store installation in database
     await upsertDiscordInstallation(owner, oauthData);
 
-    // 7. Redirect to success page
+    // 9. Redirect to success page
     const successPath =
       owner.type === 'org'
         ? `/organizations/${owner.id}/integrations/discord?success=installed`

@@ -2,6 +2,7 @@ import { createTRPCRouter } from '@/lib/trpc/init';
 import { organizationMemberProcedure, organizationOwnerProcedure } from './utils';
 import { createAuditLog } from '@/lib/organizations/organization-audit-logs';
 import * as discordService from '@/lib/integrations/discord-service';
+import { createOAuthState } from '@/lib/integrations/oauth-state';
 import { TRPCError } from '@trpc/server';
 
 export const organizationDiscordRouter = createTRPCRouter({
@@ -38,8 +39,8 @@ export const organizationDiscordRouter = createTRPCRouter({
   /**
    * Get OAuth URL for initiating Discord OAuth flow
    */
-  getOAuthUrl: organizationMemberProcedure.query(({ input }) => {
-    const state = `org_${input.organizationId}`;
+  getOAuthUrl: organizationMemberProcedure.query(({ input, ctx }) => {
+    const state = createOAuthState(`org_${input.organizationId}`, ctx.user.id);
     return {
       url: discordService.getDiscordOAuthUrl(state),
     };
