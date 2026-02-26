@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import type { KiloClawDashboardStatus } from '@/lib/kiloclaw/types';
 import { useKiloClawGatewayStatus, useKiloClawMutations } from '@/hooks/useKiloClaw';
@@ -25,6 +26,9 @@ function hasPopulatedStatus(
   return candidate !== undefined && candidate.status !== null;
 }
 
+const FAST_POLL_INTERVAL = 10_000;
+const FAST_POLL_DURATION = 5 * 60 * 1000; // 5 minutes
+
 export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | undefined }) {
   const mutations = useKiloClawMutations();
   const gatewayUrl = useGatewayUrl(status);
@@ -35,6 +39,30 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
     isLoading: gatewayLoading,
     error: gatewayError,
   } = useKiloClawGatewayStatus(isRunning);
+
+  const [channelsChangedAt, setChannelsChangedAt] = useState<number | null>(null);
+  const [dirtyChannels, setDirtyChannels] = useState<Set<string>>(new Set());
+
+  const onChannelsChanged = useCallback((channelType: string) => {
+    setChannelsChangedAt(Date.now());
+    setDirtyChannels(prev => new Set([...prev, channelType]));
+  }, []);
+  const onRedeploySuccess = useCallback(() => {
+    setDirtyChannels(new Set());
+  }, []);
+
+  // Automatically stop fast polling after FAST_POLL_DURATION
+  useEffect(() => {
+    if (channelsChangedAt === null) return;
+
+    const timeoutId = setTimeout(() => {
+      setChannelsChangedAt(null);
+    }, FAST_POLL_DURATION);
+
+    return () => clearTimeout(timeoutId);
+  }, [channelsChangedAt]);
+
+  const pairingRefetchInterval = channelsChangedAt !== null ? FAST_POLL_INTERVAL : undefined;
 
   return (
     <div className="container m-auto flex w-full max-w-[1140px] flex-col gap-6 p-4 md:p-6">
@@ -75,7 +103,11 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
         ) : (
           <>
             <CardContent className="border-b p-5">
-              <InstanceControls status={instanceStatus} mutations={mutations} />
+              <InstanceControls
+                status={instanceStatus}
+                mutations={mutations}
+                onRedeploySuccess={onRedeploySuccess}
+              />
             </CardContent>
             <Tabs defaultValue="instance">
               <div className="px-5">
@@ -104,7 +136,12 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
                   />
                 </TabsContent>
                 <TabsContent value="settings" className="mt-0">
-                  <SettingsTab status={instanceStatus} mutations={mutations} />
+                  <SettingsTab
+                    status={instanceStatus}
+                    mutations={mutations}
+                    onChannelsChanged={onChannelsChanged}
+                    dirtyChannels={dirtyChannels}
+                  />
                 </TabsContent>
               </CardContent>
             </Tabs>
@@ -112,7 +149,9 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
         )}
       </Card>
 
-      {instanceStatus?.status === 'running' && <PairingCard mutations={mutations} />}
+      {instanceStatus?.status === 'running' && (
+        <PairingCard mutations={mutations} pairingRefetchInterval={pairingRefetchInterval} />
+      )}
 
       <ChangelogCard />
     </div>

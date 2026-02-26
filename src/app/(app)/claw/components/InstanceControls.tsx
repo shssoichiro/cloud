@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Cpu, HardDrive, Play, RefreshCw, RotateCw, Stethoscope } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import type { useKiloClawMutations } from '@/hooks/useKiloClaw';
 import { ConfirmActionDialog } from './ConfirmActionDialog';
 import { RunDoctorDialog } from './RunDoctorDialog';
+import { AnimatedDots } from './AnimatedDots';
 
 const VOLUME_SIZE_GB = 10;
 // Default machine spec fallback (matches kiloclaw DEFAULT_MACHINE_GUEST)
@@ -22,29 +23,14 @@ function formatMemory(mb: number): string {
 
 type ClawMutations = ReturnType<typeof useKiloClawMutations>;
 
-function AnimatedDots() {
-  const [count, setCount] = useState(1);
-  useEffect(() => {
-    const id = setInterval(() => setCount(c => (c % 3) + 1), 500);
-    return () => clearInterval(id);
-  }, []);
-  // Pad with invisible characters to keep width constant
-  const visible = '.'.repeat(count);
-  const hidden = '.'.repeat(3 - count);
-  return (
-    <span>
-      {visible}
-      <span className="invisible">{hidden}</span>
-    </span>
-  );
-}
-
 export function InstanceControls({
   status,
   mutations,
+  onRedeploySuccess,
 }: {
   status: KiloClawDashboardStatus;
   mutations: ClawMutations;
+  onRedeploySuccess?: () => void;
 }) {
   const posthog = usePostHog();
   const isRunning = status.status === 'running';
@@ -150,7 +136,7 @@ export function InstanceControls({
         confirmLabel="Restart"
         confirmIcon={<RefreshCw className="h-4 w-4" />}
         isPending={mutations.restartOpenClaw.isPending}
-        pendingLabel="Restarting..."
+        pendingLabel="Restarting"
         className="border-violet-500/30 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 hover:text-violet-300"
         onConfirm={() => {
           posthog?.capture('claw_restart_openclaw_clicked', {
@@ -176,7 +162,7 @@ export function InstanceControls({
         confirmLabel="Redeploy"
         confirmIcon={<RotateCw className="h-4 w-4" />}
         isPending={mutations.restartGateway.isPending}
-        pendingLabel="Redeploying..."
+        pendingLabel="Redeploying"
         className="border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300"
         onConfirm={() => {
           posthog?.capture('claw_redeploy_clicked', { instance_status: status.status });
@@ -184,6 +170,7 @@ export function InstanceControls({
             onSuccess: () => {
               toast.success('Gateway restarting');
               setConfirmRedeploy(false);
+              onRedeploySuccess?.();
             },
             onError: err => toast.error(err.message),
           });

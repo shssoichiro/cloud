@@ -26,17 +26,23 @@ type NormalizedRequest =
       platform?: string;
     };
 
-export function PairingCard({ mutations }: { mutations: ClawMutations }) {
+export function PairingCard({
+  mutations,
+  pairingRefetchInterval,
+}: {
+  mutations: ClawMutations;
+  pairingRefetchInterval?: number;
+}) {
   const {
     data: channelPairing,
     isLoading: channelLoading,
     isFetching: channelFetching,
-  } = useKiloClawPairing(true);
+  } = useKiloClawPairing(true, pairingRefetchInterval);
   const {
     data: devicePairing,
     isLoading: deviceLoading,
     isFetching: deviceFetching,
-  } = useKiloClawDevicePairing(true);
+  } = useKiloClawDevicePairing(true, pairingRefetchInterval);
   const refreshChannelPairing = useRefreshPairing();
   const refreshDevicePairingFn = useRefreshDevicePairing();
   const [isRefreshing, setIsRefreshing] = useState(false);

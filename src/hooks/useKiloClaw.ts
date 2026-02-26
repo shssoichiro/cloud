@@ -17,12 +17,12 @@ export function useKiloClawConfig() {
   return useQuery(trpc.kiloclaw.getConfig.queryOptions());
 }
 
-export function useKiloClawPairing(enabled = true) {
+export function useKiloClawPairing(enabled = true, refetchInterval?: number) {
   const trpc = useTRPC();
   return useQuery(
     trpc.kiloclaw.listPairingRequests.queryOptions(undefined, {
       enabled,
-      refetchInterval: enabled ? 120_000 : false,
+      refetchInterval: enabled ? (refetchInterval ?? 120_000) : false,
     })
   );
 }
@@ -40,12 +40,12 @@ export function useRefreshPairing() {
   };
 }
 
-export function useKiloClawDevicePairing(enabled = true) {
+export function useKiloClawDevicePairing(enabled = true, refetchInterval?: number) {
   const trpc = useTRPC();
   return useQuery(
     trpc.kiloclaw.listDevicePairingRequests.queryOptions(undefined, {
       enabled,
-      refetchInterval: enabled ? 120_000 : false,
+      refetchInterval: enabled ? (refetchInterval ?? 120_000) : false,
     })
   );
 }

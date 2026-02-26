@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Hash, Save, Square, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Hash, Save, Square, X } from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
 import type { KiloClawDashboardStatus } from '@/lib/kiloclaw/types';
@@ -12,6 +12,7 @@ import { ModelCombobox, type ModelOption } from '@/components/shared/ModelCombob
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DetailTile } from './DetailTile';
 import { useDefaultModelSelection } from '../hooks/useDefaultModelSelection';
 import { ChannelTokenInput } from './ChannelTokenInput';
@@ -25,16 +26,23 @@ function ChannelSection({
   mutations,
   channelsDirty,
   setChannelsDirty,
+  onChannelsChanged,
+  channelType,
+  dirtyChannels,
 }: {
   channel: ChannelDefinition;
   configured: boolean;
   mutations: ClawMutations;
   channelsDirty: boolean;
   setChannelsDirty: (v: boolean) => void;
+  onChannelsChanged?: (channelType: string) => void;
+  channelType: string;
+  dirtyChannels: Set<string>;
 }) {
   const [tokens, setTokens] = useState<Record<string, string>>({});
   const isSaving = mutations.patchChannels.isPending;
   const Icon = channel.icon;
+  const isChannelDirty = dirtyChannels.has(channelType);
 
   function setToken(key: string, value: string) {
     setTokens(prev => ({ ...prev, [key]: value }));
@@ -62,10 +70,11 @@ function ChannelSection({
     mutations.patchChannels.mutate(patch, {
       onSuccess: () => {
         toast.success(
-          `${channel.label} token${channel.fields.length > 1 ? 's' : ''} saved. Restart to apply.`
+          `${channel.label} token${channel.fields.length > 1 ? 's' : ''} saved. Hit Redeploy to apply.`
         );
         setTokens({});
         setChannelsDirty(true);
+        onChannelsChanged?.(channelType);
       },
       onError: err => toast.error(`Failed to save: ${err.message}`),
     });
@@ -80,10 +89,11 @@ function ChannelSection({
     mutations.patchChannels.mutate(patch, {
       onSuccess: () => {
         toast.success(
-          `${channel.label} token${channel.fields.length > 1 ? 's' : ''} removed. Restart to apply.`
+          `${channel.label} token${channel.fields.length > 1 ? 's' : ''} removed. Hit Redeploy to apply.`
         );
         setTokens({});
         setChannelsDirty(true);
+        onChannelsChanged?.(channelType);
       },
       onError: err => toast.error(`Failed to remove: ${err.message}`),
     });
@@ -97,6 +107,16 @@ function ChannelSection({
         <span className="text-muted-foreground text-xs">
           {configured ? 'Configured' : 'Not configured'}
         </span>
+        {isChannelDirty && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AlertCircle className="h-4 w-4 text-amber-500" />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Redeploy to apply changes</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       {channel.fields.map(field => (
@@ -132,7 +152,7 @@ function ChannelSection({
 
       <p className="text-muted-foreground text-xs">
         {channel.help}
-        {channelsDirty && ' Restart the instance for changes to take effect.'}
+        {channelsDirty && ' Hit Redeploy to apply channel changes.'}
       </p>
     </div>
   );
@@ -141,9 +161,13 @@ function ChannelSection({
 export function SettingsTab({
   status,
   mutations,
+  onChannelsChanged,
+  dirtyChannels,
 }: {
   status: KiloClawDashboardStatus;
   mutations: ClawMutations;
+  onChannelsChanged?: (channelType: string) => void;
+  dirtyChannels: Set<string>;
 }) {
   const posthog = usePostHog();
   const { data: config } = useKiloClawConfig();
@@ -255,6 +279,9 @@ export function SettingsTab({
               mutations={mutations}
               channelsDirty={channelsDirty}
               setChannelsDirty={setChannelsDirty}
+              onChannelsChanged={onChannelsChanged}
+              channelType={type}
+              dirtyChannels={dirtyChannels}
             />
           ))}
         </div>
