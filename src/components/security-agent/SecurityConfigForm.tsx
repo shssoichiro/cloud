@@ -581,24 +581,26 @@ export function SecurityConfigForm({
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <ModelCombobox
-              label="Triage Model"
-              models={modelOptions}
-              value={selectedTriageModel}
-              onValueChange={handleTriageModelChange}
-              isLoading={isLoadingModels}
-              helperText="Used for initial triage and exploitability recommendation"
-            />
+          <CardContent>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <ModelCombobox
+                label="Triage Model"
+                models={modelOptions}
+                value={selectedTriageModel}
+                onValueChange={handleTriageModelChange}
+                isLoading={isLoadingModels}
+                helperText="Used for initial triage and exploitability recommendation"
+              />
 
-            <ModelCombobox
-              label="Analysis Model"
-              models={modelOptions}
-              value={selectedAnalysisModel}
-              onValueChange={handleAnalysisModelChange}
-              isLoading={isLoadingModels}
-              helperText="Used for sandbox/codebase analysis and final extraction"
-            />
+              <ModelCombobox
+                label="Analysis Model"
+                models={modelOptions}
+                value={selectedAnalysisModel}
+                onValueChange={handleAnalysisModelChange}
+                isLoading={isLoadingModels}
+                helperText="Used for sandbox/codebase analysis and final extraction"
+              />
+            </div>
           </CardContent>
         </Card>
       )}
