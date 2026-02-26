@@ -8,6 +8,10 @@ export const OPENCLAW_PORT = 18789;
 /** Internal loopback port for the OpenClaw gateway process (behind controller) */
 export const OPENCLAW_INTERNAL_PORT = 3001;
 
+/** OpenClaw's built-in default model when using the kilocode provider.
+ *  Used as fallback when the user clears their model selection. */
+export const OPENCLAW_BUILTIN_DEFAULT_MODEL = 'kilocode/anthropic/claude-opus-4.6';
+
 /** Maximum time to wait for the machine to reach 'started' state.
  *  Fly's /wait endpoint caps at 60s (spec.json:1538). */
 export const STARTUP_TIMEOUT_SECONDS = 60;

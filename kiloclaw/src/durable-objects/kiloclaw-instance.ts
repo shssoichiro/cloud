@@ -49,6 +49,7 @@ import {
   HEALTH_PROBE_TIMEOUT_SECONDS,
   HEALTH_PROBE_INTERVAL_MS,
   STALE_PROVISION_THRESHOLD_MS,
+  OPENCLAW_BUILTIN_DEFAULT_MODEL,
 } from '../config';
 import type { FlyClientConfig } from '../fly/client';
 import type {
@@ -596,9 +597,11 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
 
     // Hot-patch the running machine's config file if the default model changed.
     // This avoids requiring a full machine restart — OpenClaw watches the config file.
-    if (patch.kilocodeDefaultModel !== undefined && this.kilocodeDefaultModel) {
+    // When cleared (null), fall back to OpenClaw's built-in default.
+    if (patch.kilocodeDefaultModel !== undefined) {
+      const model = this.kilocodeDefaultModel ?? OPENCLAW_BUILTIN_DEFAULT_MODEL;
       await this.patchConfigOnMachine({
-        agents: { defaults: { model: { primary: this.kilocodeDefaultModel } } },
+        agents: { defaults: { model: { primary: model } } },
       });
     }
 
