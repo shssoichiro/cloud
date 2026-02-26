@@ -24,8 +24,6 @@ function ChannelSection({
   channel,
   configured,
   mutations,
-  channelsDirty,
-  setChannelsDirty,
   onChannelsChanged,
   channelType,
   dirtyChannels,
@@ -33,8 +31,6 @@ function ChannelSection({
   channel: ChannelDefinition;
   configured: boolean;
   mutations: ClawMutations;
-  channelsDirty: boolean;
-  setChannelsDirty: (v: boolean) => void;
   onChannelsChanged?: (channelType: string) => void;
   channelType: string;
   dirtyChannels: Set<string>;
@@ -73,7 +69,6 @@ function ChannelSection({
           `${channel.label} token${channel.fields.length > 1 ? 's' : ''} saved. Hit Redeploy to apply.`
         );
         setTokens({});
-        setChannelsDirty(true);
         onChannelsChanged?.(channelType);
       },
       onError: err => toast.error(`Failed to save: ${err.message}`),
@@ -92,7 +87,6 @@ function ChannelSection({
           `${channel.label} token${channel.fields.length > 1 ? 's' : ''} removed. Hit Redeploy to apply.`
         );
         setTokens({});
-        setChannelsDirty(true);
         onChannelsChanged?.(channelType);
       },
       onError: err => toast.error(`Failed to remove: ${err.message}`),
@@ -173,7 +167,6 @@ export function SettingsTab({
   const { data: config } = useKiloClawConfig();
   const { data: modelsData, isLoading: isLoadingModels } = useOpenRouterModels();
   const [confirmDestroy, setConfirmDestroy] = useState(false);
-  const [channelsDirty, setChannelsDirty] = useState(false);
 
   const modelOptions = useMemo<ModelOption[]>(
     () => (modelsData?.data || []).map(model => ({ id: model.id, name: model.name })),
@@ -277,8 +270,6 @@ export function SettingsTab({
               channel={CHANNELS[type]}
               configured={CHANNELS[type].configuredCheck(channelStatus)}
               mutations={mutations}
-              channelsDirty={channelsDirty}
-              setChannelsDirty={setChannelsDirty}
               onChannelsChanged={onChannelsChanged}
               channelType={type}
               dirtyChannels={dirtyChannels}
