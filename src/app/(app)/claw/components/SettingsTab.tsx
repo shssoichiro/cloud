@@ -36,12 +36,14 @@ function ChannelSection({
   dirtyChannels: Set<string>;
 }) {
   const [tokens, setTokens] = useState<Record<string, string>>({});
+  const [formatError, setFormatError] = useState<string | null>(null);
   const isSaving = mutations.patchChannels.isPending;
   const Icon = channel.icon;
   const isChannelDirty = dirtyChannels.has(channelType);
 
   function setToken(key: string, value: string) {
     setTokens(prev => ({ ...prev, [key]: value }));
+    setFormatError(null);
   }
 
   function hasAllTokensFilled() {
@@ -56,6 +58,15 @@ function ChannelSection({
         toast.error('Enter a token or use Remove to clear it.');
       }
       return;
+    }
+
+    for (const field of channel.fields) {
+      const error = field.validate?.(tokens[field.key].trim());
+      if (error) {
+        setFormatError(error);
+        toast.error(error);
+        return;
+      }
     }
 
     const patch: Record<string, string> = {};
@@ -101,13 +112,15 @@ function ChannelSection({
         <span className="text-muted-foreground text-xs">
           {configured ? 'Configured' : 'Not configured'}
         </span>
-        {isChannelDirty && (
+        {(formatError || isChannelDirty) && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <AlertCircle className="h-4 w-4 text-amber-500" />
+              <AlertCircle
+                className={`h-4 w-4 ${formatError ? 'text-red-500' : 'text-amber-500'}`}
+              />
             </TooltipTrigger>
             <TooltipContent>
-              <p>Redeploy to apply changes</p>
+              <p>{formatError ? 'Improper token format' : 'Redeploy to apply changes'}</p>
             </TooltipContent>
           </Tooltip>
         )}
