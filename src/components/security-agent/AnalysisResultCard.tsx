@@ -188,11 +188,20 @@ function SandboxSummary({
         <div className="mt-2">
           <span className="text-muted-foreground text-xs font-medium">Usage locations:</span>
           <ul className="text-muted-foreground mt-1 list-inside list-disc text-xs">
-            {sandboxAnalysis.usageLocations.slice(0, 5).map(loc => (
-              <li key={loc} className="truncate">
-                {loc}
-              </li>
-            ))}
+            {(() => {
+              const occurrenceByLocation = new Map<string, number>();
+
+              return sandboxAnalysis.usageLocations.slice(0, 5).map(loc => {
+                const occurrence = occurrenceByLocation.get(loc) ?? 0;
+                occurrenceByLocation.set(loc, occurrence + 1);
+
+                return (
+                  <li key={`${loc}-${occurrence}`} className="truncate">
+                    {loc}
+                  </li>
+                );
+              });
+            })()}
             {sandboxAnalysis.usageLocations.length > 5 && (
               <li className="text-muted-foreground/70">
                 ...and {sandboxAnalysis.usageLocations.length - 5} more

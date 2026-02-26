@@ -249,7 +249,8 @@ export function SecurityConfigForm({
 
       const modeChanged = newMode !== initialSelectionMode;
       const idsChanged =
-        JSON.stringify(newSelectedIds.sort()) !== JSON.stringify(initialSelectedIds.sort());
+        JSON.stringify([...newSelectedIds].sort()) !==
+        JSON.stringify([...initialSelectedIds].sort());
       const triageModelChanged = newTriageModel !== initialTriageModel;
       const analysisModelChanged = newAnalysisModel !== initialAnalysisModel;
       const analysisModeChanged = newAnalysisMode !== initialAnalysisMode;
