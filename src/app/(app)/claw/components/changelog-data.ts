@@ -13,6 +13,13 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-02-26',
     description:
+      'Upgraded to OpenClaw 2026.2.25 with native Kilo Gateway provider support. Model config is now managed by OpenClaw directly. Default model changes apply instantly without restart.',
+    category: 'feature',
+    deployHint: 'redeploy_required',
+  },
+  {
+    date: '2026-02-26',
+    description:
       'Added ripgrep (rg), GitHub CLI (gh), rsync, zstd, and ClawHub CLI to the default image.',
     category: 'feature',
     deployHint: null,
