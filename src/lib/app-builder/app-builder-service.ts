@@ -92,16 +92,16 @@ function parseWorkerVersion(value: string | null): WorkerVersion | null {
  * Check if new sessions should use cloud-agent-next (v2).
  * Always enabled in development; gated by PostHog feature flag in production.
  */
-async function shouldUseCloudAgentNext(): Promise<boolean> {
+async function shouldUseCloudAgentNext(userId: string): Promise<boolean> {
   if (process.env.NODE_ENV === 'development') return true;
-  return isFeatureFlagEnabled('app-builder-cloud-agent-next');
+  return isFeatureFlagEnabled('app-builder-cloud-agent-next', userId);
 }
 
 /**
  * Get the required worker version based on the feature flag.
  */
-async function getRequiredWorkerVersion(): Promise<WorkerVersion> {
-  return (await shouldUseCloudAgentNext()) ? 'v2' : 'v1';
+async function getRequiredWorkerVersion(userId: string): Promise<WorkerVersion> {
+  return (await shouldUseCloudAgentNext(userId)) ? 'v2' : 'v1';
 }
 
 /**
@@ -522,7 +522,7 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
     });
 
     // Determine which worker version to use based on feature flag
-    const workerVersion = await getRequiredWorkerVersion();
+    const workerVersion = await getRequiredWorkerVersion(createdByUserId);
 
     const gitUrl = getProjectGitUrl(projectId);
     const { token: gitToken } = await appBuilderClient.generateGitToken(projectId, 'full');
@@ -992,7 +992,8 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
   }
 
   const currentWorkerVersion = await getCurrentSessionWorkerVersion(currentSessionId);
-  const requiredWorkerVersion = await getRequiredWorkerVersion();
+  const userId = project.created_by_user_id ?? owner.id;
+  const requiredWorkerVersion = await getRequiredWorkerVersion(userId);
 
   const decision = await shouldCreateNewSession(
     project,
