@@ -18,7 +18,7 @@ type DoctorMutation = ReturnType<typeof useKiloClawMutations>['runDoctor'];
 /** Strip ANSI escape codes so raw terminal output can render in a browser &lt;pre&gt;. */
 function stripAnsi(raw: string): string {
   // eslint-disable-next-line no-control-regex
-  return raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  return raw.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
 }
 
 export function RunDoctorDialog({
@@ -94,12 +94,11 @@ export function RunDoctorDialog({
               </span>
             </div>
             <div className="border-border bg-background max-h-[400px] overflow-auto rounded-md border">
+              {/* prettier-ignore */}
               <pre
                 className="p-3 text-xs leading-relaxed whitespace-pre"
                 style={{ fontFamily: "'Courier New', Courier, monospace", tabSize: 8 }}
-              >
-                {result.output}
-              </pre>
+              >{result.output}</pre>
             </div>
           </div>
         )}
