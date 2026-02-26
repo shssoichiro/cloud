@@ -75,8 +75,10 @@ export async function upsertSecurityAgentConfig(
   createdBy: string,
   platform: string = DEFAULT_PLATFORM
 ): Promise<void> {
+  const existingConfig = await getAgentConfigForOwner(owner, AGENT_TYPE, platform);
   const fullConfig = {
     ...DEFAULT_SECURITY_AGENT_CONFIG,
+    ...(existingConfig?.config as Partial<SecurityAgentConfig> | undefined),
     ...config,
   };
 

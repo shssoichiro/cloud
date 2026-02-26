@@ -198,10 +198,18 @@ export const securityAgentRouter = createTRPCRouter({
         : undefined;
 
       const triageModelSlug =
-        input.triageModelSlug ?? (input.modelSlug ? input.modelSlug : undefined);
+        input.triageModelSlug ??
+        (input.modelSlug ? input.modelSlug : undefined) ??
+        existingTriageModelSlug;
       const analysisModelSlug =
-        input.analysisModelSlug ?? (input.modelSlug ? input.modelSlug : undefined);
-      const modelSlug = input.modelSlug ?? analysisModelSlug ?? triageModelSlug;
+        input.analysisModelSlug ??
+        (input.modelSlug ? input.modelSlug : undefined) ??
+        existingAnalysisModelSlug;
+      const modelSlug =
+        input.modelSlug ??
+        existingConfig?.storedConfig.model_slug ??
+        analysisModelSlug ??
+        triageModelSlug;
 
       await upsertSecurityAgentConfig(
         owner,
