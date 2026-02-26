@@ -2,6 +2,13 @@ import type { IngestEvent } from '../../src/shared/protocol.js';
 import type { KiloClient } from './kilo-client.js';
 import { exec, getCurrentBranch, logToFile } from './utils.js';
 
+/** Timeout for local git operations (status, add, commit) */
+const GIT_LOCAL_TIMEOUT_MS = 30_000;
+/** Timeout for git push (network-bound) */
+const GIT_PUSH_TIMEOUT_MS = 60_000;
+/** Timeout for commit message generation API call */
+const COMMIT_MESSAGE_TIMEOUT_MS = 60_000;
+
 export type AutoCommitResult = {
   success: boolean;
   skipped?: boolean;
@@ -61,7 +68,9 @@ export async function runAutoCommit(opts: AutoCommitOptions): Promise<AutoCommit
     }
 
     // Check for uncommitted changes
-    const status = await exec(`cd "${workspacePath}" && git status --porcelain`);
+    const status = await exec(`cd "${workspacePath}" && git status --porcelain`, {
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    });
     if (!status.stdout.trim()) {
       emitCompleted(onEvent, { success: true, message: 'No uncommitted changes', skipped: true });
       return { success: true, skipped: true };
@@ -73,7 +82,14 @@ export async function runAutoCommit(opts: AutoCommitOptions): Promise<AutoCommit
     logToFile('auto-commit: generating commit message');
     let commitMessage: string;
     try {
-      const result = await kiloClient.generateCommitMessage({ path: workspacePath });
+      const commitMsgPromise = kiloClient.generateCommitMessage({ path: workspacePath });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Commit message generation timed out')),
+          COMMIT_MESSAGE_TIMEOUT_MS
+        )
+      );
+      const result = await Promise.race([commitMsgPromise, timeoutPromise]);
       commitMessage = result.message;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -87,7 +103,9 @@ export async function runAutoCommit(opts: AutoCommitOptions): Promise<AutoCommit
 
     // Stage all changes
     logToFile('auto-commit: staging changes');
-    const addResult = await exec(`cd "${workspacePath}" && git add -A`);
+    const addResult = await exec(`cd "${workspacePath}" && git add -A`, {
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    });
     if (addResult.exitCode !== 0) {
       const msg = `git add failed: ${addResult.stderr.trim()}`;
       logToFile(`auto-commit: ${msg}`);
@@ -98,11 +116,14 @@ export async function runAutoCommit(opts: AutoCommitOptions): Promise<AutoCommit
     // Commit — retry with --no-verify if pre-commit hook fails
     logToFile('auto-commit: committing');
     const escapedMessage = commitMessage.replace(/'/g, "'\\''");
-    let commitResult = await exec(`cd "${workspacePath}" && git commit -m '${escapedMessage}'`);
+    let commitResult = await exec(`cd "${workspacePath}" && git commit -m '${escapedMessage}'`, {
+      timeoutMs: GIT_LOCAL_TIMEOUT_MS,
+    });
     if (commitResult.exitCode !== 0) {
       logToFile('auto-commit: commit failed, retrying with --no-verify');
       commitResult = await exec(
-        `cd "${workspacePath}" && git commit --no-verify -m '${escapedMessage}'`
+        `cd "${workspacePath}" && git commit --no-verify -m '${escapedMessage}'`,
+        { timeoutMs: GIT_LOCAL_TIMEOUT_MS }
       );
       if (commitResult.exitCode !== 0) {
         const msg = `git commit failed: ${commitResult.stderr.trim()}`;
@@ -122,7 +143,7 @@ export async function runAutoCommit(opts: AutoCommitOptions): Promise<AutoCommit
       pushCmd = `cd "${workspacePath}" && git push -u origin "${branch}"`;
     }
 
-    const pushResult = await exec(pushCmd);
+    const pushResult = await exec(pushCmd, { timeoutMs: GIT_PUSH_TIMEOUT_MS });
     if (pushResult.exitCode !== 0) {
       // Push failure is non-fatal — changes are committed locally
       const msg = `git push failed: ${pushResult.stderr.trim()}`;

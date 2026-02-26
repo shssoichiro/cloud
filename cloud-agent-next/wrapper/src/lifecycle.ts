@@ -37,6 +37,9 @@ export const DEFAULT_IDLE_TIMEOUT_MS = 120_000;
 /** SSE inactivity timeout - if no SSE events for this long while active, assume broken (2 minutes) */
 const SSE_INACTIVITY_TIMEOUT_MS = 120_000;
 
+/** Overall timeout for auto-commit operation (2 minutes) */
+const AUTO_COMMIT_TIMEOUT_MS = 120_000;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -289,13 +292,26 @@ export function createLifecycleManager(
     if (config.autoCommit) {
       logToFile('running auto-commit');
       try {
-        await runAutoCommit({
+        const autoCommitPromise = runAutoCommit({
           workspacePath: config.workspacePath,
           upstreamBranch: config.upstreamBranch,
           onEvent: event => state.sendToIngest(event),
           kiloClient,
         });
-        logToFile('auto-commit complete');
+        const timeoutPromise = new Promise<'timeout'>(resolve =>
+          setTimeout(() => resolve('timeout'), AUTO_COMMIT_TIMEOUT_MS)
+        );
+        const result = await Promise.race([autoCommitPromise, timeoutPromise]);
+        if (result === 'timeout') {
+          logToFile('auto-commit timed out');
+          state.sendToIngest({
+            streamEventType: 'error',
+            data: { error: 'Auto-commit timed out', fatal: false },
+            timestamp: new Date().toISOString(),
+          });
+        } else {
+          logToFile('auto-commit complete');
+        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         logToFile(`auto-commit error: ${msg}`);
