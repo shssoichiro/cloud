@@ -848,12 +848,14 @@ export async function generateCloneToken(
  * Delete a project and all associated resources.
  */
 export async function deleteProject(projectId: string, owner: Owner): Promise<void> {
-  await getProjectWithOwnershipCheck(projectId, owner);
+  const project = await getProjectWithOwnershipCheck(projectId, owner);
 
-  // Delete public assets from R2 (best-effort, don't block project deletion)
-  await deleteProjectAssets(projectId, owner).catch(err => {
-    console.error('Failed to delete project assets from R2:', err);
-  });
+  // Only delete public assets if there's no deployment — deployed sites reference these images
+  if (!project.deployment_id) {
+    await deleteProjectAssets(projectId, owner).catch(err => {
+      console.error('Failed to delete project assets from R2:', err);
+    });
+  }
 
   await appBuilderClient.deleteProject(projectId);
   await db.delete(app_builder_projects).where(eq(app_builder_projects.id, projectId));
