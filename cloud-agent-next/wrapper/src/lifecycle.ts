@@ -285,7 +285,29 @@ export function createLifecycleManager(
     const job = state.currentJob;
     if (!job) return;
 
-    // Use the shared completion state for waiting on post-processing commands
+    // Run auto-commit if enabled
+    if (config.autoCommit) {
+      logToFile('running auto-commit');
+      try {
+        await runAutoCommit({
+          workspacePath: config.workspacePath,
+          upstreamBranch: config.upstreamBranch,
+          onEvent: event => state.sendToIngest(event),
+          kiloClient,
+        });
+        logToFile('auto-commit complete');
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logToFile(`auto-commit error: ${msg}`);
+        state.sendToIngest({
+          streamEventType: 'error',
+          data: { error: `Auto-commit failed: ${msg}`, fatal: false },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
+    // Completion/abort helpers are only needed for condense (which still uses the prompt-based approach)
     const expectCompletion = () => {
       postProcessingCompleted = false;
       postProcessingResolve = null;
@@ -299,33 +321,6 @@ export function createLifecycleManager(
     };
 
     const wasAborted = () => isAborted;
-
-    // Run auto-commit if enabled
-    if (config.autoCommit) {
-      logToFile('running auto-commit');
-      try {
-        await runAutoCommit({
-          workspacePath: config.workspacePath,
-          upstreamBranch: config.upstreamBranch,
-          model: config.model,
-          onEvent: event => state.sendToIngest(event),
-          kiloClient,
-          kiloSessionId: job.kiloSessionId,
-          expectCompletion,
-          waitForCompletion,
-          wasAborted,
-        });
-        logToFile('auto-commit complete');
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        logToFile(`auto-commit error: ${msg}`);
-        state.sendToIngest({
-          streamEventType: 'error',
-          data: { error: `Auto-commit failed: ${msg}`, fatal: false },
-          timestamp: new Date().toISOString(),
-        });
-      }
-    }
 
     // Run condense if enabled
     if (config.condenseOnComplete) {

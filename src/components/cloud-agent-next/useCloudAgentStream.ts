@@ -24,6 +24,7 @@ import {
 import type { CloudAgentEvent, StreamError } from '@/lib/cloud-agent-next/event-types';
 import { createEventProcessor, type EventProcessor } from '@/lib/cloud-agent-next/processor';
 import type { EventProcessorCallbacks } from '@/lib/cloud-agent-next/processor';
+import type { AutocommitStatus } from './store/atoms';
 import {
   currentSessionIdAtom,
   isStreamingAtom,
@@ -37,6 +38,7 @@ import {
   removeChildSessionPartAtom,
   setQuestionRequestIdAtom,
   sessionOrganizationIdAtom,
+  autocommitStatusAtom,
 } from './store/atoms';
 import {
   updateHighWaterMarkAtom,
@@ -118,6 +120,9 @@ export function useCloudAgentStream({
 
   // Atom for organization ID (used by QuestionToolCard for tRPC calls)
   const setSessionOrganizationId = useSetAtom(sessionOrganizationIdAtom);
+
+  // Atom for autocommit status
+  const setAutocommitStatus = useSetAtom(autocommitStatusAtom);
 
   // Common atoms
   const setCurrentSessionId = useSetAtom(currentSessionIdAtom);
@@ -340,12 +345,38 @@ export function useCloudAgentStream({
 
   const handleEvent = useCallback(
     (event: CloudAgentEvent) => {
+      // Intercept autocommit events — update atom directly, don't pass to EventProcessor
+      if (event.streamEventType === 'autocommit_started') {
+        const data = event.data as { message?: string } | undefined;
+        setAutocommitStatus({
+          status: 'in_progress',
+          message: data?.message ?? 'Committing changes...',
+          timestamp: event.timestamp,
+        });
+        return;
+      }
+      if (event.streamEventType === 'autocommit_completed') {
+        const data = event.data as
+          | { success?: boolean; message?: string; skipped?: boolean }
+          | undefined;
+        if (data?.skipped) {
+          setAutocommitStatus(null);
+        } else {
+          setAutocommitStatus({
+            status: data?.success ? 'completed' : 'failed',
+            message: data?.message ?? (data?.success ? 'Changes committed' : 'Commit failed'),
+            timestamp: event.timestamp,
+          });
+        }
+        return;
+      }
+
       if (!processorRef.current) {
         getProcessor();
       }
       processorRef.current?.processEvent(event);
     },
-    [getProcessor]
+    [getProcessor, setAutocommitStatus]
   );
 
   // Cleanup processor on unmount
@@ -518,6 +549,7 @@ export function useCloudAgentStream({
 
     setLocalError(null);
     setError(null);
+    setAutocommitStatus(null);
     setIsStreaming(true);
 
     try {
@@ -647,6 +679,7 @@ export function useCloudAgentStream({
     async (message: string, cloudAgentSessionId: string, mode: string, model: string) => {
       setLocalError(null);
       setError(null);
+      setAutocommitStatus(null);
       setIsStreaming(true);
 
       // Use provided cloudAgentSessionId, falling back to ref for backward compatibility
