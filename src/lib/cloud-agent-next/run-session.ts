@@ -21,11 +21,8 @@ import type { PrepareSessionInput, InitiateFromPreparedSessionInput } from './cl
 // Constants
 // ---------------------------------------------------------------------------
 
-const CLOUD_AGENT_NEXT_WS_URL =
-  getEnvVariable('NEXT_PUBLIC_CLOUD_AGENT_NEXT_WS_URL') ||
-  getEnvVariable('NEXT_PUBLIC_CLOUD_AGENT_WS_URL');
-const CLOUD_AGENT_NEXT_API_URL =
-  getEnvVariable('CLOUD_AGENT_NEXT_API_URL') || getEnvVariable('CLOUD_AGENT_API_URL');
+const CLOUD_AGENT_NEXT_WS_URL = getEnvVariable('NEXT_PUBLIC_CLOUD_AGENT_NEXT_WS_URL');
+const CLOUD_AGENT_NEXT_API_URL = getEnvVariable('CLOUD_AGENT_NEXT_API_URL');
 
 const DEFAULT_STREAM_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 const COMPLETE_GRACE_MS = 1000; // Wait 1s after 'complete' for final events
@@ -183,7 +180,6 @@ export async function runSessionToCompletion(input: RunSessionInput): Promise<Ru
       ...initiateInput,
     });
     streamUrl = initiated.streamUrl;
-    console.log(`${logPrefix} Initiation completed, streamUrl=${streamUrl}`);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`${logPrefix} Error initiating session:`, msg, error);
@@ -303,10 +299,7 @@ export async function runSessionToCompletion(input: RunSessionInput): Promise<Ru
           const data = event.data as { source?: string; content?: string };
           if (data?.source === 'stderr') {
             statusMessages.push(`[stderr] ${data.content ?? ''}`.trim());
-            // NOTE: Do NOT set hasError here — stderr is commonly used for
-            // warnings, progress indicators, and informational messages (e.g.
-            // git, npm).  Only explicit 'error' / 'interrupted' events
-            // should mark the session as failed.
+            hasError = true;
           }
           break;
         }
@@ -318,7 +311,6 @@ export async function runSessionToCompletion(input: RunSessionInput): Promise<Ru
       }
     },
     onStateChange: state => {
-      console.log(`${logPrefix} WebSocket state: ${state.status}`, state);
       if (state.status === 'error') {
         hasError = true;
         errorMessage = state.error;
@@ -340,10 +332,7 @@ export async function runSessionToCompletion(input: RunSessionInput): Promise<Ru
   });
 
   // 6. Stream
-  console.log(`${logPrefix} Connecting to stream for session ${sessionId}...`, {
-    wsUrl,
-    wsBaseUsed: CLOUD_AGENT_NEXT_WS_URL || CLOUD_AGENT_NEXT_API_URL || '(none)',
-  });
+  console.log(`${logPrefix} Connecting to stream for session ${sessionId}...`);
   wsManager.connect();
 
   streamTimeoutRef.id = setTimeout(() => {
@@ -356,19 +345,7 @@ export async function runSessionToCompletion(input: RunSessionInput): Promise<Ru
   wsManager.disconnect();
 
   console.log(
-    `${logPrefix} Stream completed.`,
-    JSON.stringify(
-      {
-        hasError,
-        errorMessage: errorMessage ?? null,
-        statusMessageCount: statusMessages.length,
-        lastStatusMessages: statusMessages.slice(-10),
-        hasCompletionResult: !!completionResult,
-        completionResultPreview: completionResult?.slice(0, 500) ?? null,
-      },
-      null,
-      2
-    )
+    `${logPrefix} Stream completed. statusMessages=${statusMessages.length}, hasResult=${!!completionResult}`
   );
 
   // 7. Build result

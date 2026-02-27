@@ -13,12 +13,11 @@ import { INTERNAL_API_SECRET } from '@/lib/config.server';
  * Client for the new cloud-agent-next worker that uses the V2 WebSocket-based API
  * with the new message format (Message + Part[]).
  *
- * Falls back to CLOUD_AGENT_API_URL (the original cloud-agent worker) when
- * CLOUD_AGENT_NEXT_API_URL is not configured, since both workers expose
- * compatible tRPC APIs.
+ * PLACEHOLDER: Update CLOUD_AGENT_NEXT_API_URL when the new worker is ready.
  */
-const CLOUD_AGENT_NEXT_API_URL =
-  getEnvVariable('CLOUD_AGENT_NEXT_API_URL') || getEnvVariable('CLOUD_AGENT_API_URL') || '';
+
+// TODO: Update this URL when the new cloud-agent-next worker is deployed
+const CLOUD_AGENT_NEXT_API_URL = getEnvVariable('CLOUD_AGENT_NEXT_API_URL') || '';
 
 // MCP server config types — CLI-native local/remote format
 type MCPLocalServerConfig = {
