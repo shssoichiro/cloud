@@ -41,6 +41,7 @@ import { isAnonymousContext } from '@/lib/anonymous';
 import { isOpenAiModel } from '@/lib/providers/openai';
 import { applyQwenModelSettings, isQwenModel } from '@/lib/providers/qwen';
 import type { ProviderId } from '@/lib/providers/provider-id';
+import { isZaiModel } from '@/lib/providers/zai';
 
 export type Provider = {
   id: ProviderId;
@@ -201,7 +202,7 @@ function getPreferredProvider(requestedModel: string): OpenRouterInferenceProvid
   if (isMoonshotModel(requestedModel)) {
     return OpenRouterInferenceProviderIdSchema.enum.moonshotai;
   }
-  if (requestedModel.startsWith('z-ai/')) {
+  if (isZaiModel(requestedModel)) {
     return OpenRouterInferenceProviderIdSchema.enum['z-ai'];
   }
   return null;
