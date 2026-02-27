@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { generateBaseConfig, writeBaseConfig, MAX_CONFIG_BACKUPS } from './config-writer';
 
-function fakeDeps(existingConfig?: string, modelsFile?: string) {
+function fakeDeps(existingConfig?: string) {
   const written: { path: string; data: string }[] = [];
   const copied: { src: string; dest: string }[] = [];
   const renamed: { from: string; to: string }[] = [];
@@ -12,7 +12,6 @@ function fakeDeps(existingConfig?: string, modelsFile?: string) {
     deps: {
       readFileSync: vi.fn((path: string) => {
         if (path.endsWith('openclaw.json') && existingConfig !== undefined) return existingConfig;
-        if (path.endsWith('kilocode-models.json') && modelsFile !== undefined) return modelsFile;
         throw new Error(`ENOENT: no such file: ${path}`);
       }),
       writeFileSync: vi.fn((path: string, data: string) => {
@@ -29,7 +28,6 @@ function fakeDeps(existingConfig?: string, modelsFile?: string) {
         unlinked.push(path);
       }),
       existsSync: vi.fn((path: string) => {
-        if (path.endsWith('kilocode-models.json')) return modelsFile !== undefined;
         if (path.endsWith('openclaw.json')) return existingConfig !== undefined;
         return false;
       }),
@@ -53,7 +51,7 @@ function minimalEnv(): Record<string, string | undefined> {
 }
 
 describe('generateBaseConfig', () => {
-  it('generates config with gateway, provider, and exec defaults', () => {
+  it('generates config with gateway and exec defaults, no kilocode provider entry', () => {
     const { deps } = fakeDeps();
     const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
 
@@ -64,14 +62,11 @@ describe('generateBaseConfig', () => {
     expect(config.gateway.auth.token).toBe('test-gw-token');
     expect(config.gateway.controlUi.allowInsecureAuth).toBe(true);
 
-    // KiloCode provider
-    expect(config.models.providers.kilocode.apiKey).toBe('test-api-key');
-    expect(config.models.providers.kilocode.api).toBe('openai-completions');
-    expect(config.models.providers.kilocode.baseUrl).toBe('https://api.kilo.ai/api/openrouter/');
-    expect(config.models.providers.kilocode.models).toHaveLength(3);
+    // No kilocode provider entry in production — built-in provider takes over
+    expect(config.models).toBeUndefined();
 
-    // Default model
-    expect(config.agents.defaults.model.primary).toBe('kilocode/anthropic/claude-opus-4.5');
+    // No default model override when env var not set
+    expect(config.agents).toBeUndefined();
 
     // Exec
     expect(config.tools.exec.host).toBe('gateway');
@@ -89,7 +84,96 @@ describe('generateBaseConfig', () => {
     expect(config.gateway.port).toBe(3001);
   });
 
-  it('uses KILOCODE_DEFAULT_MODEL from env', () => {
+  it('removes stale kilocode provider with /api/openrouter/ baseUrl', () => {
+    const existing = JSON.stringify({
+      models: {
+        providers: {
+          kilocode: {
+            baseUrl: 'https://api.kilo.ai/api/openrouter/',
+            apiKey: 'old-key',
+            api: 'openai-completions',
+            models: [{ id: 'old/model', name: 'Old' }],
+          },
+        },
+      },
+    });
+    const { deps } = fakeDeps(existing);
+    const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
+
+    // Stale provider deleted, models object cleaned up
+    expect(config.models).toBeUndefined();
+  });
+
+  it('removes stale kilocode provider with production /api/gateway/ baseUrl', () => {
+    const existing = JSON.stringify({
+      models: {
+        providers: {
+          kilocode: {
+            baseUrl: 'https://api.kilo.ai/api/gateway/',
+            models: [],
+          },
+        },
+      },
+    });
+    const { deps } = fakeDeps(existing);
+    const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
+
+    expect(config.models).toBeUndefined();
+  });
+
+  it('preserves non-kilocode providers when removing stale kilocode entry', () => {
+    const existing = JSON.stringify({
+      models: {
+        providers: {
+          kilocode: {
+            baseUrl: 'https://api.kilo.ai/api/openrouter/',
+            models: [],
+          },
+          openai: {
+            baseUrl: 'https://api.openai.com/v1',
+            models: [{ id: 'gpt-4', name: 'GPT-4' }],
+          },
+        },
+      },
+    });
+    const { deps } = fakeDeps(existing);
+    const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
+
+    // kilocode removed, openai preserved
+    expect(config.models.providers.kilocode).toBeUndefined();
+    expect(config.models.providers.openai.baseUrl).toBe('https://api.openai.com/v1');
+  });
+
+  it('creates kilocode provider with baseUrl and models: [] when KILOCODE_API_BASE_URL is set', () => {
+    const { deps } = fakeDeps();
+    const env = { ...minimalEnv(), KILOCODE_API_BASE_URL: 'https://tunnel.example.com/' };
+    const config = generateBaseConfig(env, '/tmp/openclaw.json', deps);
+
+    expect(config.models.providers.kilocode.baseUrl).toBe('https://tunnel.example.com/');
+    expect(config.models.providers.kilocode.models).toEqual([]);
+  });
+
+  it('preserves existing models array when overriding baseUrl', () => {
+    const existing = JSON.stringify({
+      models: {
+        providers: {
+          kilocode: {
+            baseUrl: 'https://old-tunnel.example.com/',
+            models: [{ id: 'kept/model', name: 'Kept' }],
+          },
+        },
+      },
+    });
+    const { deps } = fakeDeps(existing);
+    const env = { ...minimalEnv(), KILOCODE_API_BASE_URL: 'https://new-tunnel.example.com/' };
+    const config = generateBaseConfig(env, '/tmp/openclaw.json', deps);
+
+    // baseUrl updated, existing models preserved
+    expect(config.models.providers.kilocode.baseUrl).toBe('https://new-tunnel.example.com/');
+    expect(config.models.providers.kilocode.models).toEqual([{ id: 'kept/model', name: 'Kept' }]);
+  });
+
+  it('overrides default model only when KILOCODE_DEFAULT_MODEL is set', () => {
     const { deps } = fakeDeps();
     const env = { ...minimalEnv(), KILOCODE_DEFAULT_MODEL: 'kilocode/openai/gpt-5' };
     const config = generateBaseConfig(env, '/tmp/openclaw.json', deps);
@@ -97,29 +181,11 @@ describe('generateBaseConfig', () => {
     expect(config.agents.defaults.model.primary).toBe('kilocode/openai/gpt-5');
   });
 
-  it('uses KILOCODE_MODELS_JSON from env', () => {
-    const { deps } = fakeDeps();
-    const models = [{ id: 'custom/model', name: 'Custom Model' }];
-    const env = { ...minimalEnv(), KILOCODE_MODELS_JSON: JSON.stringify(models) };
-    const config = generateBaseConfig(env, '/tmp/openclaw.json', deps);
-
-    expect(config.models.providers.kilocode.models).toEqual(models);
-  });
-
-  it('falls back to models file when KILOCODE_MODELS_JSON is not set', () => {
-    const models = [{ id: 'file/model', name: 'File Model' }];
-    const { deps } = fakeDeps(undefined, JSON.stringify(models));
-    const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
-
-    expect(config.models.providers.kilocode.models).toEqual(models);
-  });
-
-  it('uses baked-in defaults when no models source is available', () => {
+  it('does not set default model when KILOCODE_DEFAULT_MODEL is not set', () => {
     const { deps } = fakeDeps();
     const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
 
-    expect(config.models.providers.kilocode.models).toHaveLength(3);
-    expect(config.models.providers.kilocode.models[0].id).toBe('anthropic/claude-opus-4.5');
+    expect(config.agents).toBeUndefined();
   });
 
   it('configures allowed origins from env', () => {
@@ -279,7 +345,6 @@ describe('writeBaseConfig', () => {
     const existing = JSON.stringify({ old: true });
     const harness = fakeDeps(existing);
     harness.setDirEntries([
-      'kilocode-models.json',
       'openclaw.json',
       'openclaw.json.bak.2026-02-26T10-00-00.000Z',
       'openclaw.json.tmp',
@@ -340,6 +405,6 @@ describe('writeBaseConfig', () => {
     const config = writeBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
 
     expect(config.gateway.port).toBe(3001);
-    expect(config.models.providers.kilocode.apiKey).toBe('test-api-key');
+    expect(config.tools.exec.host).toBe('gateway');
   });
 });

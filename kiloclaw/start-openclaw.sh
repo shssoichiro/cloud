@@ -226,6 +226,9 @@ if (process.env.KILOCODE_API_BASE_URL) {
     config.models.providers = config.models.providers || {};
     config.models.providers.kilocode = config.models.providers.kilocode || {};
     config.models.providers.kilocode.baseUrl = process.env.KILOCODE_API_BASE_URL;
+    // Provider entries require a models array per OpenClaw's strict zod schema.
+    // Empty array is valid — the built-in kilocode provider fills in its catalog.
+    config.models.providers.kilocode.models = config.models.providers.kilocode.models || [];
     console.log('Overriding kilocode base URL: ' + process.env.KILOCODE_API_BASE_URL);
 }
 

@@ -322,22 +322,34 @@ export function SettingsTab({
               Stop or destroy this instance. Destroy permanently removes associated data.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              {supportsConfigRestore && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!isRunning || mutations.restoreConfig.isPending || isDestroying}
-                  onClick={() => {
-                    posthog?.capture('claw_restore_config_clicked', {
-                      instance_status: status.status,
-                    });
-                    setConfirmRestore(true);
-                  }}
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  Restore Default Config
-                </Button>
-              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        !supportsConfigRestore ||
+                        !isRunning ||
+                        mutations.restoreConfig.isPending ||
+                        isDestroying
+                      }
+                      onClick={() => {
+                        posthog?.capture('claw_restore_config_clicked', {
+                          instance_status: status.status,
+                        });
+                        setConfirmRestore(true);
+                      }}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      Restore Default Config
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {!supportsConfigRestore && (
+                  <TooltipContent>Unavailable until redeploy</TooltipContent>
+                )}
+              </Tooltip>
 
               <Button
                 variant="outline"

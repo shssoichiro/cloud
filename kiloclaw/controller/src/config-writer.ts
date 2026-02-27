@@ -10,17 +10,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const DEFAULT_CONFIG_PATH = '/root/.openclaw/openclaw.json';
-const MODELS_FILE_PATH = '/root/.openclaw/kilocode-models.json';
 
 export const MAX_CONFIG_BACKUPS = 5;
-
-const DEFAULT_MODELS = [
-  { id: 'anthropic/claude-opus-4.5', name: 'Anthropic: Claude Opus 4.5' },
-  { id: 'minimax/minimax-m2.1:free', name: 'Minimax: Minimax M2.1' },
-  { id: 'z-ai/glm-4.7:free', name: 'GLM-4.7 (Free - Exclusive to Kilo)' },
-];
-
-type ModelEntry = { id: string; name: string };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ConfigObject = Record<string, any>;
@@ -46,35 +37,6 @@ const defaultDeps: ConfigWriterDeps = {
   unlinkSync: p => fs.unlinkSync(p),
   existsSync: p => fs.existsSync(p),
 };
-
-function resolveModels(env: EnvLike, deps: ConfigWriterDeps): ModelEntry[] {
-  if (env.KILOCODE_MODELS_JSON) {
-    try {
-      const parsed: unknown = JSON.parse(env.KILOCODE_MODELS_JSON);
-      if (Array.isArray(parsed)) {
-        console.log(`Using model list from KILOCODE_MODELS_JSON (${parsed.length} models)`);
-        return parsed;
-      }
-    } catch (error) {
-      console.warn('Failed to parse KILOCODE_MODELS_JSON, using defaults:', error);
-    }
-    return DEFAULT_MODELS;
-  }
-
-  if (deps.existsSync(MODELS_FILE_PATH)) {
-    const raw = deps.readFileSync(MODELS_FILE_PATH, 'utf8');
-    if (raw.trim().length === 0) return [];
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      console.warn('Failed to parse KiloCode models file, using empty list:', error);
-      return [];
-    }
-  }
-
-  return DEFAULT_MODELS;
-}
 
 /**
  * Generate the base config object from environment variables.
@@ -124,25 +86,49 @@ export function generateBaseConfig(
     );
   }
 
-  // KiloCode provider configuration
-  const providerName = 'kilocode';
-  const baseUrl = env.KILOCODE_API_BASE_URL || 'https://api.kilo.ai/api/openrouter/';
-  const defaultModel = env.KILOCODE_DEFAULT_MODEL || `${providerName}/anthropic/claude-opus-4.5`;
-  const models = resolveModels(env, deps);
+  // Migration: remove stale manually-managed kilocode provider config.
+  // OpenClaw 2026.2.24+ has a built-in kilocode provider that activates when
+  // KILOCODE_API_KEY is in the environment. Stale config entries with the old
+  // /api/openrouter/ URL or the production /api/gateway/ URL conflict with it.
+  if (config.models?.providers?.kilocode) {
+    const staleBaseUrl: string = config.models.providers.kilocode.baseUrl || '';
+    if (
+      staleBaseUrl.includes('/api/openrouter/') ||
+      staleBaseUrl === 'https://api.kilo.ai/api/gateway/'
+    ) {
+      delete config.models.providers.kilocode;
+      console.log(`Removed stale kilocode provider config (baseUrl: ${staleBaseUrl})`);
+      if (Object.keys(config.models.providers).length === 0) {
+        delete config.models.providers;
+      }
+      if (Object.keys(config.models).length === 0) {
+        delete config.models;
+      }
+    }
+  }
 
-  config.models = config.models ?? {};
-  config.models.providers = config.models.providers ?? {};
-  config.models.providers[providerName] = {
-    baseUrl,
-    apiKey: env.KILOCODE_API_KEY,
-    api: 'openai-completions',
-    models,
-  };
+  // KiloCode provider base URL override (local dev only).
+  // OpenClaw's native kilocode provider hardcodes https://api.kilo.ai/api/gateway/.
+  // In local dev, Fly machines need to route through a Cloudflare tunnel, so we
+  // override the base URL when KILOCODE_API_BASE_URL is set.
+  if (env.KILOCODE_API_BASE_URL) {
+    config.models = config.models ?? {};
+    config.models.providers = config.models.providers ?? {};
+    config.models.providers.kilocode = config.models.providers.kilocode ?? {};
+    config.models.providers.kilocode.baseUrl = env.KILOCODE_API_BASE_URL;
+    // Provider entries require a models array per OpenClaw's strict zod schema.
+    // Empty array is valid — the built-in kilocode provider fills in its catalog.
+    config.models.providers.kilocode.models = config.models.providers.kilocode.models ?? [];
+    console.log(`Overriding kilocode base URL: ${env.KILOCODE_API_BASE_URL}`);
+  }
 
-  config.agents = config.agents ?? {};
-  config.agents.defaults = config.agents.defaults ?? {};
-  config.agents.defaults.model = { primary: defaultModel };
-  console.log(`KiloCode provider configured with base URL ${baseUrl}`);
+  // User-selected default model override.
+  if (env.KILOCODE_DEFAULT_MODEL) {
+    config.agents = config.agents ?? {};
+    config.agents.defaults = config.agents.defaults ?? {};
+    config.agents.defaults.model = { primary: env.KILOCODE_DEFAULT_MODEL };
+    console.log(`Overriding default model: ${env.KILOCODE_DEFAULT_MODEL}`);
+  }
 
   // Exec tool settings
   config.tools = config.tools ?? {};
