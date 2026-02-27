@@ -961,14 +961,35 @@ export async function* autoCommitChangesStream(
     `cd ${workspacePath} && git log origin/${currentBranch}..HEAD --oneline 2>&1`
   );
   const unpushedOutput = unpushed.stdout.trim();
+  const verificationOutput = `${unpushed.stdout || ''}\n${unpushed.stderr || ''}`.trim();
+  const remoteBranchMissing =
+    unpushed.exitCode !== 0 &&
+    /(unknown revision|ambiguous argument|bad revision|does not match any|not a valid object name)/i.test(
+      verificationOutput
+    );
+  const hasUnpushedCommits = unpushed.exitCode === 0 && unpushedOutput.length > 0;
 
-  if (unpushed.exitCode === 0 && unpushedOutput.length > 0) {
-    const commitCount = unpushedOutput.split('\n').length;
+  if (unpushed.exitCode !== 0 && !remoteBranchMissing) {
+    throw new Error(
+      `Failed to verify push status (exit ${unpushed.exitCode}): ${verificationOutput || 'unknown git error'}`
+    );
+  }
+
+  if (remoteBranchMissing || hasUnpushedCommits) {
+    const commitCount = hasUnpushedCommits ? unpushedOutput.split('\n').length : undefined;
+    const pushReason = remoteBranchMissing
+      ? 'Remote branch missing'
+      : `${commitCount ?? 0} unpushed commit(s)`;
+
     logger
-      .withFields({ currentBranch, unpushedOutput, commitCount })
+      .withFields({ currentBranch, unpushedOutput, commitCount, pushReason })
       .warn('Kilo CLI did not push — pushing programmatically');
 
-    yield createStatusEvent(`Pushing ${commitCount} unpushed commit(s)...`, sessionId);
+    if (commitCount !== undefined) {
+      yield createStatusEvent(`Pushing ${commitCount} unpushed commit(s)...`, sessionId);
+    } else {
+      yield createStatusEvent(`Pushing branch '${currentBranch}' to origin...`, sessionId);
+    }
 
     const pushResult = await session.exec(
       `cd ${workspacePath} && git push origin ${currentBranch}`
