@@ -144,8 +144,8 @@ export function UpgradeTrialDialog({
           {/* Credit Options */}
           <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
             <h3 className="mb-3 text-center text-sm font-semibold text-white">
-              Credits are not included with your subscription. Use what works best for
-              your team no matter what plan you choose.
+              Credits are not included with your subscription. Use what works best for your team no
+              matter what plan you choose.
             </h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               {/* Kilo Pass */}
