@@ -40,7 +40,6 @@ function makeDbFakes() {
   const dbRef: Record<string, unknown> = {};
 
   // Drizzle insert chain: db.insert(table).values({}).onConflictDoNothing()/onConflictDoUpdate()
-  const insertExecute = vi.fn<() => Promise<unknown>>(async () => undefined);
   const insert = {
     values: vi.fn(() => insert),
     onConflictDoNothing: vi.fn(() => insert),

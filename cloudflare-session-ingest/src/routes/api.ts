@@ -216,9 +216,14 @@ api.post('/session/:sessionId/ingest', zodJsonValidator(ingestSessionSchema), as
     ? (mergedChanges.get('gitBranch') ?? null)
     : undefined;
 
-  const updates: Record<string, string | null> = {};
+  const updates: Partial<
+    Pick<
+      typeof cli_sessions_v2.$inferInsert,
+      'title' | 'created_on_platform' | 'organization_id' | 'git_url' | 'git_branch'
+    >
+  > = {};
   if (title !== undefined) updates.title = title;
-  if (platform !== undefined) updates.created_on_platform = platform;
+  if (platform !== undefined && platform !== null) updates.created_on_platform = platform;
   if (orgId !== undefined) updates.organization_id = orgId;
   if (gitUrl !== undefined) updates.git_url = gitUrl;
   if (gitBranch !== undefined) updates.git_branch = gitBranch;
