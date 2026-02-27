@@ -10,7 +10,7 @@
 import 'server-only';
 import type OpenAI from 'openai';
 import { sendProxiedChatCompletion } from '@/lib/llm-proxy-helpers';
-import type { SecurityFinding } from '@/db/schema';
+import type { SecurityFinding } from '@kilocode/db/schema';
 import type { SecurityFindingTriage } from '../core/types';
 import { addBreadcrumb, captureException, startSpan } from '@sentry/nextjs';
 import { logExceptInTest, sentryLogger } from '@/lib/utils.server';

@@ -26,8 +26,8 @@ import {
   getModelUserByokProviders,
   type BYOKResult,
 } from '@/lib/byok';
-import type { CustomLlm } from '@/db/schema';
-import { custom_llm, type User } from '@/db/schema';
+import type { CustomLlm } from '@kilocode/db/schema';
+import { custom_llm, type User } from '@kilocode/db/schema';
 import type { OpenRouterInferenceProviderId } from '@/lib/providers/openrouter/inference-provider-id';
 import { OpenRouterInferenceProviderIdSchema } from '@/lib/providers/openrouter/inference-provider-id';
 import { applyCoreThinkProviderSettings } from '@/lib/providers/corethink';

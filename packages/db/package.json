@@ -1,0 +1,17 @@
+{
+  "name": "@kilocode/db",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./orb-schema": "./src/orb-generated/schema.ts",
+    "./client": "./src/client.ts"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.8",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.0.0"
+  }
+}

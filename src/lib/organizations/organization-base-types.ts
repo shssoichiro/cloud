@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-// Base types that don't depend on @/db/schema
+// Base types that don't depend on @kilocode/db/schema
 // These are used by schema.ts and re-exported from organization-types.ts
 
 export type OrganizationRole = 'owner' | 'member' | 'billing_manager';

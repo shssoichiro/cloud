@@ -25,7 +25,7 @@ import type {
   SecurityFindingTriage,
   SecurityReviewOwner,
 } from '../core/types';
-import type { User, SecurityFinding } from '@/db/schema';
+import type { User, SecurityFinding } from '@kilocode/db/schema';
 import {
   trackSecurityAgentAnalysisStarted,
   trackSecurityAgentAnalysisCompleted,

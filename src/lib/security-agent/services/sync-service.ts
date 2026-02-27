@@ -7,7 +7,7 @@
 import { captureException } from '@sentry/nextjs';
 import { trackSecurityAgentFullSync } from '../posthog-tracking';
 import { db } from '@/lib/drizzle';
-import { platform_integrations, agent_configs } from '@/db/schema';
+import { platform_integrations, agent_configs } from '@kilocode/db/schema';
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { fetchAllDependabotAlerts } from '../github/dependabot-api';
 import { hasSecurityReviewPermissions } from '../github/permissions';

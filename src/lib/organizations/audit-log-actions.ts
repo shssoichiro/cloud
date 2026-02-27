@@ -1,6 +1,6 @@
 import z from 'zod';
 
-// Base audit log action type that doesn't depend on @/db/schema
+// Base audit log action type that doesn't depend on @kilocode/db/schema
 // This is used by schema.ts and re-exported from organization-audit-logs.ts
 
 export type AuditLogAction = z.infer<typeof AuditLogAction>;
