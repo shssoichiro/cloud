@@ -71,7 +71,7 @@ function getFriendlyFailure(rawError: string): FriendlyFailure {
   ) {
     return {
       summary: 'The auto-fix service encountered an internal error while preparing this change.',
-      suggestedAction: 'Retry in a minute. If it keeps failing, share the trace ID below.',
+      suggestedAction: 'Retry in a minute. If it keeps failing, share the session ID below.',
     };
   }
 
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
       // Failure path: reply on review thread with failure details
       const failureReason = payload.errorMessage?.trim() || 'Unknown error';
       const friendlyFailure = getFriendlyFailure(failureReason);
-      const traceLine = sessionId ? `- Trace ID: \`${sessionId}\`` : '- Trace ID: unavailable';
+      const traceLine = sessionId ? `- Session ID: \`${sessionId}\`` : '- Session ID: unavailable';
       const replyBody = [
         "I couldn't apply this fix automatically this time.",
         '',

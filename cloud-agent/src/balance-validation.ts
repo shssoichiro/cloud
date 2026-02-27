@@ -37,6 +37,7 @@ export async function validateAuthAndBalance(
   const backendUrl = env.KILOCODE_BACKEND_BASE_URL || DEFAULT_BACKEND_URL;
 
   // Call balance endpoint
+  const balanceUrl = `${backendUrl}/api/profile/balance`;
   const headers = new Headers({
     Authorization: `Bearer ${authResult.token}`,
   });
@@ -44,15 +45,27 @@ export async function validateAuthAndBalance(
     headers.set('X-KiloCode-OrganizationId', orgId);
   }
 
+  logger
+    .withFields({
+      backendUrl,
+      hasOrgId: !!orgId,
+    })
+    .debug('Starting balance validation request');
+
   let response: Response;
   try {
-    response = await fetch(`${backendUrl}/api/profile/balance`, {
+    response = await fetch(balanceUrl, {
       method: 'GET',
       headers,
     });
   } catch (error) {
     logger
-      .withFields({ error: error instanceof Error ? error.message : String(error) })
+      .withFields({
+        error: error instanceof Error ? error.message : String(error),
+        backendUrl,
+        balanceUrl,
+        hasOrgId: !!orgId,
+      })
       .error('Failed to fetch balance');
     return { success: false, status: 500, message: 'Failed to verify balance' };
   }
@@ -62,8 +75,16 @@ export async function validateAuthAndBalance(
   }
 
   if (!response.ok) {
+    const responseBody = await response.text();
     logger
-      .withFields({ status: response.status, statusText: response.statusText })
+      .withFields({
+        status: response.status,
+        statusText: response.statusText,
+        backendUrl,
+        balanceUrl,
+        hasOrgId: !!orgId,
+        responseBody: responseBody.slice(0, 500),
+      })
       .error('Balance API returned error');
     return { success: false, status: 500, message: 'Failed to verify balance' };
   }
@@ -71,7 +92,14 @@ export async function validateAuthAndBalance(
   let data: { balance: number; isDepleted: boolean };
   try {
     data = await response.json();
-  } catch {
+  } catch (error) {
+    logger
+      .withFields({
+        error: error instanceof Error ? error.message : String(error),
+        backendUrl,
+        balanceUrl,
+      })
+      .error('Failed to parse balance response JSON');
     return { success: false, status: 500, message: 'Invalid balance response' };
   }
 
