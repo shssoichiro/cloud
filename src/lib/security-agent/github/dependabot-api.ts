@@ -111,6 +111,8 @@ export type FetchAlertsResult =
   | { status: 'alerts_disabled' }
   | { status: 'alerts_unavailable' };
 
+type FetchAlertsSkipStatus = 'repo_not_found' | 'alerts_disabled' | 'alerts_unavailable';
+
 function normalizeErrorMessage(message?: string): string {
   return (message ?? '').toLowerCase();
 }
@@ -131,6 +133,35 @@ function isDependabotAlertsUnavailableMessage(message?: string): boolean {
     normalized.includes('archived repository') ||
     normalized.includes('dependabot alerts are not available')
   );
+}
+
+function isDependabotServiceUnavailableStatus(httpStatus?: number): boolean {
+  return (
+    httpStatus === 451 || (typeof httpStatus === 'number' && httpStatus >= 500 && httpStatus < 600)
+  );
+}
+
+function classifyFetchAlertsError(
+  httpStatus?: number,
+  message?: string
+): FetchAlertsSkipStatus | null {
+  if (httpStatus === 404) {
+    return 'repo_not_found';
+  }
+
+  if (httpStatus === 403 && isDependabotAlertsDisabledMessage(message)) {
+    return 'alerts_disabled';
+  }
+
+  if (isDependabotServiceUnavailableStatus(httpStatus)) {
+    return 'alerts_unavailable';
+  }
+
+  if ((httpStatus === 403 || httpStatus === 422) && isDependabotAlertsUnavailableMessage(message)) {
+    return 'alerts_unavailable';
+  }
+
+  return null;
 }
 
 /**
@@ -187,26 +218,22 @@ export async function fetchAllDependabotAlerts(
     const apiDurationMs = Math.round(performance.now() - apiStartTime);
     const httpStatus = (error as { status?: number }).status;
     const message = (error as { message?: string }).message;
+    const skipStatus = classifyFetchAlertsError(httpStatus, message);
 
-    // Handle case where Dependabot alerts are disabled or unavailable for the repository
-    if (httpStatus === 403 && isDependabotAlertsDisabledMessage(message)) {
+    if (skipStatus === 'alerts_disabled') {
       log(`Dependabot alerts are not available for ${owner}/${repo}, skipping`);
       return { status: 'alerts_disabled' };
     }
 
-    // Handle geo/policy/blocked access cases as non-fatal skips.
-    if (
-      httpStatus === 451 ||
-      ((httpStatus === 403 || httpStatus === 422) && isDependabotAlertsUnavailableMessage(message))
-    ) {
+    if (skipStatus === 'alerts_unavailable') {
       warn(`Dependabot alerts are unavailable for ${owner}/${repo}, skipping`, {
         status: httpStatus,
+        message,
       });
       return { status: 'alerts_unavailable' };
     }
 
-    // Handle case where repository no longer exists or is inaccessible
-    if (httpStatus === 404) {
+    if (skipStatus === 'repo_not_found') {
       warn(
         `Repository ${owner}/${repo} not found (may have been deleted or transferred), skipping`
       );

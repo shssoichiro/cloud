@@ -165,16 +165,20 @@ function parseExtractionResult(
   try {
     const parsed = JSON.parse(args);
 
-    let isExploitable = parsed.isExploitable;
-    if (typeof isExploitable === 'string') {
-      const normalized = isExploitable.trim().toLowerCase();
-      if (normalized === 'true') {
-        warn('Coercing string isExploitable to boolean true');
-        isExploitable = true;
-      } else if (normalized === 'false') {
-        warn('Coercing string isExploitable to boolean false');
-        isExploitable = false;
-      }
+    const normalizedIsExploitable =
+      typeof parsed.isExploitable === 'string'
+        ? parsed.isExploitable.trim().toLowerCase()
+        : parsed.isExploitable;
+
+    const isExploitable =
+      normalizedIsExploitable === 'true'
+        ? true
+        : normalizedIsExploitable === 'false'
+          ? false
+          : normalizedIsExploitable;
+
+    if (typeof parsed.isExploitable === 'string' && typeof isExploitable === 'boolean') {
+      warn(`Coercing string isExploitable to boolean ${String(isExploitable)}`);
     }
 
     if (typeof isExploitable !== 'boolean' && isExploitable !== 'unknown') {
