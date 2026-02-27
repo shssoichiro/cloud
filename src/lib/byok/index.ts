@@ -1,5 +1,5 @@
 import { readDb, type db } from '@/lib/drizzle';
-import { byok_api_keys, modelsByProvider } from '@/db/schema';
+import { byok_api_keys, modelsByProvider } from '@kilocode/db/schema';
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { decryptApiKey } from '@/lib/byok/encryption';
 import { BYOK_ENCRYPTION_KEY } from '@/lib/config.server';

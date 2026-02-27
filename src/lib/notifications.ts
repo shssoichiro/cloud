@@ -1,4 +1,4 @@
-import { type User } from '@/db/schema';
+import { type User } from '@kilocode/db/schema';
 import { getBalanceForUser } from './user.balance';
 import { FIRST_TOPUP_BONUS_AMOUNT, APP_URL } from '@/lib/constants';
 import {

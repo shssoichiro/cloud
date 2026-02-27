@@ -23,7 +23,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { SecurityFinding } from '@/db/schema';
+import type { SecurityFinding } from '@kilocode/db/schema';
 import Link from 'next/link';
 
 type SecurityAgentPageClientProps = {

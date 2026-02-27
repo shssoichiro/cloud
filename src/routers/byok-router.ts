@@ -3,7 +3,7 @@ import { ensureOrganizationAccess } from '@/routers/organizations/utils';
 import { TRPCError } from '@trpc/server';
 import * as z from 'zod';
 import { db, readDb } from '@/lib/drizzle';
-import { byok_api_keys, modelsByProvider } from '@/db/schema';
+import { byok_api_keys, modelsByProvider } from '@kilocode/db/schema';
 import { desc, eq } from 'drizzle-orm';
 import { encryptApiKey } from '@/lib/byok/encryption';
 import { BYOK_ENCRYPTION_KEY } from '@/lib/config.server';

@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { db } from './drizzle';
-import type { MicrodollarUsage, Organization } from '@/db/schema';
-import { microdollar_usage } from '@/db/schema';
+import type { MicrodollarUsage, Organization } from '@kilocode/db/schema';
+import { microdollar_usage } from '@kilocode/db/schema';
 import type { FeatureValue } from '@/lib/feature-detection';
 import { createTimer } from '@/lib/timer';
 import type { OpenAI } from 'openai';

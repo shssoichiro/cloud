@@ -24,7 +24,7 @@ import { fetchSessionSnapshot } from '@/lib/session-ingest-client';
 import { trackSecurityAgentAnalysisCompleted } from '@/lib/security-agent/posthog-tracking';
 import { generateApiToken } from '@/lib/tokens';
 import { db } from '@/lib/drizzle';
-import { kilocode_users } from '@/db/schema';
+import { kilocode_users } from '@kilocode/db/schema';
 import { eq } from 'drizzle-orm';
 import { logExceptInTest, sentryLogger } from '@/lib/utils.server';
 import type { SecurityFindingAnalysis, SecurityReviewOwner } from '@/lib/security-agent/core/types';

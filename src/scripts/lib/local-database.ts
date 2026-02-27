@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import * as schema from '@/db/schema';
+import * as schema from '@kilocode/db/schema';
 
 export const localPool = new Pool({
   connectionString: 'postgres://postgres:postgres@localhost:5432/postgres',

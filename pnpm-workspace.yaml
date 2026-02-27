@@ -1,4 +1,5 @@
 packages:
+  - 'packages/db'
   - 'storybook'
   - 'cloudflare-deploy-infra/builder'
   - 'cloudflare-deploy-infra/dispatcher'

@@ -22,7 +22,7 @@ import {
   getModel,
   getAccessTokenFromInstallation,
 } from '@/lib/integrations/slack-service';
-import type { PlatformIntegration } from '@/db/schema';
+import type { PlatformIntegration } from '@kilocode/db/schema';
 import { runBot } from '@/lib/bots/core/run-bot';
 import {
   formatGitHubRepositoriesForPrompt,

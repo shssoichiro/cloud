@@ -3,7 +3,7 @@ import type * as securityFindingsModule from '@/lib/security-agent/db/security-f
 import type * as securityAnalysisModule from '@/lib/security-agent/db/security-analysis';
 import type * as triageModule from './triage-service';
 import type * as tokensModule from '@/lib/tokens';
-import type { User } from '@/db/schema';
+import type { User } from '@kilocode/db/schema';
 import type { SessionSnapshot } from '@/lib/session-ingest-client';
 import type { startSecurityAnalysis as startSecurityAnalysisType } from './analysis-service';
 import type { extractLastAssistantMessage as extractLastAssistantMessageType } from './analysis-service';
