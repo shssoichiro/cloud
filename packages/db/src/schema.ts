@@ -626,8 +626,8 @@ export const microdollar_usage_metadata = pgTable(
     machine_id: text(),
     feature_id: integer(),
     session_id: text(),
-    mode: text(),
-    auto_model: text(),
+    mode_id: integer().references(() => mode.mode_id),
+    auto_model_id: integer().references(() => auto_model.auto_model_id),
   },
   table => [index('idx_microdollar_usage_metadata_created_at').on(table.created_at)]
 );
@@ -739,6 +739,24 @@ export const feature = pgTable(
   table => [uniqueIndex('UQ_feature').on(table.feature)]
 );
 
+export const mode = pgTable(
+  'mode',
+  {
+    mode_id: serial().notNull().primaryKey(),
+    mode: text().notNull(),
+  },
+  table => [uniqueIndex('UQ_mode').on(table.mode)]
+);
+
+export const auto_model = pgTable(
+  'auto_model',
+  {
+    auto_model_id: serial().notNull().primaryKey(),
+    auto_model: text().notNull(),
+  },
+  table => [uniqueIndex('UQ_auto_model').on(table.auto_model)]
+);
+
 export const microdollar_usage_view = pgView('microdollar_usage_view', {
   id: uuid().notNull(),
   kilo_user_id: text().notNull(),
@@ -834,8 +852,8 @@ export const microdollar_usage_view = pgView('microdollar_usage_view', {
     meta.machine_id,
     feat.feature,
     meta.session_id,
-    meta.mode,
-    meta.auto_model
+    md.mode,
+    am.auto_model
   FROM ${microdollar_usage} mu
   LEFT JOIN ${microdollar_usage_metadata} meta ON mu.id = meta.id
   LEFT JOIN ${http_ip} ip ON meta.http_ip_id = ip.http_ip_id
@@ -847,6 +865,8 @@ export const microdollar_usage_view = pgView('microdollar_usage_view', {
   LEFT JOIN ${finish_reason} frfr ON meta.finish_reason_id = frfr.finish_reason_id
   LEFT JOIN ${editor_name} edit ON meta.editor_name_id = edit.editor_name_id
   LEFT JOIN ${feature} feat ON meta.feature_id = feat.feature_id
+  LEFT JOIN ${mode} md ON meta.mode_id = md.mode_id
+  LEFT JOIN ${auto_model} am ON meta.auto_model_id = am.auto_model_id
 `);
 
 export type MicrodollarUsageView = typeof microdollar_usage_view.$inferSelect;

@@ -533,6 +533,8 @@ async function insertUsageAndMetadataWithBalanceUpdate(
           , ${createUpsertCTE(sql`finish_reason`, metadataFields.finish_reason)}
           , ${createUpsertCTE(sql`editor_name`, metadataFields.editor_name)}
           , ${createUpsertCTE(sql`feature`, metadataFields.feature)}
+          , ${createUpsertCTE(sql`mode`, metadataFields.mode)}
+          , ${createUpsertCTE(sql`auto_model`, metadataFields.auto_model)}
           , metadata_ins AS (
             INSERT INTO microdollar_usage_metadata (
               id,
@@ -556,8 +558,6 @@ async function insertUsageAndMetadataWithBalanceUpdate(
               has_tools,
               machine_id,
               session_id,
-              mode,
-              auto_model,
 
               http_user_agent_id,
               http_ip_id,
@@ -567,7 +567,9 @@ async function insertUsageAndMetadataWithBalanceUpdate(
               system_prompt_prefix_id,
               finish_reason_id,
               editor_name_id,
-              feature_id
+              feature_id,
+              mode_id,
+              auto_model_id
             )
             SELECT
               ${metadataFields.id},
@@ -591,8 +593,6 @@ async function insertUsageAndMetadataWithBalanceUpdate(
               ${metadataFields.has_tools},
               ${metadataFields.machine_id},
               ${metadataFields.session_id},
-              ${metadataFields.mode},
-              ${metadataFields.auto_model},
 
               (SELECT http_user_agent_id FROM http_user_agent_cte),
               (SELECT http_ip_id FROM http_ip_cte),
@@ -602,7 +602,9 @@ async function insertUsageAndMetadataWithBalanceUpdate(
               (SELECT system_prompt_prefix_id FROM system_prompt_prefix_cte),
               (SELECT finish_reason_id FROM finish_reason_cte),
               (SELECT editor_name_id FROM editor_name_cte),
-              (SELECT feature_id FROM feature_cte)
+              (SELECT feature_id FROM feature_cte),
+              (SELECT mode_id FROM mode_cte),
+              (SELECT auto_model_id FROM auto_model_cte)
           )
           UPDATE kilocode_users
           SET microdollars_used = microdollars_used + ${coreUsageFields.cost}
