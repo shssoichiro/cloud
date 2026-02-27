@@ -7,7 +7,7 @@
  * Process:
  * 1. Receive ticket ID/session ID and outcome
  * 2. Fetch ticket from DB to get review comment context
- * 3. For success: add +1 reaction on the original review comment
+ * 3. For success: add +1 reaction and post a short success reply on the original review thread
  * 4. For failure: post a reply on the review thread with the failure reason
  * 5. Update ticket status
  *
@@ -24,6 +24,7 @@ import { INTERNAL_API_SECRET } from '@/lib/config.server';
 import {
   replyToReviewComment,
   addReactionToPRReviewComment,
+  getPRHeadCommit,
 } from '@/lib/integrations/platforms/github/adapter';
 import { getIntegrationById } from '@/lib/integrations/db/platform-integrations';
 
@@ -38,6 +39,30 @@ type FriendlyFailure = {
   summary: string;
   suggestedAction: string;
 };
+
+function getFixTarget(filePath: string | null, lineNumber: number | null): string {
+  if (filePath && lineNumber) {
+    return `\`${filePath}:${lineNumber}\``;
+  }
+
+  if (filePath) {
+    return `\`${filePath}\``;
+  }
+
+  return 'the requested code path';
+}
+
+function buildSuccessReplyBody(params: {
+  fixTarget: string;
+  commitSha?: string;
+  commitUrl?: string;
+}): string {
+  if (params.commitSha && params.commitUrl) {
+    return `Implemented the requested fix around ${params.fixTarget} and pushed [\`${params.commitSha}\`](${params.commitUrl}).`;
+  }
+
+  return `Implemented the requested fix around ${params.fixTarget} and pushed it to this PR branch.`;
+}
 
 function getFriendlyFailure(rawError: string): FriendlyFailure {
   const normalized = rawError.toLowerCase();
@@ -150,7 +175,7 @@ export async function POST(req: NextRequest) {
 
     try {
       if (outcome === 'success') {
-        // Success path: acknowledge original review comment with +1
+        // Success path: acknowledge original review comment with +1 and post success reply
         try {
           await addReactionToPRReviewComment(
             installationId,
@@ -172,6 +197,53 @@ export async function POST(req: NextRequest) {
           );
         }
 
+        const fixTarget = getFixTarget(ticket.file_path, ticket.line_number);
+
+        let successReplyBody = buildSuccessReplyBody({ fixTarget });
+
+        try {
+          const headCommitSha = await getPRHeadCommit(
+            installationId,
+            repoOwner,
+            repoName,
+            ticket.issue_number
+          );
+          const shortSha = headCommitSha.slice(0, 8);
+          const commitUrl = `https://github.com/${repoOwner}/${repoName}/commit/${headCommitSha}`;
+          successReplyBody = buildSuccessReplyBody({
+            fixTarget,
+            commitSha: shortSha,
+            commitUrl,
+          });
+        } catch (commitLookupError) {
+          errorExceptInTest(
+            '[auto-fix-comment-reply] Failed to fetch PR head commit for success reply (non-fatal):',
+            commitLookupError
+          );
+        }
+
+        try {
+          await replyToReviewComment(
+            installationId,
+            repoOwner,
+            repoName,
+            ticket.issue_number,
+            ticket.review_comment_id,
+            successReplyBody
+          );
+
+          logExceptInTest('[auto-fix-comment-reply] Posted success reply on review thread', {
+            ticketId,
+            prNumber: ticket.issue_number,
+            commentId: ticket.review_comment_id,
+          });
+        } catch (successReplyError) {
+          errorExceptInTest(
+            '[auto-fix-comment-reply] Failed to post success reply (non-fatal):',
+            successReplyError
+          );
+        }
+
         // Update ticket status
         await updateFixTicketStatus(ticketId, 'completed', {
           sessionId,
@@ -179,7 +251,7 @@ export async function POST(req: NextRequest) {
           completedAt: new Date(),
         });
 
-        return NextResponse.json({ success: true, action: 'reaction' });
+        return NextResponse.json({ success: true, action: 'reaction_and_reply' });
       }
 
       // Failure path: reply on review thread with failure details

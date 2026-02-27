@@ -418,7 +418,7 @@ export class AutoFixOrchestrator extends DurableObject<Env> {
 
   /**
    * Notify on the original review comment after review-comment auto-fix completes.
-   * - success: add +1 reaction
+   * - success: add +1 reaction and post a success reply on the same thread
    * - failed: post a reply on the thread with failure details
    */
   private async notifyReviewCommentResult(
