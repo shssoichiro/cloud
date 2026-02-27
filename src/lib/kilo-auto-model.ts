@@ -8,6 +8,7 @@ import {
   CLAUDE_SONNET_CURRENT_MODEL_ID,
 } from '@/lib/providers/anthropic';
 import { minimax_m25_free_model } from '@/lib/providers/minimax';
+import type { OpenRouterReasoningConfig } from '@/lib/providers/openrouter/types';
 
 type AutoModel = {
   id: string;
@@ -78,7 +79,7 @@ export function isKiloAutoModel(model: string) {
 
 type ResolvedAutoModel = {
   model: string;
-  reasoning?: { enabled: boolean };
+  reasoning?: OpenRouterReasoningConfig;
   verbosity?: Verbosity;
 };
 
