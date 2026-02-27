@@ -28,6 +28,16 @@ export const MISTRAL_API_KEY = getEnvVariable('MISTRAL_API_KEY');
 export const OPENAI_API_KEY = getEnvVariable('OPENAI_API_KEY');
 export const INTERNAL_API_SECRET = getEnvVariable('INTERNAL_API_SECRET');
 export const CODE_REVIEW_WORKER_AUTH_TOKEN = getEnvVariable('CODE_REVIEW_WORKER_AUTH_TOKEN');
+const MANAGED_INDEXING_ENABLED_ENV = getEnvVariable('MANAGED_INDEXING_ENABLED')
+  .trim()
+  .toLowerCase();
+
+export const MANAGED_INDEXING_ENABLED =
+  MANAGED_INDEXING_ENABLED_ENV === 'true'
+    ? true
+    : MANAGED_INDEXING_ENABLED_ENV === 'false'
+      ? false
+      : process.env.NODE_ENV === 'production';
 
 if (!NEXTAUTH_SECRET) throw new Error('NEXTAUTH_SECRET is required JWT signing');
 if (!TURNSTILE_SECRET_KEY) throw new Error('NEXTAUTH_SECRET is required JWT signing');

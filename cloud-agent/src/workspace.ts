@@ -720,7 +720,7 @@ async function fetchPullRefAndCheckout(
  *
  * Upstream branches (isUpstreamBranch=true):
  * - MUST exist remotely (error if not found)
- * - Fetch + checkout (creates tracking branch if needed) *
+ * - Fetch + checkout existing branch semantics (no explicit new-branch creation)
  * Session branches (isUpstreamBranch=false):
  * - Try remote first, create fresh if not found
  * - Checkout + lenient pull to sync with remote
@@ -765,8 +765,16 @@ export async function manageBranch(
     // Case 2: Only exists locally - just checkout
     await checkoutExistingBranch(session, workspacePath, branchName);
   } else if (!existsLocally && existsRemotely) {
-    // Case 3: Only exists remotely - create tracking branch
-    await createTrackingBranch(session, workspacePath, branchName);
+    // Case 3: Only exists remotely
+    if (isUpstreamBranch) {
+      // For upstream branches (review comment flows), use plain checkout semantics.
+      // This avoids explicit branch creation commands while still checking out
+      // the remote branch after fetch.
+      await checkoutExistingBranch(session, workspacePath, branchName);
+    } else {
+      // Session branches still use explicit tracking branch creation.
+      await createTrackingBranch(session, workspacePath, branchName);
+    }
   } else {
     // Case 4: Doesn't exist anywhere
     if (isUpstreamBranch) {

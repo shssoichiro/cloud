@@ -126,6 +126,20 @@ describe('manageBranch', () => {
         "git checkout -b 'feature/remote' 'origin/feature/remote'"
       );
     });
+
+    it('should checkout upstream branch using existing branch semantics', async () => {
+      mockExec
+        .mockResolvedValueOnce({ exitCode: 0 }) // git fetch
+        .mockResolvedValueOnce({ exitCode: 1 }) // local check (does not exist)
+        .mockResolvedValueOnce({ exitCode: 0 }) // remote check (exists)
+        .mockResolvedValueOnce({ exitCode: 0 }); // checkout
+
+      await manageBranch(fakeSession, '/workspace', 'improve-setup', true);
+
+      const execCalls = mockExec.mock.calls;
+      expect(execCalls[3]?.[0]).toContain("git checkout 'improve-setup'");
+      expect(execCalls[3]?.[0]).not.toContain('checkout -b');
+    });
   });
 
   describe('when branch does not exist anywhere', () => {

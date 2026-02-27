@@ -125,6 +125,7 @@ export async function* streamKilocodeExecution(
 ): AsyncGenerator<StreamEvent> {
   const cliTimeoutSeconds = Number(env?.CLI_TIMEOUT_SECONDS ?? DEFAULT_CLI_TIMEOUT_SECONDS);
   const streamTimeoutSeconds = cliTimeoutSeconds + STREAM_TIMEOUT_BUFFER_SECONDS;
+  const backendBaseUrl = env?.KILOCODE_BACKEND_BASE_URL ?? '(default)';
   const tmpFile = `/tmp/kilocode-prompt-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`;
   await session.writeFile(tmpFile, prompt);
 
@@ -167,9 +168,21 @@ export async function* streamKilocodeExecution(
   const stream = await session.execStream(command);
   const { sessionId, skipInterruptPolling } = options ?? {};
 
+  logger.info('Started kilocode execution stream', {
+    sessionId: sessionId ?? sessionCtx.sessionId,
+    mode,
+    cliTimeoutSeconds,
+    streamTimeoutSeconds,
+    backendBaseUrl,
+    workspacePath: sessionCtx.workspacePath,
+  });
+
   let kiloSessionIdCaptured = false; // Track if we've already captured a kiloSessionId
   let abnormalTermination = false;
   let terminationReason = '';
+  let lastEventAt = Date.now();
+  let lastIdleWarningMinute = 0;
+  let idleWarningInterval: ReturnType<typeof setInterval> | null = null;
 
   // Set up server-side timeout as a safety net
   let streamTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -215,6 +228,21 @@ export async function* streamKilocodeExecution(
     });
   }
 
+  idleWarningInterval = setInterval(() => {
+    const idleMs = Date.now() - lastEventAt;
+    const idleMinutes = Math.floor(idleMs / 60_000);
+
+    if (idleMinutes >= 1 && idleMinutes > lastIdleWarningMinute) {
+      lastIdleWarningMinute = idleMinutes;
+      logger.warn('Kilocode stream idle without events', {
+        sessionId: sessionId ?? sessionCtx.sessionId,
+        idleSeconds: Math.floor(idleMs / 1000),
+        streamTimeoutSeconds,
+        backendBaseUrl,
+      });
+    }
+  }, 30_000);
+
   try {
     // Create async iterator from parseSSEStream
     const streamIterator = parseSSEStream<ExecEvent>(stream)[Symbol.asyncIterator]();
@@ -235,6 +263,8 @@ export async function* streamKilocodeExecution(
       const result = await Promise.race(racers);
 
       if (result.done) break;
+
+      lastEventAt = Date.now();
 
       const rawEvent = result.value;
       if (typeof rawEvent !== 'object' || !rawEvent) continue;
@@ -482,6 +512,10 @@ export async function* streamKilocodeExecution(
 
     if (interruptInterval) {
       clearInterval(interruptInterval);
+    }
+
+    if (idleWarningInterval) {
+      clearInterval(idleWarningInterval);
     }
 
     // Kill running kilocode processes on abnormal termination

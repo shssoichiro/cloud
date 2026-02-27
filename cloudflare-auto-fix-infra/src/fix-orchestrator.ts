@@ -154,6 +154,13 @@ export class AutoFixOrchestrator extends DurableObject<Env> {
 
     // Determine if this is a review comment trigger
     const isReviewCommentFix = this.state.triggerSource === 'review_comment';
+    const reviewCommentUpstreamBranch = this.state.sessionInput.upstreamBranch?.trim();
+
+    if (isReviewCommentFix && !reviewCommentUpstreamBranch) {
+      throw new Error(
+        'Review comment fixes require upstreamBranch (PR head branch). Refusing session/{id} fallback.'
+      );
+    }
 
     let prompt: string;
 
@@ -213,9 +220,7 @@ export class AutoFixOrchestrator extends DurableObject<Env> {
       githubToken,
       autoCommit: true,
       createdOnPlatform: 'autofix',
-      ...(isReviewCommentFix && this.state.sessionInput.upstreamBranch
-        ? { upstreamBranch: this.state.sessionInput.upstreamBranch }
-        : {}),
+      ...(isReviewCommentFix ? { upstreamBranch: reviewCommentUpstreamBranch } : {}),
       callbackUrl,
       callbackHeaders: {
         'X-Internal-Secret': this.env.INTERNAL_API_SECRET,
@@ -247,6 +252,8 @@ export class AutoFixOrchestrator extends DurableObject<Env> {
    */
   private async processCloudAgentStream(response: Response): Promise<void> {
     let sessionId: string | undefined = undefined;
+    let fatalStreamError: Error | undefined = undefined;
+    let sawComplete = false;
 
     // Use SSEStreamProcessor to handle the stream
     await this.sseProcessor.processStream(response, {
@@ -263,16 +270,21 @@ export class AutoFixOrchestrator extends DurableObject<Env> {
         }
       },
       onComplete: () => {
+        sawComplete = true;
         console.log('[AutoFixOrchestrator] Cloud Agent stream completed', {
           ticketId: this.state.ticketId,
           sessionId,
         });
       },
       onError: (error: Error) => {
-        // Error events are informational warnings, not fatal errors
-        console.warn('[AutoFixOrchestrator] Cloud Agent warning event', {
+        if (!fatalStreamError) {
+          fatalStreamError = error;
+        }
+
+        console.warn('[AutoFixOrchestrator] Cloud Agent error event', {
           ticketId: this.state.ticketId,
           error: error.message,
+          sessionId,
         });
       },
     });
@@ -280,7 +292,13 @@ export class AutoFixOrchestrator extends DurableObject<Env> {
     console.log('[AutoFixOrchestrator] Cloud Agent stream ended', {
       ticketId: this.state.ticketId,
       sessionId,
+      hasFatalError: !!fatalStreamError,
+      sawComplete,
     });
+
+    if (fatalStreamError && !sawComplete) {
+      throw fatalStreamError;
+    }
 
     // Check if sessionId was captured - if not, no changes were made
     if (!sessionId) {

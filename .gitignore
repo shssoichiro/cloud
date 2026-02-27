@@ -66,6 +66,7 @@ TMP_CI_commit_msg.txt
 
 # Nix / Direnv
 .direnv
+.envrc.local
 
 # Playwright
 /test-results/
