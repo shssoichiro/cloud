@@ -179,7 +179,6 @@ export class AutoFixOrchestrator extends DurableObject<Env> {
           filePath: this.state.sessionInput.filePath || '',
           lineNumber: this.state.sessionInput.lineNumber,
           diffHunk: this.state.sessionInput.diffHunk || '',
-          prHeadSha: this.state.sessionInput.prHeadSha,
         },
         {
           custom_instructions: config.custom_instructions,

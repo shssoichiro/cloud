@@ -47,7 +47,6 @@ export interface SessionInput {
   filePath?: string;
   lineNumber?: number;
   diffHunk?: string;
-  prHeadSha?: string;
 }
 
 export interface FixEvent {

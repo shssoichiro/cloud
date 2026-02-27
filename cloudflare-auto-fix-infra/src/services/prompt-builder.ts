@@ -231,7 +231,6 @@ type ReviewCommentInfo = {
   filePath: string;
   lineNumber?: number;
   diffHunk: string;
-  prHeadSha?: string;
 };
 
 type ReviewCommentConfig = {
@@ -254,7 +253,6 @@ type ReviewCommentPromptTemplate = {
  */
 const buildReviewCommentContext = (info: ReviewCommentInfo): string => {
   const lineInfo = info.lineNumber ? `**Line:** ${info.lineNumber}` : '**Line:** (not specified)';
-  const shaInfo = info.prHeadSha ? `\n**Head Commit:** ${info.prHeadSha.substring(0, 8)}` : '';
   const reviewCommentBody = sanitizeReviewContextInput(info.reviewCommentBody);
   const diffHunk = sanitizeReviewContextInput(info.diffHunk);
 
@@ -265,7 +263,7 @@ const buildReviewCommentContext = (info: ReviewCommentInfo): string => {
 **Repository:** ${info.repoFullName}
 **Pull Request:** #${info.prNumber} - ${info.prTitle}
 **File:** \`${info.filePath}\`
-${lineInfo}${shaInfo}
+${lineInfo}
 
 ## Review Comment
 

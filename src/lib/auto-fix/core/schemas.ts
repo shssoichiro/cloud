@@ -386,7 +386,6 @@ export const DispatchFixRequestSchema = z.object({
     filePath: z.string().optional(),
     lineNumber: z.number().int().positive().optional(),
     diffHunk: z.string().optional(),
-    prHeadSha: z.string().optional(),
   }),
 });
 
