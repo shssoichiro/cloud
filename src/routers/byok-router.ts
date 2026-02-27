@@ -377,7 +377,9 @@ export const byokRouter = createTRPCRouter({
         apiKey: PROVIDERS.VERCEL_AI_GATEWAY.apiKey,
       });
 
-      const [key, list] = getVercelInferenceProviderConfigForUserByok(decryptByokRow(existingKey));
+      const [provider, byokList] = getVercelInferenceProviderConfigForUserByok(
+        decryptByokRow(existingKey)
+      );
 
       try {
         const model = gateway(
@@ -390,8 +392,8 @@ export const byokRouter = createTRPCRouter({
           maxOutputTokens: 1000,
           providerOptions: {
             gateway: {
-              only: [key],
-              byok: { [key]: list },
+              only: [provider],
+              byok: { [provider]: byokList },
             } satisfies GatewayProviderOptions,
           },
         });
@@ -409,12 +411,12 @@ export const byokRouter = createTRPCRouter({
         if (APICallError.isInstance(e)) {
           return {
             success: false,
-            message: `API key (${key}) test failed: ${e.statusCode} ${e.message}`,
+            message: `API key (${provider}) test failed: ${e.statusCode} ${e.message}`,
           };
         }
         return {
           success: false,
-          message: `API key (${key}) test failed with unknown error`,
+          message: `API key (${provider}) test failed with unknown error`,
         };
       }
     }),
