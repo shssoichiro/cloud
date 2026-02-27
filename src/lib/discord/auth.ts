@@ -11,23 +11,26 @@ import type { Owner } from '@/lib/integrations/core/types';
  */
 export async function getDiscordBotAuthTokenForOwner(
   owner: Owner
-): Promise<{ authToken: string; error?: undefined } | { authToken?: undefined; error: string }> {
+): Promise<{ authToken: string; userId: string } | { error: string }> {
   let authToken: string | undefined;
+  let userId: string | undefined;
 
   if (owner.type === 'org') {
     // For organizations, use a dedicated bot user
     const user = await ensureBotUserForOrg(owner.id, 'discord-bot');
     authToken = generateApiToken(user, { botId: 'discord-bot', internalApiUse: true });
+    userId = user.id;
   } else {
     const user = await findUserById(owner.id);
     if (user) {
       authToken = generateApiToken(user, { internalApiUse: true });
+      userId = user.id;
     }
   }
 
-  if (!authToken) {
+  if (!authToken || !userId) {
     return { error: `Discord bot user not found for ID: ${owner.id} and type: ${owner.type}` };
   }
 
-  return { authToken };
+  return { authToken, userId };
 }

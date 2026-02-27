@@ -1,8 +1,9 @@
 import 'server-only';
 import {
-  createCloudAgentClient,
-  type InitiateSessionInput,
-} from '@/lib/cloud-agent/cloud-agent-client';
+  createCloudAgentNextClient,
+  type PrepareSessionInput,
+} from '@/lib/cloud-agent-next/cloud-agent-client';
+import { runSessionToCompletion } from '@/lib/cloud-agent-next/run-session';
 import {
   getGitHubTokenForUser,
   getGitHubTokenForOrganization,
@@ -157,12 +158,14 @@ async function spawnCloudAgentSession(
   owner: Owner,
   model: string,
   authToken: string,
+  ticketUserId: string,
   requesterInfo?: DiscordRequesterInfo
 ): Promise<{ response: string; sessionId?: string }> {
   console.log(
     '[DiscordBot] spawnCloudAgentSession called with args:',
     JSON.stringify(args, null, 2)
   );
+  console.log('[DiscordBot] Owner:', JSON.stringify(owner, null, 2));
 
   let githubToken: string | undefined;
   let kilocodeOrganizationId: string | undefined;
@@ -174,84 +177,33 @@ async function spawnCloudAgentSession(
     githubToken = await getGitHubTokenForUser(owner.id);
   }
 
-  const cloudAgentClient = createCloudAgentClient(authToken, { skipBalanceCheck: true });
-
   const promptWithSignature = requesterInfo
     ? args.prompt + buildPrSignature(requesterInfo)
     : args.prompt;
 
-  const input: InitiateSessionInput = {
-    githubRepo: args.githubRepo,
-    prompt: promptWithSignature,
-    mode: (args.mode as InitiateSessionInput['mode']) || 'code',
-    model,
-    githubToken,
-    kilocodeOrganizationId,
-    createdOnPlatform: 'discord',
-  };
+  const result = await runSessionToCompletion({
+    client: createCloudAgentNextClient(authToken, { skipBalanceCheck: true }),
+    prepareInput: {
+      githubRepo: args.githubRepo,
+      prompt: promptWithSignature,
+      mode: (args.mode as PrepareSessionInput['mode']) || 'code',
+      model,
+      githubToken,
+      kilocodeOrganizationId,
+      createdOnPlatform: 'discord',
+    },
+    initiateInput: {
+      githubToken,
+      kilocodeOrganizationId,
+    },
+    ticketPayload: {
+      userId: ticketUserId,
+      organizationId: owner.type === 'org' ? owner.id : undefined,
+    },
+    logPrefix: '[DiscordBot]',
+  });
 
-  const statusMessages: string[] = [];
-  let completionResult: string | undefined;
-  let sessionId: string | undefined;
-  let hasError = false;
-
-  try {
-    for await (const event of cloudAgentClient.initiateSessionStream(input)) {
-      if (event.sessionId) sessionId = event.sessionId;
-
-      switch (event.streamEventType) {
-        case 'complete':
-          statusMessages.push(
-            `Session completed in ${event.metadata.executionTimeMs}ms with exit code ${event.exitCode}`
-          );
-          break;
-        case 'error':
-          statusMessages.push(`Error: ${event.error}`);
-          hasError = true;
-          break;
-        case 'kilocode': {
-          const payload = event.payload;
-          if (payload.say === 'completion_result' && typeof payload.content === 'string') {
-            completionResult = payload.content;
-          }
-          break;
-        }
-        case 'output':
-          if (event.source === 'stderr') {
-            statusMessages.push(`[stderr] ${event.content}`);
-            hasError = true;
-          }
-          break;
-        case 'interrupted':
-          statusMessages.push(`Session interrupted: ${event.reason}`);
-          hasError = true;
-          break;
-      }
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('[DiscordBot] Error during stream:', errorMessage);
-    return { response: `Error spawning Cloud Agent: ${errorMessage}`, sessionId };
-  }
-
-  if (hasError) {
-    return {
-      response: `Cloud Agent session ${sessionId || 'unknown'} encountered errors:\n${statusMessages.join('\n')}`,
-      sessionId,
-    };
-  }
-
-  if (completionResult) {
-    return {
-      response: `Cloud Agent session ${sessionId || 'unknown'} completed:\n\n${completionResult}`,
-      sessionId,
-    };
-  }
-
-  return {
-    response: `Cloud Agent session ${sessionId || 'unknown'} completed successfully.\n\nStatus:\n${statusMessages.slice(-5).join('\n')}`,
-    sessionId,
-  };
+  return { response: result.response, sessionId: result.sessionId };
 }
 
 /**
@@ -295,7 +247,7 @@ export async function processDiscordBotMessage(
   const selectedModel = 'anthropic/claude-sonnet-4';
 
   const authResult = await getDiscordBotAuthTokenForOwner(owner);
-  if (!authResult.authToken) {
+  if ('error' in authResult) {
     return {
       response: `Error: ${authResult.error}`,
       modelUsed: '',
@@ -305,6 +257,7 @@ export async function processDiscordBotMessage(
     };
   }
   const authToken = authResult.authToken;
+  const authUserId = authResult.userId;
 
   // Gather context in parallel
   let discordContextForPrompt = '';
@@ -363,6 +316,7 @@ export async function processDiscordBotMessage(
         owner,
         selectedModel,
         authToken,
+        authUserId,
         requesterInfo
       );
 
