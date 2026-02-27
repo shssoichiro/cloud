@@ -8,6 +8,7 @@ import {
   agent_environment_profile_commands,
 } from '@kilocode/db/schema';
 import { eq, and, isNull, asc } from 'drizzle-orm';
+import { logger } from '../util/logger.js';
 
 export { getWorkerDb, type WorkerDb };
 
@@ -225,7 +226,7 @@ export async function resolveProfile(
         encryptedSecrets[variable.key] = parsed;
       } catch {
         // Skip malformed secrets
-        console.error('Failed to parse encrypted secret', {
+        logger.error('Failed to parse encrypted secret', {
           profileId,
           key: variable.key,
         });
