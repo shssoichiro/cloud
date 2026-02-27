@@ -23,9 +23,10 @@ vi.mock('./session-service.js', () => ({
 
 vi.mock('./logger.js', () => ({
   logger: {
-    withFields: () => ({ error: vi.fn(), warn: vi.fn() }),
+    withFields: () => ({ error: vi.fn(), warn: vi.fn(), debug: vi.fn() }),
     error: vi.fn(),
     warn: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
@@ -199,6 +200,8 @@ describe('balance-validation', () => {
         fetchMock.mockResolvedValue({
           ok: false,
           status: 500,
+          statusText: 'Internal Server Error',
+          text: async () => 'server error',
         } as Response);
 
         const result = await validateAuthAndBalance('Bearer valid-token', undefined, mockEnv);
