@@ -4,6 +4,12 @@ settings:
   autoInstallPeers: false
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    zod:
+      specifier: ^4.3.4
+      version: 4.3.6
+
 overrides:
   mdast-util-to-hast: ^13.2.1
   storybook: ^9.1.17
@@ -954,7 +960,7 @@ importers:
         specifier: ^8.17.2
         version: 8.17.2
       zod:
-        specifier: ^4.3.6
+        specifier: 'catalog:'
         version: 4.3.6
     devDependencies:
       '@cloudflare/workers-types':

@@ -223,6 +223,7 @@ api.post('/session/:sessionId/ingest', zodJsonValidator(ingestSessionSchema), as
     >
   > = {};
   if (title !== undefined) updates.title = title;
+  // created_on_platform is NOT NULL in the schema, so skip if null to avoid a DB error.
   if (platform !== undefined && platform !== null) updates.created_on_platform = platform;
   if (orgId !== undefined) updates.organization_id = orgId;
   if (gitUrl !== undefined) updates.git_url = gitUrl;
