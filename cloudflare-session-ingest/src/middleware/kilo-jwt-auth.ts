@@ -1,10 +1,10 @@
 import { createMiddleware } from 'hono/factory';
 import jwt from 'jsonwebtoken';
 import { eq } from 'drizzle-orm';
+import { getWorkerDb } from '@kilocode/db/client';
 import { kilocode_users } from '@kilocode/db/schema';
 
 import type { Env } from '../env';
-import { getDb } from '../db/drizzle';
 
 type TokenPayloadV3 = {
   kiloUserId: string;
@@ -39,7 +39,7 @@ async function userExists(env: Env, userId: string): Promise<boolean> {
     return false;
   }
 
-  const db = getDb(env.HYPERDRIVE);
+  const db = getWorkerDb(env.HYPERDRIVE.connectionString);
   const rows = await db
     .select({ id: kilocode_users.id })
     .from(kilocode_users)

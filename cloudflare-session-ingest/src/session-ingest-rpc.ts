@@ -1,10 +1,10 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
+import { getWorkerDb } from '@kilocode/db/client';
 import { cli_sessions_v2 } from '@kilocode/db/schema';
 
 import type { Env } from './env';
-import { getDb } from './db/drizzle';
 import { getSessionIngestDO } from './dos/SessionIngestDO';
 import { getSessionAccessCacheDO } from './dos/SessionAccessCacheDO';
 import { withDORetry } from './util/do-retry';
@@ -55,7 +55,7 @@ export class SessionIngestRPC extends WorkerEntrypoint<Env> {
       })
       .parse(params);
 
-    const db = getDb(this.env.HYPERDRIVE);
+    const db = getWorkerDb(this.env.HYPERDRIVE.connectionString);
 
     await db
       .insert(cli_sessions_v2)
@@ -111,7 +111,7 @@ export class SessionIngestRPC extends WorkerEntrypoint<Env> {
       })
       .parse(params);
 
-    const db = getDb(this.env.HYPERDRIVE);
+    const db = getWorkerDb(this.env.HYPERDRIVE.connectionString);
 
     await db
       .delete(cli_sessions_v2)

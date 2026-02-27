@@ -2,10 +2,9 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { api } from './api';
-import type { HyperdriveBinding } from '../db/drizzle';
 
-vi.mock('../db/drizzle', () => ({
-  getDb: vi.fn(),
+vi.mock('@kilocode/db/client', () => ({
+  getWorkerDb: vi.fn(),
 }));
 
 vi.mock('../dos/SessionIngestDO', () => ({
@@ -16,9 +15,13 @@ vi.mock('../dos/SessionAccessCacheDO', () => ({
   getSessionAccessCacheDO: vi.fn(),
 }));
 
-import { getDb } from '../db/drizzle';
+import { getWorkerDb } from '@kilocode/db/client';
 import { getSessionIngestDO } from '../dos/SessionIngestDO';
 import { getSessionAccessCacheDO } from '../dos/SessionAccessCacheDO';
+
+const getDb = getWorkerDb;
+
+type HyperdriveBinding = { connectionString: string };
 
 type TestBindings = {
   HYPERDRIVE: HyperdriveBinding;
@@ -35,7 +38,7 @@ function makeApiApp() {
 }
 
 function makeDbFakes() {
-  type Db = ReturnType<typeof getDb>;
+  type Db = ReturnType<typeof getWorkerDb>;
 
   const dbRef: Record<string, unknown> = {};
 
@@ -123,7 +126,7 @@ describe('api routes', () => {
 
   it('returns 400 for invalid sessionId on ingest/delete/share/unshare', async () => {
     const { db } = makeDbFakes();
-    vi.mocked(getDb).mockReturnValue(db);
+    vi.mocked(getWorkerDb).mockReturnValue(db);
 
     const sessionCache = {
       has: vi.fn(async () => true),
@@ -185,7 +188,7 @@ describe('api routes', () => {
 
   it('POST /session persists placeholder and warms cache', async () => {
     const { db, fns } = makeDbFakes();
-    vi.mocked(getDb).mockReturnValue(db);
+    vi.mocked(getWorkerDb).mockReturnValue(db);
 
     const sessionCache = {
       add: vi.fn(async () => undefined),
@@ -219,7 +222,7 @@ describe('api routes', () => {
 
   it('POST /session/:sessionId/ingest uses cache hit and updates title when changed', async () => {
     const { db, fns } = makeDbFakes();
-    vi.mocked(getDb).mockReturnValue(db);
+    vi.mocked(getWorkerDb).mockReturnValue(db);
 
     const sessionCache = {
       has: vi.fn(async () => true),

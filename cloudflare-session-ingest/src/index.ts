@@ -2,11 +2,11 @@ import { Hono } from 'hono';
 import type { Env } from './env';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
+import { getWorkerDb } from '@kilocode/db/client';
 import { cli_sessions_v2 } from '@kilocode/db/schema';
 
 import { kiloJwtAuthMiddleware } from './middleware/kilo-jwt-auth';
 import { api } from './routes/api';
-import { getDb } from './db/drizzle';
 import { getSessionIngestDO } from './dos/SessionIngestDO';
 import { withDORetry } from './util/do-retry';
 export { SessionIngestDO } from './dos/SessionIngestDO';
@@ -35,7 +35,7 @@ app.get('/session/:sessionId', async c => {
     );
   }
 
-  const db = getDb(c.env.HYPERDRIVE);
+  const db = getWorkerDb(c.env.HYPERDRIVE.connectionString);
   const rows = await db
     .select({
       session_id: cli_sessions_v2.session_id,

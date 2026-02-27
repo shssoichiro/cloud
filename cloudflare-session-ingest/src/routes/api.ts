@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { sql, eq, and, isNull } from 'drizzle-orm';
+import { getWorkerDb } from '@kilocode/db/client';
 import { cli_sessions_v2 } from '@kilocode/db/schema';
 
 import type { Env } from '../env';
 import { zodJsonValidator } from '../util/validation';
-import { getDb } from '../db/drizzle';
 import { getSessionIngestDO } from '../dos/SessionIngestDO';
 import { getSessionAccessCacheDO } from '../dos/SessionAccessCacheDO';
 import { SessionSyncInputSchema } from '../types/session-sync';
@@ -37,7 +37,7 @@ api.post('/session', zodJsonValidator(createSessionSchema), async c => {
 
   // Persist a placeholder session row.
   // This is intentionally minimal; we only need a working Hyperdrive -> Postgres path.
-  const db = getDb(c.env.HYPERDRIVE);
+  const db = getWorkerDb(c.env.HYPERDRIVE.connectionString);
   const kiloUserId = c.get('user_id');
 
   await db
@@ -73,7 +73,7 @@ api.delete('/session/:sessionId', async c => {
     return c.json({ success: false, error: 'Invalid sessionId', issues: parsed.error.issues }, 400);
   }
 
-  const db = getDb(c.env.HYPERDRIVE);
+  const db = getWorkerDb(c.env.HYPERDRIVE.connectionString);
   const kiloUserId = c.get('user_id');
 
   const sessionRows = await db
@@ -151,7 +151,7 @@ api.post('/session/:sessionId/ingest', zodJsonValidator(ingestSessionSchema), as
   const ingestBody = c.req.valid('json');
 
   const kiloUserId = c.get('user_id');
-  const db = getDb(c.env.HYPERDRIVE);
+  const db = getWorkerDb(c.env.HYPERDRIVE.connectionString);
 
   const sessionCacheStubFactory = () => getSessionAccessCacheDO(c.env, { kiloUserId });
 
@@ -304,7 +304,7 @@ api.post('/session/:sessionId/share', async c => {
     return c.json({ success: false, error: 'Invalid sessionId', issues: parsed.error.issues }, 400);
   }
 
-  const db = getDb(c.env.HYPERDRIVE);
+  const db = getWorkerDb(c.env.HYPERDRIVE.connectionString);
   const kiloUserId = c.get('user_id');
 
   const sessionRows = await db
@@ -371,7 +371,7 @@ api.post('/session/:sessionId/unshare', async c => {
     return c.json({ success: false, error: 'Invalid sessionId', issues: parsed.error.issues }, 400);
   }
 
-  const db = getDb(c.env.HYPERDRIVE);
+  const db = getWorkerDb(c.env.HYPERDRIVE.connectionString);
   const kiloUserId = c.get('user_id');
 
   const sessionRows = await db
