@@ -4,7 +4,8 @@ FROM debian:bookworm-slim
 ENV NODE_VERSION=22.13.1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ca-certificates curl git xz-utils unzip jq ripgrep rsync zstd \
+       ca-certificates curl gnupg git xz-utils unzip jq ripgrep rsync zstd \
+       build-essential python3 ffmpeg tmux \
     && ARCH="$(dpkg --print-architecture)" \
     && case "${ARCH}" in \
          amd64) NODE_ARCH="x64" ;; \
@@ -18,8 +19,18 @@ RUN apt-get update \
        -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=${ARCH} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
        > /etc/apt/sources.list.d/github-cli.list \
+    && curl -sS https://downloads.1password.com/linux/keys/1password.asc \
+       | gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg \
+    && echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/amd64 stable main' \
+       > /etc/apt/sources.list.d/1password.list \
+    && mkdir -p /etc/debsig/policies/AC2D62742012EA22/ \
+    && curl -sS https://downloads.1password.com/linux/debian/debsig/1password.pol \
+       | tee /etc/debsig/policies/AC2D62742012EA22/1password.pol > /dev/null \
+    && mkdir -p /usr/share/debsig/keyrings/AC2D62742012EA22 \
+    && curl -sS https://downloads.1password.com/linux/keys/1password.asc \
+       | gpg --dearmor --output /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg \
     && apt-get update \
-    && apt-get install -y --no-install-recommends gh \
+    && apt-get install -y --no-install-recommends gh 1password-cli \
     && apt-get purge -y xz-utils \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* \
@@ -36,6 +47,9 @@ RUN npm install -g openclaw@2026.2.25 \
 
 # Install ClawHub CLI
 RUN npm install -g clawhub
+
+# Install mcporter (MCP server tooling)
+RUN npm install -g mcporter
 
 # Install pinned Bun (build-time only) and compile the controller bundle.
 ARG BUN_VERSION=1.2.4
