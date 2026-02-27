@@ -13,6 +13,7 @@ import type { Owner } from '@/lib/integrations/core/types';
 import {
   getInstallationByGuildId,
   getOwnerFromInstallation,
+  getModel,
 } from '@/lib/integrations/discord-service';
 import type { PlatformIntegration } from '@/db/schema';
 import { runBot } from '@/lib/bots/core/run-bot';
@@ -242,9 +243,20 @@ export async function processDiscordBotMessage(
     };
   }
 
-  // Discord integrations don't have a configurable model (yet), use a default
-  // For now, reuse the model from the GitHub integration context or a hardcoded default
-  const selectedModel = 'anthropic/claude-sonnet-4';
+  // Get the configured model for this integration (validated at setup/update time)
+  const selectedModel = await getModel(owner);
+  if (!selectedModel) {
+    console.error('[DiscordBot] No model configured for owner:', owner);
+    return {
+      response:
+        'Error: No AI model is configured for this Discord integration. Please configure a model in the integration settings.',
+      modelUsed: '',
+      toolCallsMade: [],
+      error: 'No model configured',
+      installation,
+    };
+  }
+  console.log('[DiscordBot] Using model:', selectedModel);
 
   const authResult = await getDiscordBotAuthTokenForOwner(owner);
   if ('error' in authResult) {
