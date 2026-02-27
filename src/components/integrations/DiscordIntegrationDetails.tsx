@@ -7,7 +7,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2, XCircle, MessageSquare, Settings, ExternalLink, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEffect } from 'react';
-import { useDiscordQueries } from './DiscordContext';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTRPC } from '@/lib/trpc/utils';
 import { IS_DEVELOPMENT } from '@/lib/constants';
 
 type DiscordIntegrationDetailsProps = {
@@ -16,14 +17,46 @@ type DiscordIntegrationDetailsProps = {
   error?: string;
 };
 
-export function DiscordIntegrationDetails({ success, error }: DiscordIntegrationDetailsProps) {
-  const { queries, mutations } = useDiscordQueries();
+export function DiscordIntegrationDetails({
+  organizationId,
+  success,
+  error,
+}: DiscordIntegrationDetailsProps) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const input = organizationId ? { organizationId } : undefined;
 
   // Fetch Discord installation status
-  const { data: installationData, isLoading, refetch } = queries.getInstallation();
+  const {
+    data: installationData,
+    isLoading,
+    refetch,
+  } = useQuery(trpc.discord.getInstallation.queryOptions(input));
 
   // Get OAuth URL for installation
-  const { data: oauthUrlData } = queries.getOAuthUrl();
+  const { data: oauthUrlData } = useQuery(trpc.discord.getOAuthUrl.queryOptions(input));
+
+  const uninstallApp = useMutation(
+    trpc.discord.uninstallApp.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({
+          queryKey: trpc.discord.getInstallation.queryKey(input),
+        });
+      },
+    })
+  );
+
+  const testConnection = useMutation(trpc.discord.testConnection.mutationOptions());
+
+  const devRemoveDbRowOnly = useMutation(
+    trpc.discord.devRemoveDbRowOnly.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({
+          queryKey: trpc.discord.getInstallation.queryKey(input),
+        });
+      },
+    })
+  );
 
   // Show success/error toasts
   useEffect(() => {
@@ -43,7 +76,7 @@ export function DiscordIntegrationDetails({ success, error }: DiscordIntegration
 
   const handleUninstall = () => {
     if (confirm('Are you sure you want to disconnect Discord?')) {
-      mutations.uninstallApp.mutate(undefined, {
+      uninstallApp.mutate(input, {
         onSuccess: async () => {
           toast.success('Discord disconnected');
           await refetch();
@@ -63,7 +96,7 @@ export function DiscordIntegrationDetails({ success, error }: DiscordIntegration
         'This will remove the database row but keep the Discord bot in the server. Are you sure?'
       )
     ) {
-      mutations.devRemoveDbRowOnly?.mutate(undefined, {
+      devRemoveDbRowOnly.mutate(input, {
         onSuccess: async () => {
           toast.success('Database row removed (Discord bot still in server)');
           await refetch();
@@ -78,7 +111,7 @@ export function DiscordIntegrationDetails({ success, error }: DiscordIntegration
   };
 
   const handleTestConnection = () => {
-    mutations.testConnection.mutate(undefined, {
+    testConnection.mutate(input, {
       onSuccess: result => {
         if (result.success) {
           toast.success('Connection test successful!');
@@ -176,9 +209,9 @@ export function DiscordIntegrationDetails({ success, error }: DiscordIntegration
                 <Button
                   variant="outline"
                   onClick={handleTestConnection}
-                  disabled={mutations.testConnection.isPending}
+                  disabled={testConnection.isPending}
                 >
-                  {mutations.testConnection.isPending ? 'Testing...' : 'Test Connection'}
+                  {testConnection.isPending ? 'Testing...' : 'Test Connection'}
                 </Button>
                 <Button
                   variant="outline"
@@ -197,20 +230,20 @@ export function DiscordIntegrationDetails({ success, error }: DiscordIntegration
                 <Button
                   variant="destructive"
                   onClick={handleUninstall}
-                  disabled={mutations.uninstallApp.isPending}
+                  disabled={uninstallApp.isPending}
                 >
-                  {mutations.uninstallApp.isPending ? 'Disconnecting...' : 'Disconnect'}
+                  {uninstallApp.isPending ? 'Disconnecting...' : 'Disconnect'}
                 </Button>
                 {IS_DEVELOPMENT && (
                   <Button
                     variant="outline"
                     onClick={handleDevRemoveDbRowOnly}
-                    disabled={mutations.devRemoveDbRowOnly.isPending}
+                    disabled={devRemoveDbRowOnly.isPending}
                     className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10"
                     title="Dev only: Remove DB row without revoking Discord token"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
-                    {mutations.devRemoveDbRowOnly.isPending ? 'Removing...' : 'Dev: Remove DB Only'}
+                    {devRemoveDbRowOnly.isPending ? 'Removing...' : 'Dev: Remove DB Only'}
                   </Button>
                 )}
               </div>

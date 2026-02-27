@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import type { KiloClawDashboardStatus } from '@/lib/kiloclaw/types';
 import { useKiloClawGatewayStatus, useKiloClawMutations } from '@/hooks/useKiloClaw';
@@ -35,6 +36,15 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
     isLoading: gatewayLoading,
     error: gatewayError,
   } = useKiloClawGatewayStatus(isRunning);
+
+  const [dirtyChannels, setDirtyChannels] = useState<Set<string>>(new Set());
+
+  const onChannelsChanged = useCallback((channelType: string) => {
+    setDirtyChannels(prev => new Set([...prev, channelType]));
+  }, []);
+  const onRedeploySuccess = useCallback(() => {
+    setDirtyChannels(new Set());
+  }, []);
 
   return (
     <div className="container m-auto flex w-full max-w-[1140px] flex-col gap-6 p-4 md:p-6">
@@ -75,7 +85,11 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
         ) : (
           <>
             <CardContent className="border-b p-5">
-              <InstanceControls status={instanceStatus} mutations={mutations} />
+              <InstanceControls
+                status={instanceStatus}
+                mutations={mutations}
+                onRedeploySuccess={onRedeploySuccess}
+              />
             </CardContent>
             <Tabs defaultValue="instance">
               <div className="px-5">
@@ -104,7 +118,12 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
                   />
                 </TabsContent>
                 <TabsContent value="settings" className="mt-0">
-                  <SettingsTab status={instanceStatus} mutations={mutations} />
+                  <SettingsTab
+                    status={instanceStatus}
+                    mutations={mutations}
+                    onChannelsChanged={onChannelsChanged}
+                    dirtyChannels={dirtyChannels}
+                  />
                 </TabsContent>
               </CardContent>
             </Tabs>

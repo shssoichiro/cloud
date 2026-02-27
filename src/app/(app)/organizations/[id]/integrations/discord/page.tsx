@@ -1,6 +1,5 @@
 import { Suspense } from 'react';
 import { DiscordIntegrationDetails } from '@/components/integrations/DiscordIntegrationDetails';
-import { OrgDiscordProvider } from '@/components/integrations/OrgDiscordProvider';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
@@ -39,26 +38,24 @@ export default async function OrgDiscordIntegrationPage({
             </div>
           </div>
 
-          <OrgDiscordProvider organizationId={organization.id}>
-            <Suspense
-              fallback={
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="animate-pulse space-y-4">
-                      <div className="bg-muted h-20 rounded" />
-                      <div className="bg-muted h-32 rounded" />
-                    </div>
-                  </CardContent>
-                </Card>
-              }
-            >
-              <DiscordIntegrationDetails
-                organizationId={organization.id}
-                success={search.success === 'installed'}
-                error={search.error}
-              />
-            </Suspense>
-          </OrgDiscordProvider>
+          <Suspense
+            fallback={
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="animate-pulse space-y-4">
+                    <div className="bg-muted h-20 rounded" />
+                    <div className="bg-muted h-32 rounded" />
+                  </div>
+                </CardContent>
+              </Card>
+            }
+          >
+            <DiscordIntegrationDetails
+              organizationId={organization.id}
+              success={search.success === 'installed'}
+              error={search.error}
+            />
+          </Suspense>
         </>
       )}
     />

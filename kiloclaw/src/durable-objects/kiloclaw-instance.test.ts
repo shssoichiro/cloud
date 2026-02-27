@@ -54,6 +54,15 @@ vi.mock('../fly/client', async () => {
   };
 });
 
+// -- Mock image-version --
+vi.mock('../lib/image-version', async () => {
+  const actual = await vi.importActual('../lib/image-version');
+  return {
+    ...actual,
+    resolveLatestVersion: vi.fn().mockResolvedValue(null),
+  };
+});
+
 // -- Mock db --
 vi.mock('../db', () => ({
   createDatabaseConnection: vi.fn(),
@@ -78,6 +87,7 @@ import { KiloClawInstance } from './kiloclaw-instance';
 import * as flyClient from '../fly/client';
 import { FlyApiError } from '../fly/client';
 import * as db from '../db';
+import { resolveLatestVersion } from '../lib/image-version';
 import {
   ALARM_INTERVAL_RUNNING_MS,
   ALARM_INTERVAL_DESTROYING_MS,
@@ -2084,5 +2094,88 @@ describe('auto-destroy stale provisioned instances', () => {
 
     expect(markDestroyed).not.toHaveBeenCalled();
     expect(storage._store.size).toBe(0);
+  });
+});
+
+// ============================================================================
+// restartGateway image tag override
+// ============================================================================
+
+describe('restartGateway image tag override', () => {
+  beforeEach(() => {
+    (flyClient.stopMachineAndWait as Mock).mockResolvedValue(undefined);
+    (flyClient.updateMachine as Mock).mockResolvedValue(undefined);
+    (flyClient.waitForState as Mock).mockResolvedValue(undefined);
+    (flyClient.getMachine as Mock).mockResolvedValue({
+      id: 'machine-1',
+      config: { guest: { cpus: 1, memory_mb: 256, cpu_kind: 'shared' } },
+    });
+  });
+
+  it('uses existing trackedImageTag when no options provided', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, { trackedImageTag: 'old-tag-123' });
+
+    const result = await instance.restartGateway();
+
+    expect(result.success).toBe(true);
+    expect(resolveLatestVersion).not.toHaveBeenCalled();
+    expect(storage._store.get('trackedImageTag')).toBe('old-tag-123');
+  });
+
+  it('fetches latest from KV when imageTag is "latest"', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, {
+      trackedImageTag: 'old-tag',
+      openclawVersion: '1.0.0',
+      imageVariant: 'default',
+    });
+
+    (resolveLatestVersion as Mock).mockResolvedValueOnce({
+      openclawVersion: '2.0.0',
+      variant: 'default',
+      imageTag: 'new-tag-from-kv',
+      imageDigest: null,
+      publishedAt: new Date().toISOString(),
+    });
+
+    const result = await instance.restartGateway({ imageTag: 'latest' });
+
+    expect(result.success).toBe(true);
+    expect(resolveLatestVersion).toHaveBeenCalledOnce();
+    expect(storage._store.get('trackedImageTag')).toBe('new-tag-from-kv');
+    expect(storage._store.get('openclawVersion')).toBe('2.0.0');
+    expect(storage._store.get('imageVariant')).toBe('default');
+  });
+
+  it('falls back gracefully when "latest" but KV is empty', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, { trackedImageTag: 'old-tag' });
+
+    (resolveLatestVersion as Mock).mockResolvedValueOnce(null);
+
+    const result = await instance.restartGateway({ imageTag: 'latest' });
+
+    expect(result.success).toBe(true);
+    expect(resolveLatestVersion).toHaveBeenCalledOnce();
+    // trackedImageTag unchanged — resolveImageTag will use existing value
+    expect(storage._store.get('trackedImageTag')).toBe('old-tag');
+  });
+
+  it('pins to specific tag without KV lookup and clears version metadata', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, {
+      trackedImageTag: 'old-tag',
+      openclawVersion: '1.0.0',
+      imageVariant: 'default',
+    });
+
+    const result = await instance.restartGateway({ imageTag: '2026.2.25-abc123' });
+
+    expect(result.success).toBe(true);
+    expect(resolveLatestVersion).not.toHaveBeenCalled();
+    expect(storage._store.get('trackedImageTag')).toBe('2026.2.25-abc123');
+    expect(storage._store.get('openclawVersion')).toBeNull();
+    expect(storage._store.get('imageVariant')).toBeNull();
   });
 });

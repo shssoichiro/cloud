@@ -19,6 +19,21 @@ import type {
 } from './types';
 
 /**
+ * Error thrown when the KiloClaw API returns a non-OK response.
+ * Preserves the HTTP status code for structured error handling
+ * without leaking the raw response body.
+ */
+export class KiloClawApiError extends Error {
+  readonly statusCode: number;
+
+  constructor(statusCode: number) {
+    super(`KiloClaw API error (${statusCode})`);
+    this.name = 'KiloClawApiError';
+    this.statusCode = statusCode;
+  }
+}
+
+/**
  * KiloClaw worker client for platform (internal) routes.
  * Uses x-internal-api-key auth. Server-only.
  */
@@ -49,7 +64,11 @@ export class KiloClawInternalClient {
 
     if (!res.ok) {
       const body = await res.text();
-      throw new Error(`KiloClaw API error (${res.status}): ${body}`);
+      console.error(
+        `KiloClaw API error (${res.status}) ${options?.method ?? 'GET'} ${path}:`,
+        body
+      );
+      throw new KiloClawApiError(res.status);
     }
 
     return res.json() as Promise<T>;

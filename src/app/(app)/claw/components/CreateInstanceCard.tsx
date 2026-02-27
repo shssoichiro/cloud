@@ -66,15 +66,15 @@ export function CreateInstanceCard({ mutations }: { mutations: ClawMutations }) 
   }
 
   function handleCreate() {
-    posthog?.capture('claw_create_instance_clicked', {
-      selected_model: selectedModel || null,
-      channels: [...addedChannels],
-    });
-
     if (isLoadingModels) {
       toast.error('Models are still loading; try again in a moment.');
       return;
     }
+
+    posthog?.capture('claw_create_instance_clicked', {
+      selected_model: selectedModel || null,
+      channels: [...addedChannels],
+    });
 
     // Validate Slack requires both tokens
     if (addedChannels.has('slack')) {
@@ -86,11 +86,9 @@ export function CreateInstanceCard({ mutations }: { mutations: ClawMutations }) 
       }
     }
 
-    const modelsPayload = modelOptions.map(({ id, name }) => ({ id, name }));
     mutations.provision.mutate(
       {
         kilocodeDefaultModel: selectedModel ? `kilocode/${selectedModel}` : null,
-        kilocodeModels: modelsPayload.length > 0 ? modelsPayload : null,
         channels: buildChannelsPayload(),
       },
       {

@@ -1,9 +1,10 @@
 import 'server-only';
 
 import * as z from 'zod';
+import { TRPCError } from '@trpc/server';
 import { baseProcedure, createTRPCRouter } from '@/lib/trpc/init';
 import { generateApiToken, TOKEN_EXPIRY } from '@/lib/tokens';
-import { KiloClawInternalClient } from '@/lib/kiloclaw/kiloclaw-internal-client';
+import { KiloClawInternalClient, KiloClawApiError } from '@/lib/kiloclaw/kiloclaw-internal-client';
 import { KiloClawUserClient } from '@/lib/kiloclaw/kiloclaw-user-client';
 import { encryptKiloClawSecret } from '@/lib/kiloclaw/encryption';
 import { KILOCLAW_API_URL } from '@/lib/config.server';
@@ -13,8 +14,6 @@ import {
   markActiveInstanceDestroyed,
   restoreDestroyedInstance,
 } from '@/lib/kiloclaw/instance-registry';
-
-const modelEntrySchema = z.object({ id: z.string(), name: z.string() });
 
 const updateConfigSchema = z.object({
   envVars: z.record(z.string(), z.string()).optional(),
@@ -35,7 +34,6 @@ const updateConfigSchema = z.object({
     )
     .nullable()
     .optional(),
-  kilocodeModels: z.array(modelEntrySchema).nullable().optional(),
 });
 
 const updateKiloCodeConfigSchema = z.object({
@@ -47,7 +45,6 @@ const updateKiloCodeConfigSchema = z.object({
     )
     .nullable()
     .optional(),
-  kilocodeModels: z.array(modelEntrySchema).nullable().optional(),
 });
 
 const patchChannelsSchema = z.object({
@@ -95,7 +92,7 @@ function buildWorkerChannelsPatch(channels: z.infer<typeof patchChannelsSchema>)
 
 type KiloCodeConfigPublicResponse = Pick<
   KiloCodeConfigResponse,
-  'kilocodeApiKeyExpiresAt' | 'kilocodeDefaultModel' | 'kilocodeModels'
+  'kilocodeApiKeyExpiresAt' | 'kilocodeDefaultModel'
 >;
 
 function sanitizeKiloCodeConfigResponse(
@@ -104,7 +101,6 @@ function sanitizeKiloCodeConfigResponse(
   return {
     kilocodeApiKeyExpiresAt: response.kilocodeApiKeyExpiresAt,
     kilocodeDefaultModel: response.kilocodeDefaultModel,
-    kilocodeModels: response.kilocodeModels,
   };
 }
 
@@ -134,7 +130,6 @@ async function provisionInstance(
     kilocodeApiKey,
     kilocodeApiKeyExpiresAt,
     kilocodeDefaultModel: input.kilocodeDefaultModel ?? undefined,
-    kilocodeModels: input.kilocodeModels ?? undefined,
   });
 }
 
@@ -239,12 +234,27 @@ export const kiloclawRouter = createTRPCRouter({
     return client.getConfig();
   }),
 
-  restartGateway: baseProcedure.mutation(async ({ ctx }) => {
-    const client = new KiloClawUserClient(
-      generateApiToken(ctx.user, undefined, { expiresIn: TOKEN_EXPIRY.fiveMinutes })
-    );
-    return client.restartGateway();
-  }),
+  restartGateway: baseProcedure
+    .input(
+      z
+        .object({
+          imageTag: z
+            .string()
+            .max(128, 'Image tag too long')
+            .regex(
+              /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
+              'Image tag must be alphanumeric with dots, hyphens, or underscores'
+            )
+            .optional(),
+        })
+        .optional()
+    )
+    .mutation(async ({ ctx, input }) => {
+      const client = new KiloClawUserClient(
+        generateApiToken(ctx.user, undefined, { expiresIn: TOKEN_EXPIRY.fiveMinutes })
+      );
+      return client.restartGateway(input?.imageTag ? { imageTag: input.imageTag } : undefined);
+    }),
 
   listPairingRequests: baseProcedure
     .input(z.object({ refresh: z.boolean().optional() }).optional())
@@ -275,8 +285,22 @@ export const kiloclawRouter = createTRPCRouter({
     }),
 
   gatewayStatus: baseProcedure.query(async ({ ctx }) => {
-    const client = new KiloClawInternalClient();
-    return client.getGatewayStatus(ctx.user.id);
+    try {
+      const client = new KiloClawInternalClient();
+      return await client.getGatewayStatus(ctx.user.id);
+    } catch (err) {
+      console.error('Failed to fetch gateway status for user:', ctx.user.id, err);
+      if (err instanceof KiloClawApiError && (err.statusCode === 404 || err.statusCode === 409)) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Gateway control unavailable',
+        });
+      }
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to fetch gateway status',
+      });
+    }
   }),
 
   restartOpenClaw: baseProcedure.mutation(async ({ ctx }) => {

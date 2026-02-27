@@ -13,26 +13,18 @@ export type ProvisionInput = {
   kilocodeApiKey?: string;
   kilocodeApiKeyExpiresAt?: string;
   kilocodeDefaultModel?: string;
-  kilocodeModels?: KiloCodeModelEntry[];
-};
-
-export type KiloCodeModelEntry = {
-  id: string;
-  name: string;
 };
 
 export type KiloCodeConfigPatchInput = {
   kilocodeApiKey?: string | null;
   kilocodeApiKeyExpiresAt?: string | null;
   kilocodeDefaultModel?: string | null;
-  kilocodeModels?: KiloCodeModelEntry[] | null;
 };
 
 export type KiloCodeConfigResponse = {
   kilocodeApiKey: string | null;
   kilocodeApiKeyExpiresAt: string | null;
   kilocodeDefaultModel: string | null;
-  kilocodeModels: KiloCodeModelEntry[] | null;
 };
 
 /** Input to PATCH /api/platform/channels */

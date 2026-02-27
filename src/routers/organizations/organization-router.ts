@@ -43,7 +43,6 @@ import { organizationAuditLogRouter } from '@/routers/organizations/organization
 import { organizationAdminRouter } from '@/routers/organizations/organization-admin-router';
 import { organizationModesRouter } from '@/routers/organizations/organization-modes-router';
 import { createAuditLog } from '@/lib/organizations/organization-audit-logs';
-import { organizationGitHubAppsRouter } from '@/routers/organizations/organization-github-apps-router';
 import { organizationDeploymentsRouter } from '@/routers/organizations/organization-deployments-router';
 import PostHogClient from '@/lib/posthog';
 import { organizationReviewAgentRouter } from '@/routers/organizations/organization-code-reviews-router';
@@ -52,8 +51,6 @@ import { organizationCloudAgentNextRouter } from '@/routers/organizations/organi
 import { organizationAppBuilderRouter } from '@/routers/organizations/organization-app-builder-router';
 import { organizationSecurityAgentRouter } from '@/routers/organizations/organization-security-agent-router';
 import { organizationSecurityAuditLogRouter } from '@/routers/organizations/organization-security-audit-log-router';
-import { organizationSlackRouter } from '@/routers/organizations/organization-slack-router';
-import { organizationDiscordRouter } from '@/routers/organizations/organization-discord-router';
 import { organizationAutoTriageRouter } from '@/routers/organizations/organization-auto-triage-router';
 import { organizationAutoFixRouter } from '@/routers/organizations/organization-auto-fix-router';
 import { organizationAutoTopUpRouter } from '@/routers/organizations/organization-auto-top-up-router';
@@ -101,7 +98,6 @@ export const organizationsRouter = createTRPCRouter({
   auditLogs: organizationAuditLogRouter,
   admin: organizationAdminRouter,
   modes: organizationModesRouter,
-  githubApps: organizationGitHubAppsRouter,
   deployments: organizationDeploymentsRouter,
   reviewAgent: organizationReviewAgentRouter,
   cloudAgent: organizationCloudAgentRouter,
@@ -109,8 +105,6 @@ export const organizationsRouter = createTRPCRouter({
   appBuilder: organizationAppBuilderRouter,
   securityAgent: organizationSecurityAgentRouter,
   securityAuditLog: organizationSecurityAuditLogRouter,
-  slack: organizationSlackRouter,
-  discord: organizationDiscordRouter,
   autoTriage: organizationAutoTriageRouter,
   autoFix: organizationAutoFixRouter,
   autoTopUp: organizationAutoTopUpRouter,

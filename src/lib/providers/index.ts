@@ -153,6 +153,8 @@ export async function getProvider(
         included_tools: null,
         excluded_tools: null,
         supports_image_input: kiloFreeModel.flags.includes('vision'),
+        force_reasoning: true,
+        opencode_settings: null,
       },
     };
   }

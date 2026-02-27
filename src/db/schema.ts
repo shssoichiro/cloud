@@ -57,7 +57,12 @@ import {
 } from '@/lib/kilo-pass/enums';
 import type { AnyPgColumn as DrizzleAnyPgColumn } from 'drizzle-orm/pg-core';
 import { FeedbackFor, FeedbackSource } from '@/lib/feedback/enums';
-import type { Tool } from '@/lib/organizations/model-settings';
+import type {
+  OpenCodeSettings,
+  ReasoningEffort,
+  Tool,
+  Verbosity,
+} from '@/lib/organizations/model-settings';
 import type { StoredModel } from '@/lib/providers/vercel/types';
 
 /**
@@ -846,15 +851,21 @@ export const custom_llm = pgTable('custom_llm', {
   context_length: integer().notNull(),
   max_completion_tokens: integer().notNull(),
   internal_id: text().notNull(),
-  provider: text().notNull().$type<'anthropic' | 'openai' | 'xai'>(),
+  provider: text().notNull().$type<'anthropic' | 'openai'>(),
   base_url: text().notNull(),
   api_key: text().notNull(),
-  verbosity: text().$type<'low' | 'medium' | 'high' | 'max'>(),
   organization_ids: jsonb().notNull().$type<string[]>(),
-  reasoning_effort: text().$type<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'>(),
   included_tools: jsonb().$type<Tool[]>(),
   excluded_tools: jsonb().$type<Tool[]>(),
   supports_image_input: boolean(),
+  force_reasoning: boolean(),
+  opencode_settings: jsonb().$type<OpenCodeSettings>(),
+
+  /** @deprecated use opencode_settings instead */
+  verbosity: text().$type<Verbosity>(),
+
+  /** @deprecated use opencode_settings instead */
+  reasoning_effort: text().$type<ReasoningEffort>(),
 });
 
 export type CustomLlm = typeof custom_llm.$inferSelect;
