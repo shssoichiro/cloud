@@ -224,6 +224,11 @@ function createStartJobHandler(deps: ServerDependencies, kiloClient: KiloClient)
     const ingestOrigin = new URL(body.ingestUrl);
     ingestOrigin.protocol = ingestOrigin.protocol === 'wss:' ? 'https:' : 'http:';
     const workerBaseUrl = ingestOrigin.origin;
+    // Validate sessionId format before using in filesystem path (defense-in-depth)
+    const SESSION_ID_RE = /^agent_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!SESSION_ID_RE.test(body.sessionId)) {
+      return errorResponse('INVALID_REQUEST', 'Invalid sessionId format', 400);
+    }
     const cliLogDir = `/home/${body.sessionId}/.local/share/kilo/log`;
     const wrapperLogPath = process.env.WRAPPER_LOG_PATH ?? '/tmp/kilocode-wrapper.log';
     const logUploader = createLogUploader({

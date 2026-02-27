@@ -51,12 +51,27 @@ function createTarStream(paths: Array<string>): TarStream | undefined {
 
   const stream = new ReadableStream({
     start(controller) {
-      stdout.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)));
-      stdout.on('end', () => controller.close());
-      stdout.on('error', err => controller.error(err));
+      let done = false;
+      const close = () => {
+        if (!done) {
+          done = true;
+          controller.close();
+        }
+      };
+      const error = (err: Error) => {
+        if (!done) {
+          done = true;
+          controller.error(err);
+        }
+      };
+      stdout.on('data', (chunk: Buffer) => {
+        if (!done) controller.enqueue(new Uint8Array(chunk));
+      });
+      stdout.on('end', close);
+      stdout.on('error', error);
       proc.on('error', err => {
         logToFile(`tar spawn error: ${err.message}`);
-        controller.error(err);
+        error(err);
       });
     },
   });
@@ -66,10 +81,16 @@ function createTarStream(paths: Array<string>): TarStream | undefined {
 
 export function createLogUploader(opts: LogUploaderOpts): LogUploader {
   let intervalId: ReturnType<typeof setInterval> | undefined;
+  let isUploading = false;
 
   async function uploadNow(): Promise<void> {
+    if (isUploading) return;
+    isUploading = true;
     const tar = createTarStream([opts.cliLogDir, opts.wrapperLogPath]);
-    if (!tar) return;
+    if (!tar) {
+      isUploading = false;
+      return;
+    }
 
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), UPLOAD_TIMEOUT_MS);
@@ -95,6 +116,7 @@ export function createLogUploader(opts: LogUploaderOpts): LogUploader {
     } finally {
       clearTimeout(timer);
       tar.kill();
+      isUploading = false;
     }
   }
 

@@ -276,6 +276,7 @@ export class WrapperState {
   }
 
   setLogUploader(uploader: LogUploader | null): void {
+    this._logUploader?.stop();
     this._logUploader = uploader;
   }
 

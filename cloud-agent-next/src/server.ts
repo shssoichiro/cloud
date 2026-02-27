@@ -137,7 +137,7 @@ app.put(
     }
 
     const contentLength = parseInt(c.req.header('Content-Length') ?? '', 10);
-    if (contentLength > MAX_LOG_UPLOAD_BYTES) {
+    if (isNaN(contentLength) || contentLength > MAX_LOG_UPLOAD_BYTES) {
       return c.text('Request body too large', 413);
     }
 
@@ -153,10 +153,12 @@ app.put(
     const sessionId = c.req.param('sessionId');
     const executionId = c.req.param('executionId');
     const safeUserId = encodeURIComponent(userId);
+    const safeSessionId = encodeURIComponent(sessionId);
+    const safeExecutionId = encodeURIComponent(executionId);
 
     try {
       await c.env.R2_BUCKET.put(
-        `logs/${safeUserId}/${sessionId}/${executionId}/${filename}`,
+        `logs/${safeUserId}/${safeSessionId}/${safeExecutionId}/${filename}`,
         body,
         { httpMetadata: { contentType: 'application/gzip' } }
       );
