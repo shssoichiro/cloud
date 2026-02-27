@@ -7,7 +7,7 @@ import {
   agent_environment_profile_vars,
   agent_environment_profile_commands,
 } from '@kilocode/db/schema';
-import { eq, and, isNull, asc, sql } from 'drizzle-orm';
+import { eq, and, isNull, asc } from 'drizzle-orm';
 
 export { getWorkerDb, type WorkerDb };
 
@@ -158,7 +158,7 @@ async function ensureBotIsOrgMember(db: WorkerDb, botUserId: string, orgId: stri
   if (existingRows.length > 0) return;
 
   await db.insert(organization_memberships).values({
-    id: sql`gen_random_uuid()`,
+    id: crypto.randomUUID(),
     organization_id: orgId,
     kilo_user_id: botUserId,
     role: 'member',
