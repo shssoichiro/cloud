@@ -111,7 +111,7 @@ function parseAwsCredentials(input: string) {
   }
 }
 
-export function getVercelInferenceProfiderConfigForUserByok(
+export function getVercelInferenceProviderConfigForUserByok(
   provider: BYOKResult
 ): [VercelUserByokInferenceProviderId, VercelInferenceProviderConfig[]] {
   const key =
@@ -158,7 +158,7 @@ export function applyVercelSettings(
     }
     const byokProviders: Record<string, VercelInferenceProviderConfig[]> = {};
     for (const provider of userByok) {
-      const [key, list] = getVercelInferenceProfiderConfigForUserByok(provider);
+      const [key, list] = getVercelInferenceProviderConfigForUserByok(provider);
       byokProviders[key] = [...(byokProviders[key] ?? []), ...list];
     }
 

@@ -27,7 +27,7 @@ import { unstable_cache } from 'next/cache';
 import { StoredModelSchema } from '@/lib/providers/vercel/types';
 import { APICallError, createGateway, generateText } from 'ai';
 import { PROVIDERS } from '@/lib/providers';
-import { getVercelInferenceProfiderConfigForUserByok } from '@/lib/providers/vercel';
+import { getVercelInferenceProviderConfigForUserByok } from '@/lib/providers/vercel';
 import { decryptByokRow } from '@/lib/byok';
 import type { GatewayProviderOptions } from '@ai-sdk/gateway';
 
@@ -377,7 +377,7 @@ export const byokRouter = createTRPCRouter({
         apiKey: PROVIDERS.VERCEL_AI_GATEWAY.apiKey,
       });
 
-      const [key, list] = getVercelInferenceProfiderConfigForUserByok(decryptByokRow(existingKey));
+      const [key, list] = getVercelInferenceProviderConfigForUserByok(decryptByokRow(existingKey));
 
       try {
         const model = gateway(
