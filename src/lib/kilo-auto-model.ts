@@ -86,16 +86,40 @@ type ResolvedAutoModel = {
 // Add/remove/modify entries here to change routing behavior.
 const MODE_TO_MODEL = new Map<string, ResolvedAutoModel>([
   // Opus modes (planning, reasoning, orchestration, debugging)
-  ['plan', { model: CLAUDE_OPUS_CURRENT_MODEL_ID }],
-  ['general', { model: CLAUDE_OPUS_CURRENT_MODEL_ID }],
-  ['architect', { model: CLAUDE_OPUS_CURRENT_MODEL_ID }],
-  ['orchestrator', { model: CLAUDE_OPUS_CURRENT_MODEL_ID }],
-  ['ask', { model: CLAUDE_OPUS_CURRENT_MODEL_ID }],
-  ['debug', { model: CLAUDE_OPUS_CURRENT_MODEL_ID }],
+  [
+    'plan',
+    { model: CLAUDE_OPUS_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'high' },
+  ],
+  [
+    'general',
+    { model: CLAUDE_OPUS_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'medium' },
+  ],
+  [
+    'architect',
+    { model: CLAUDE_OPUS_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'high' },
+  ],
+  [
+    'orchestrator',
+    { model: CLAUDE_OPUS_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'low' },
+  ],
+  ['ask', { model: CLAUDE_OPUS_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'high' }],
+  [
+    'debug',
+    { model: CLAUDE_OPUS_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'high' },
+  ],
   // Sonnet modes (implementation, exploration)
-  ['build', { model: CLAUDE_SONNET_CURRENT_MODEL_ID }],
-  ['explore', { model: CLAUDE_SONNET_CURRENT_MODEL_ID }],
-  ['code', { model: CLAUDE_SONNET_CURRENT_MODEL_ID }],
+  [
+    'build',
+    { model: CLAUDE_SONNET_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'medium' },
+  ],
+  [
+    'explore',
+    { model: CLAUDE_SONNET_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'medium' },
+  ],
+  [
+    'code',
+    { model: CLAUDE_SONNET_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'low' },
+  ],
 ]);
 
 export function resolveAutoModel(model: string, modeHeader: string | null): ResolvedAutoModel {
