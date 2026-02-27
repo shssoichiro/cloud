@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@kilocode/db": "workspace:*",
-    "drizzle-orm": "^0.44.7",
+    "drizzle-orm": "catalog:",
     "hono": "^4.11.6",
     "jose": "^6.0.0",
     "pg": "^8.18.0",
