@@ -234,12 +234,27 @@ export const kiloclawRouter = createTRPCRouter({
     return client.getConfig();
   }),
 
-  restartGateway: baseProcedure.mutation(async ({ ctx }) => {
-    const client = new KiloClawUserClient(
-      generateApiToken(ctx.user, undefined, { expiresIn: TOKEN_EXPIRY.fiveMinutes })
-    );
-    return client.restartGateway();
-  }),
+  restartGateway: baseProcedure
+    .input(
+      z
+        .object({
+          imageTag: z
+            .string()
+            .max(128, 'Image tag too long')
+            .regex(
+              /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
+              'Image tag must be alphanumeric with dots, hyphens, or underscores'
+            )
+            .optional(),
+        })
+        .optional()
+    )
+    .mutation(async ({ ctx, input }) => {
+      const client = new KiloClawUserClient(
+        generateApiToken(ctx.user, undefined, { expiresIn: TOKEN_EXPIRY.fiveMinutes })
+      );
+      return client.restartGateway(input?.imageTag ? { imageTag: input.imageTag } : undefined);
+    }),
 
   listPairingRequests: baseProcedure
     .input(z.object({ refresh: z.boolean().optional() }).optional())

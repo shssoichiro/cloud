@@ -1453,14 +1453,49 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   // User-facing operations
   // ========================================================================
 
-  async restartGateway(): Promise<{ success: boolean; error?: string }> {
+  async restartGateway(options?: {
+    imageTag?: string;
+  }): Promise<{ success: boolean; error?: string }> {
     await this.loadState();
 
     if (this.status !== 'running' || !this.flyMachineId) {
       return { success: false, error: 'Instance is not running' };
     }
 
+    const action = options?.imageTag
+      ? options.imageTag === 'latest'
+        ? 'upgrade-to-latest'
+        : `pin-to-tag:${options.imageTag}`
+      : 'redeploy-same-image';
+    console.log('[DO] restartGateway:', action, '| current trackedImageTag:', this.trackedImageTag);
+
     try {
+      // If imageTag override requested, resolve and persist before restart
+      if (options?.imageTag) {
+        if (options.imageTag === 'latest') {
+          const variant = 'default';
+          const latest = await resolveLatestVersion(this.env.KV_CLAW_CACHE, variant);
+          if (latest) {
+            this.openclawVersion = latest.openclawVersion;
+            this.imageVariant = latest.variant;
+            this.trackedImageTag = latest.imageTag;
+          }
+          // If KV empty, fall through to existing resolveImageTag() fallback
+        } else {
+          // Custom tag: clear version metadata since we don't know what version this tag represents
+          this.trackedImageTag = options.imageTag;
+          this.openclawVersion = null;
+          this.imageVariant = null;
+        }
+        await this.ctx.storage.put(
+          storageUpdate({
+            openclawVersion: this.openclawVersion,
+            imageVariant: this.imageVariant,
+            trackedImageTag: this.trackedImageTag,
+          })
+        );
+      }
+
       const flyConfig = this.getFlyConfig();
 
       // Backfill machineSize from live Fly machine config for legacy instances
@@ -1480,6 +1515,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       const { envVars, minSecretsVersion } = await this.buildUserEnvVars();
       const guest = guestFromSize(this.machineSize);
       const imageTag = this.resolveImageTag();
+      console.log('[DO] restartGateway: deploying with imageTag:', imageTag);
       const identity = {
         userId: this.userId ?? '',
         sandboxId: this.sandboxId ?? '',

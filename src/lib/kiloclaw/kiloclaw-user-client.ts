@@ -50,7 +50,10 @@ export class KiloClawUserClient {
     return this.request('/api/kiloclaw/status');
   }
 
-  async restartGateway(): Promise<RestartGatewayResponse> {
-    return this.request('/api/admin/gateway/restart', { method: 'POST' });
+  async restartGateway(options?: { imageTag?: string }): Promise<RestartGatewayResponse> {
+    return this.request('/api/admin/gateway/restart', {
+      method: 'POST',
+      body: options?.imageTag ? JSON.stringify({ imageTag: options.imageTag }) : undefined,
+    });
   }
 }
