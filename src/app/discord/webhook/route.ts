@@ -178,8 +178,12 @@ async function processGatewayMessage(event: ForwardedGatewayEvent) {
   );
 
   // Replace processing reaction with complete reaction
-  await Promise.all([
+  const [removeResult] = await Promise.all([
     removeDiscordReaction(channelId, messageId, PROCESSING_EMOJI),
     addDiscordReaction(channelId, messageId, COMPLETE_EMOJI),
   ]);
+  // Retry removal once if it failed (e.g. due to rate limiting)
+  if (!removeResult.ok) {
+    await removeDiscordReaction(channelId, messageId, PROCESSING_EMOJI);
+  }
 }
