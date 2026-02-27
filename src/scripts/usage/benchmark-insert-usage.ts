@@ -191,6 +191,14 @@ function generateRandomRecord(
       50
     ),
     session_id: maybeNull(`session-${Math.random().toString(36).substring(2, 10)}`, 60),
+    mode: maybeNull(
+      pickRandom(['code', 'build', 'architect', 'ask', 'debug', 'plan', 'general'], Math.random()),
+      50
+    ),
+    kilo_auto_model: maybeNull(
+      pickRandom(['anthropic/claude-sonnet-4.5', 'anthropic/claude-opus-4'], Math.random()),
+      70
+    ),
   };
 
   return { core, metadata };

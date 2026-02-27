@@ -184,6 +184,10 @@ export type MicrodollarUsageContext = {
   feature: FeatureValue | null;
   /** Client session/task identifier from X-KiloCode-TaskId header. */
   session_id: string | null;
+  /** Client mode from x-kilocode-mode header (e.g. 'code', 'build', 'architect'). */
+  mode: string | null;
+  /** Resolved model ID when a kilo/auto model was requested (e.g. 'anthropic/claude-sonnet-4.5'). */
+  kilo_auto_model: string | null;
 };
 
 export type UsageContextInfo = ReturnType<typeof extractUsageContextInfo>;
@@ -205,6 +209,8 @@ export function extractUsageContextInfo(usageContext: MicrodollarUsageContext) {
     has_tools: usageContext.has_tools,
     feature: usageContext.feature,
     session_id: usageContext.session_id,
+    mode: usageContext.mode,
+    kilo_auto_model: usageContext.kilo_auto_model,
   };
 }
 
@@ -439,6 +445,8 @@ export type UsageMetaData = {
   machine_id: string | null;
   feature: string | null;
   session_id: string | null;
+  mode: string | null;
+  kilo_auto_model: string | null;
 };
 
 export async function insertUsageRecord(
@@ -548,6 +556,8 @@ async function insertUsageAndMetadataWithBalanceUpdate(
               has_tools,
               machine_id,
               session_id,
+              mode,
+              kilo_auto_model,
 
               http_user_agent_id,
               http_ip_id,
@@ -581,6 +591,8 @@ async function insertUsageAndMetadataWithBalanceUpdate(
               ${metadataFields.has_tools},
               ${metadataFields.machine_id},
               ${metadataFields.session_id},
+              ${metadataFields.mode},
+              ${metadataFields.kilo_auto_model},
 
               (SELECT http_user_agent_id FROM http_user_agent_cte),
               (SELECT http_ip_id FROM http_ip_cte),

@@ -115,9 +115,12 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   // "kilo/auto" is a quasi-model id that resolves to a real model based on x-kilocode-mode.
   // After this resolution, the rest of the proxy flow behaves as if the client requested
   // the resolved model directly.
+  const modeHeader = request.headers.get('x-kilocode-mode')?.trim() || null;
+  let kiloAutoModel: string | null = null;
   if (isKiloAutoModel(requestedModelLowerCased)) {
-    const modeHeader = request.headers.get('x-kilocode-mode');
-    Object.assign(requestBodyParsed, resolveAutoModel(requestedModelLowerCased, modeHeader));
+    const resolved = resolveAutoModel(requestedModelLowerCased, modeHeader);
+    kiloAutoModel = resolved.model;
+    Object.assign(requestBodyParsed, resolved);
   }
 
   const originalModelIdLowerCased = requestBodyParsed.model.toLowerCase();
@@ -287,6 +290,8 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     tokenSource,
     feature: validateFeatureHeader(request.headers.get(FEATURE_HEADER)),
     session_id: taskId ?? null,
+    mode: modeHeader,
+    kilo_auto_model: kiloAutoModel,
   };
 
   setTag('ui.ai_model', requestBodyParsed.model);
@@ -388,7 +393,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
       isAnonymous: isAnonymousContext(user),
       isStreaming: requestBodyParsed.stream === true,
       userByok: !!userByok,
-      mode: request.headers.get('x-kilocode-mode')?.trim() || undefined,
+      mode: modeHeader || undefined,
       provider: provider.id,
       requestedModel: requestedModelLowerCased,
       resolvedModel: normalizeModelId(originalModelIdLowerCased),

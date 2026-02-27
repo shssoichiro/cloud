@@ -626,6 +626,8 @@ export const microdollar_usage_metadata = pgTable(
     machine_id: text(),
     feature_id: integer(),
     session_id: text(),
+    mode: text(),
+    kilo_auto_model: text(),
   },
   table => [index('idx_microdollar_usage_metadata_created_at').on(table.created_at)]
 );
@@ -783,6 +785,8 @@ export const microdollar_usage_view = pgView('microdollar_usage_view', {
   machine_id: text(),
   feature: text(),
   session_id: text(),
+  mode: text(),
+  kilo_auto_model: text(),
 }).as(sql`
   SELECT
     mu.id,
@@ -829,7 +833,9 @@ export const microdollar_usage_view = pgView('microdollar_usage_view', {
     meta.has_tools,
     meta.machine_id,
     feat.feature,
-    meta.session_id
+    meta.session_id,
+    meta.mode,
+    meta.kilo_auto_model
   FROM ${microdollar_usage} mu
   LEFT JOIN ${microdollar_usage_metadata} meta ON mu.id = meta.id
   LEFT JOIN ${http_ip} ip ON meta.http_ip_id = ip.http_ip_id

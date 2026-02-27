@@ -91,6 +91,8 @@ export async function POST(
     machine_id: null,
     feature: null,
     session_id: null,
+    mode: null,
+    kilo_auto_model: null,
   };
 
   await insertUsageRecord(coreUsageFields, metadataFields);
