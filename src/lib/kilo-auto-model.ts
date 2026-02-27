@@ -82,6 +82,12 @@ type ResolvedAutoModel = {
   verbosity?: Verbosity;
 };
 
+const CODE_MODEL: ResolvedAutoModel = {
+  model: CLAUDE_SONNET_CURRENT_MODEL_ID,
+  reasoning: { enabled: true },
+  verbosity: 'low',
+};
+
 // Mode → model mappings for kilo/auto routing.
 // Add/remove/modify entries here to change routing behavior.
 const MODE_TO_MODEL = new Map<string, ResolvedAutoModel>([
@@ -116,10 +122,7 @@ const MODE_TO_MODEL = new Map<string, ResolvedAutoModel>([
     'explore',
     { model: CLAUDE_SONNET_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'medium' },
   ],
-  [
-    'code',
-    { model: CLAUDE_SONNET_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'low' },
-  ],
+  ['code', CODE_MODEL],
 ]);
 
 export function resolveAutoModel(model: string, modeHeader: string | null): ResolvedAutoModel {
@@ -129,12 +132,6 @@ export function resolveAutoModel(model: string, modeHeader: string | null): Reso
   if (model === KILO_AUTO_SMALL_MODEL.id) {
     return { model: 'openai/gpt-5-nano' };
   }
-  const mode = modeHeader?.trim().toLowerCase() ?? 'code';
-  return (
-    MODE_TO_MODEL.get(mode) ?? {
-      model: CLAUDE_SONNET_CURRENT_MODEL_ID,
-      reasoning: { enabled: true },
-      verbosity: 'high',
-    }
-  );
+  const mode = modeHeader?.trim().toLowerCase() ?? '';
+  return MODE_TO_MODEL.get(mode) ?? CODE_MODEL;
 }
