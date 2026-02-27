@@ -978,6 +978,12 @@ importers:
 
   cloudflare-webhook-agent-ingest:
     dependencies:
+      '@kilocode/db':
+        specifier: workspace:*
+        version: link:../packages/db
+      drizzle-orm:
+        specifier: ^0.44.7
+        version: 0.44.7(@cloudflare/workers-types@4.20260130.0)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(bun-types@1.3.9)(kysely@0.28.10)(pg@8.16.3)
       hono:
         specifier: ^4.11.4
         version: 4.11.7

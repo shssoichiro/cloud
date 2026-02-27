@@ -22,6 +22,8 @@
     "typecheck": "tsgo --noEmit --incremental false"
   },
   "dependencies": {
+    "@kilocode/db": "workspace:*",
+    "drizzle-orm": "^0.44.7",
     "hono": "^4.11.4",
     "pg": "^8.13.1",
     "workers-tagged-logger": "^1.0.0",
