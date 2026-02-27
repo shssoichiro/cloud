@@ -35,6 +35,7 @@ export async function getEnabledSecuritySyncOwners(): Promise<SecuritySyncOwner[
     .where(
       and(
         eq(agent_configs.agent_type, 'security_scan'),
+        eq(agent_configs.platform, 'github'),
         eq(agent_configs.is_enabled, true),
         or(
           isNotNull(agent_configs.owned_by_organization_id),
