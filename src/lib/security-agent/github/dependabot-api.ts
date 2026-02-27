@@ -108,34 +108,28 @@ function toInternalAlert(alert: GitHubDependabotAlert): DependabotAlertRaw {
 export type FetchAlertsResult =
   | { status: 'success'; alerts: DependabotAlertRaw[] }
   | { status: 'repo_not_found' }
-  | { status: 'alerts_disabled' }
   | { status: 'alerts_unavailable' };
 
-type FetchAlertsSkipStatus = 'repo_not_found' | 'alerts_disabled' | 'alerts_unavailable';
+type FetchAlertsSkipStatus = 'repo_not_found' | 'alerts_unavailable';
+
+const DEPENDABOT_NOT_ACTIONABLE_MESSAGE_HINTS = [
+  'dependabot alerts are disabled',
+  'dependabot alerts are not available',
+  'repository access blocked',
+  'archived repositories',
+  'archived repository',
+] as const;
 
 function normalizeErrorMessage(message?: string): string {
   return (message ?? '').toLowerCase();
 }
 
-function isDependabotAlertsDisabledMessage(message?: string): boolean {
+function isDependabotNotActionableMessage(message?: string): boolean {
   const normalized = normalizeErrorMessage(message);
-  return (
-    normalized.includes('dependabot alerts are disabled') ||
-    normalized.includes('dependabot alerts are not available')
-  );
+  return DEPENDABOT_NOT_ACTIONABLE_MESSAGE_HINTS.some(hint => normalized.includes(hint));
 }
 
-function isDependabotAlertsUnavailableMessage(message?: string): boolean {
-  const normalized = normalizeErrorMessage(message);
-  return (
-    normalized.includes('repository access blocked') ||
-    normalized.includes('archived repositories') ||
-    normalized.includes('archived repository') ||
-    normalized.includes('dependabot alerts are not available')
-  );
-}
-
-function isDependabotServiceUnavailableStatus(httpStatus?: number): boolean {
+function isDependabotUnavailableStatus(httpStatus?: number): boolean {
   return (
     httpStatus === 451 || (typeof httpStatus === 'number' && httpStatus >= 500 && httpStatus < 600)
   );
@@ -149,15 +143,11 @@ function classifyFetchAlertsError(
     return 'repo_not_found';
   }
 
-  if (httpStatus === 403 && isDependabotAlertsDisabledMessage(message)) {
-    return 'alerts_disabled';
-  }
-
-  if (isDependabotServiceUnavailableStatus(httpStatus)) {
+  if (isDependabotUnavailableStatus(httpStatus)) {
     return 'alerts_unavailable';
   }
 
-  if ((httpStatus === 403 || httpStatus === 422) && isDependabotAlertsUnavailableMessage(message)) {
+  if ((httpStatus === 403 || httpStatus === 422) && isDependabotNotActionableMessage(message)) {
     return 'alerts_unavailable';
   }
 
@@ -219,11 +209,6 @@ export async function fetchAllDependabotAlerts(
     const httpStatus = (error as { status?: number }).status;
     const message = (error as { message?: string }).message;
     const skipStatus = classifyFetchAlertsError(httpStatus, message);
-
-    if (skipStatus === 'alerts_disabled') {
-      log(`Dependabot alerts are not available for ${owner}/${repo}, skipping`);
-      return { status: 'alerts_disabled' };
-    }
 
     if (skipStatus === 'alerts_unavailable') {
       warn(`Dependabot alerts are unavailable for ${owner}/${repo}, skipping`, {
