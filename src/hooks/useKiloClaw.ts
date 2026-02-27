@@ -171,3 +171,30 @@ export function useKiloClawMutations() {
     ),
   };
 }
+
+const KILOCLAW_STATUS_PAGE_RESOURCE_ID = '8737418';
+
+async function fetchKiloClawServiceStatus(): Promise<boolean> {
+  const response = await fetch('https://status.kilo.ai/index.json');
+  if (!response.ok) {
+    // Fail closed: hide the banner if we can't fetch status
+    return false;
+  }
+  const data = await response.json();
+  const included: Array<{ id: string; type: string; attributes?: { status?: string } }> =
+    data.included ?? [];
+  const resource = included.find(
+    entry => entry.type === 'status_page_resource' && entry.id === KILOCLAW_STATUS_PAGE_RESOURCE_ID
+  );
+  return resource?.attributes?.status !== 'operational';
+}
+
+/** Returns true when KiloClaw is experiencing issues (not "operational"). */
+export function useKiloClawServiceDegraded() {
+  return useQuery({
+    queryKey: ['kiloclaw-service-status'],
+    queryFn: fetchKiloClawServiceStatus,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+}
