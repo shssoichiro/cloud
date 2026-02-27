@@ -34,7 +34,9 @@ const HEARTBEAT_INTERVAL_MS = 10_000; // 10 seconds
  * - The listener runs for GATEWAY_DURATION_MS, then cleanly disconnects
  *
  * Coordination:
- * - On startup, the listener atomically claims the "active listener" slot in Postgres
+ * - On startup, the listener first connects to Discord and waits for ClientReady
+ * - Only after a healthy connection does it claim the "active listener" slot in Postgres
+ * - This prevents a failed startup from killing the previous active listener
  * - While running, it periodically checks if it's still the active listener
  * - If a new listener has taken over, it aborts and disconnects cleanly
  * - This ensures only one Gateway connection is active at a time, preventing
@@ -65,17 +67,14 @@ export async function GET(request: NextRequest) {
   let heartbeatPromise: Promise<void> | undefined;
 
   try {
-    // Atomically claim the active listener slot
-    const expiresAt = new Date(Date.now() + GATEWAY_DURATION_MS).toISOString();
-    await claimActiveListener(listenerId, expiresAt);
-
     abortController = new AbortController();
 
-    // Start heartbeat polling in the background
-    heartbeatPromise = runHeartbeat(listenerId, abortController);
-
-    // Run the Gateway listener (will resolve when duration elapses or aborted)
-    await runGatewayListener(webhookUrl, GATEWAY_DURATION_MS, abortController.signal);
+    // Run the Gateway listener. Leader takeover + heartbeat start only after
+    // the Discord connection is healthy (ClientReady), so a failed login never
+    // causes the previous listener to shut down prematurely.
+    await runGatewayListener(webhookUrl, GATEWAY_DURATION_MS, abortController, listenerId, hp => {
+      heartbeatPromise = hp;
+    });
 
     return NextResponse.json({ status: 'completed', listenerId });
   } catch (error) {
@@ -162,13 +161,20 @@ async function runHeartbeat(listenerId: string, abortController: AbortController
  * Connects via discord.js, listens for raw events, and forwards
  * MESSAGE_CREATE events to the webhook URL.
  *
+ * Leader takeover happens only after ClientReady so a failed login never
+ * causes the previous listener to shut down prematurely.
+ *
  * Respects the abort signal for clean shutdown when superseded.
  */
 async function runGatewayListener(
   webhookUrl: string,
   durationMs: number,
-  abortSignal: AbortSignal
+  abortController: AbortController,
+  listenerId: string,
+  onHeartbeatStarted: (heartbeatPromise: Promise<void>) => void
 ): Promise<void> {
+  const abortSignal = abortController.signal;
+
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -181,6 +187,8 @@ async function runGatewayListener(
 
   let isShuttingDown = false;
   let botUserId: string | null = null;
+  // Only forward events after we've claimed leadership
+  let isLeader = false;
 
   return new Promise<void>((resolve, reject) => {
     const cleanup = () => {
@@ -215,6 +223,19 @@ async function runGatewayListener(
     client.once(Events.ClientReady, readyClient => {
       console.log(`[DiscordGateway] Connected as ${readyClient.user.tag}`);
       botUserId = readyClient.user.id;
+
+      // Connection is healthy — now claim leadership and start heartbeat.
+      const expiresAt = new Date(Date.now() + durationMs).toISOString();
+      claimActiveListener(listenerId, expiresAt)
+        .then(() => {
+          isLeader = true;
+          onHeartbeatStarted(runHeartbeat(listenerId, abortController));
+        })
+        .catch(error => {
+          console.error('[DiscordGateway] Failed to claim leader slot:', error);
+          clearTimeout(timeout);
+          cleanup();
+        });
     });
 
     client.on(Events.Error, error => {
@@ -223,7 +244,7 @@ async function runGatewayListener(
 
     // Listen to raw events and forward MESSAGE_CREATE to the webhook
     client.on('raw', async (packet: { t: string; d: unknown }) => {
-      if (isShuttingDown) return;
+      if (isShuttingDown || !isLeader) return;
 
       if (packet.t === 'MESSAGE_CREATE') {
         const forwardedEvent = {
