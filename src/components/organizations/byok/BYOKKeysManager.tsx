@@ -41,6 +41,7 @@ import {
   VercelUserByokInferenceProviderIdSchema,
   AwsCredentialsSchema,
 } from '@/lib/providers/openrouter/inference-provider-id';
+import * as z from 'zod';
 
 // Hardcoded BYOK providers list
 const BYOK_PROVIDERS = [
@@ -187,8 +188,7 @@ export function BYOKKeysManager({ organizationId }: BYOKKeysManagerProps) {
     }
     const result = AwsCredentialsSchema.safeParse(parsed);
     if (!result.success) {
-      const missing = result.error.errors.map(e => e.path.join('.')).join(', ');
-      return `Invalid AWS credentials: missing or invalid field(s): ${missing}`;
+      return `Invalid AWS credentials:\n${z.prettifyError(result.error)}`;
     }
     return null;
   };
@@ -430,12 +430,14 @@ export function BYOKKeysManager({ organizationId }: BYOKKeysManagerProps) {
                         setAwsCredentialError(validateAwsCredentials(e.target.value));
                       }}
                       placeholder='{"accessKeyId": "...", "secretAccessKey": "...", "region": "us-east-1"}'
-                      className="border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[80px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      className="border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-20 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                       rows={4}
                     />
                     {awsCredentialError && (
                       <Alert variant="destructive">
-                        <AlertDescription>{awsCredentialError}</AlertDescription>
+                        <AlertDescription className="whitespace-break-spaces">
+                          {awsCredentialError}
+                        </AlertDescription>
                       </Alert>
                     )}
                   </>
