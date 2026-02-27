@@ -81,8 +81,8 @@ export async function syncDependabotAlertsForRepo(params: {
       return result;
     }
 
-    if (fetchResult.status === 'alerts_disabled') {
-      log(`Dependabot alerts disabled for ${repoFullName}, skipping`);
+    if (fetchResult.status === 'alerts_unavailable') {
+      warn(`Dependabot alerts unavailable for ${repoFullName}, skipping`);
       return result;
     }
 

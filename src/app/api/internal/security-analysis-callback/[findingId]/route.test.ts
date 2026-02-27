@@ -89,6 +89,7 @@ jest.mock('@sentry/nextjs', () => ({
 
 jest.mock('@/lib/utils.server', () => ({
   sentryLogger: () => jest.fn(),
+  logExceptInTest: jest.fn(),
 }));
 
 jest.mock('@/lib/drizzle', () => {

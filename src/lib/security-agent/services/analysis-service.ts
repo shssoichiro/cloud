@@ -44,6 +44,7 @@ import {
 } from '../core/constants';
 
 const log = sentryLogger('security-agent:analysis', 'info');
+const warn = sentryLogger('security-agent:analysis', 'warning');
 const logError = sentryLogger('security-agent:analysis', 'error');
 
 const ANALYSIS_PROMPT_TEMPLATE = `You are a security analyst reviewing a dependency vulnerability alert for a codebase.
@@ -504,6 +505,18 @@ export async function startSecurityAnalysis(params: {
     try {
       await client.initiateFromPreparedSession({ cloudAgentSessionId });
     } catch (initiateError) {
+      // Re-throw InsufficientCreditsError so it propagates to the caller
+      if (initiateError instanceof InsufficientCreditsError) {
+        warn('Sandbox initiation blocked by insufficient credits', {
+          correlationId,
+          findingId,
+          cloudAgentSessionId,
+        });
+        // Clean up the prepared session
+        void client.deleteSession(cloudAgentSessionId).catch(() => {});
+        throw initiateError;
+      }
+
       logError('initiateFromPreparedSession failed', {
         correlationId,
         findingId,
@@ -512,11 +525,6 @@ export async function startSecurityAnalysis(params: {
       });
       // Clean up the prepared session
       void client.deleteSession(cloudAgentSessionId).catch(() => {});
-
-      // Re-throw InsufficientCreditsError so it propagates to the caller
-      if (initiateError instanceof InsufficientCreditsError) {
-        throw initiateError;
-      }
 
       await updateAnalysisStatus(findingId, 'failed', {
         error: initiateError instanceof Error ? initiateError.message : String(initiateError),
