@@ -1459,8 +1459,13 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         ControllerVersionResponseSchema
       );
     } catch (error) {
-      // Old controllers without /_kilo/version return 404
-      if (error instanceof GatewayControllerError && error.status === 404) {
+      // Controllers that predate the /_kilo/version route: the request falls
+      // through to the catch-all proxy which returns 401 (REQUIRE_PROXY_TOKEN)
+      // or forwards to the gateway which returns 404 for the unknown path.
+      if (
+        error instanceof GatewayControllerError &&
+        (error.status === 404 || error.status === 401)
+      ) {
         return null;
       }
       throw error;
