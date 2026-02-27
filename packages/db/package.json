@@ -6,7 +6,6 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts",
-    "./orb-schema": "./src/orb-generated/schema.ts",
     "./client": "./src/client.ts"
   },
   "devDependencies": {
