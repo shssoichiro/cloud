@@ -628,8 +628,9 @@ platform.post('/publish-image-version', async c => {
 
   // Maintain KV tag index
   try {
-    const index: string[] = (await c.env.KV_CLAW_CACHE.get(IMAGE_VERSION_INDEX_KEY, 'json')) ?? [];
-    if (Array.isArray(index) && !index.includes(imageTag)) {
+    const raw = await c.env.KV_CLAW_CACHE.get(IMAGE_VERSION_INDEX_KEY, 'json');
+    const index = Array.isArray(raw) ? (raw as unknown[]) : [];
+    if (!index.includes(imageTag)) {
       index.push(imageTag);
       await c.env.KV_CLAW_CACHE.put(IMAGE_VERSION_INDEX_KEY, JSON.stringify(index));
     }

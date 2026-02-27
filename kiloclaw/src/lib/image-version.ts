@@ -166,7 +166,7 @@ async function rebuildIndex(kv: KVNamespace): Promise<string[]> {
       }
       const raw = await kv.get(key.name, 'json');
       if (raw && typeof raw === 'object' && 'imageTag' in raw) {
-        const tag = (raw as { imageTag: string }).imageTag;
+        const tag = String((raw as Record<string, unknown>).imageTag);
         if (!tags.includes(tag)) {
           tags.push(tag);
         }
@@ -185,15 +185,15 @@ async function rebuildIndex(kv: KVNamespace): Promise<string[]> {
 // ---------------------------------------------------------------------------
 
 /**
- * List all registered image versions from KV.
- * Reads the tag index, then fetches each versioned entry.
+ * List all registered image versions by scanning KV keys with prefix `image-version:`.
+ * Paginates through all keys and parses each entry.
  */
 export async function listAllVersions(kv: KVNamespace): Promise<ImageVersionEntry[]> {
   const versions: ImageVersionEntry[] = [];
   let cursor: string | undefined;
 
   do {
-    const result = await kv.list({ prefix: 'image-version:' });
+    const result = await kv.list({ prefix: 'image-version:', cursor });
     for (const key of result.keys) {
       // Skip latest pointers and the index key
       if (key.name.startsWith('image-version:latest:') || key.name === IMAGE_VERSION_INDEX_KEY) {
