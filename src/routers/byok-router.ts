@@ -408,15 +408,9 @@ export const byokRouter = createTRPCRouter({
         };
       } catch (e) {
         console.error(e);
-        if (APICallError.isInstance(e)) {
-          return {
-            success: false,
-            message: `API key (${provider}) test failed: ${e.statusCode} ${e.message}`,
-          };
-        }
         return {
           success: false,
-          message: `API key (${provider}) test failed with unknown error`,
+          message: `API key (${provider}) test failed with: ${e instanceof Error ? e.message : e}`,
         };
       }
     }),
