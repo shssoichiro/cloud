@@ -186,7 +186,7 @@ async function fetchKiloClawServiceStatus(): Promise<boolean> {
   const resource = included.find(
     entry => entry.type === 'status_page_resource' && entry.id === KILOCLAW_STATUS_PAGE_RESOURCE_ID
   );
-  return resource?.attributes?.status !== 'operational';
+  return resource?.attributes?.status != null && resource.attributes.status !== 'operational';
 }
 
 /** Returns true when KiloClaw is experiencing issues (not "operational"). */
