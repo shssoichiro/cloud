@@ -79,6 +79,7 @@ jobs:
 
       - name: Notify webhook of new release
         if: steps.age.outputs.recent == 'true'
+        continue-on-error: true
         env:
           WEBHOOK_SECRET: ${{ secrets.KILOCLAW_GITHUB_WEBHOOK_TRIGGER_TOKEN }}
           WEBHOOK_URL: ${{ secrets.OPENCLAW_BUMP_WEBHOOK_URL }}
