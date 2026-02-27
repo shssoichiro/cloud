@@ -61,28 +61,31 @@ export async function GET(request: NextRequest) {
 
   console.log('[DiscordGateway] Starting Gateway listener', { listenerId, webhookUrl });
 
+  let abortController: AbortController | undefined;
+  let heartbeatPromise: Promise<void> | undefined;
+
   try {
     // Atomically claim the active listener slot
     const expiresAt = new Date(Date.now() + GATEWAY_DURATION_MS).toISOString();
     await claimActiveListener(listenerId, expiresAt);
 
-    const abortController = new AbortController();
+    abortController = new AbortController();
 
     // Start heartbeat polling in the background
-    const heartbeatPromise = runHeartbeat(listenerId, abortController);
+    heartbeatPromise = runHeartbeat(listenerId, abortController);
 
     // Run the Gateway listener (will resolve when duration elapses or aborted)
     await runGatewayListener(webhookUrl, GATEWAY_DURATION_MS, abortController.signal);
-
-    // Stop heartbeat
-    abortController.abort();
-    await heartbeatPromise;
 
     return NextResponse.json({ status: 'completed', listenerId });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('[DiscordGateway] Gateway listener error:', errorMessage);
     return NextResponse.json({ error: errorMessage }, { status: 500 });
+  } finally {
+    // Always stop heartbeat polling, even if runGatewayListener rejects
+    abortController?.abort();
+    await heartbeatPromise?.catch(() => undefined);
   }
 }
 
