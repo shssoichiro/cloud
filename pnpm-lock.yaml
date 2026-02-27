@@ -1030,6 +1030,9 @@ importers:
 
   kiloclaw:
     dependencies:
+      '@kilocode/db':
+        specifier: workspace:*
+        version: link:../packages/db
       hono:
         specifier: ^4.11.6
         version: 4.11.7
@@ -1049,9 +1052,6 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.1
-      '@types/pg':
-        specifier: ^8.16.0
-        version: 8.16.0
       '@typescript/native-preview':
         specifier: 7.0.0-dev.20251019.1
         version: 7.0.0-dev.20251019.1
