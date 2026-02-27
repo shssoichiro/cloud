@@ -137,7 +137,7 @@ app.put(
     }
 
     const contentLength = parseInt(c.req.header('Content-Length') ?? '', 10);
-    if (isNaN(contentLength) || contentLength > MAX_LOG_UPLOAD_BYTES) {
+    if (contentLength > MAX_LOG_UPLOAD_BYTES) {
       return c.text('Request body too large', 413);
     }
 
