@@ -4,7 +4,7 @@
  */
 
 import { getWorkerDb } from '@kilocode/db/client';
-import { kiloclaw_image_catalog, sql } from '@kilocode/db';
+import { kiloclaw_image_catalog, sql, ne } from '@kilocode/db';
 import { isValidImageTag } from './image-tag-validation';
 
 const OPENCLAW_VERSION_RE = /^\d{4}\.\d{1,2}\.\d{1,2}$/;
@@ -86,6 +86,6 @@ export async function upsertCatalogVersion(
         updated_at: sql`NOW()`,
       },
       // Never re-enable admin-disabled versions
-      setWhere: sql`${kiloclaw_image_catalog.status} != 'disabled'`,
+      setWhere: ne(kiloclaw_image_catalog.status, 'disabled'),
     });
 }

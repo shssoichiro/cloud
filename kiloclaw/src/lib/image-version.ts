@@ -38,10 +38,12 @@ export async function resolveLatestVersion(
  *
  * imageDigest is optional — the worker knows its tag but not its digest.
  */
-// New image versions only appear on worker deploys (new OPENCLAW_VERSION / FLY_IMAGE_TAG).
-// Each deploy creates a fresh isolate, so this flag guarantees exactly one Postgres
-// upsert per deploy — no repeated writes on subsequent requests.
-let catalogSynced = false;
+// Throttle catalog syncs: at most once per minute per isolate.
+// Cloudflare may reuse isolates across deploys, so a boolean flag alone could
+// suppress legitimate syncs. A timestamp bound keeps writes rare while ensuring
+// the catalog stays populated. The upsert is idempotent, so extra writes are cheap.
+const CATALOG_SYNC_INTERVAL_MS = 60_000;
+let lastCatalogSyncMs: number | null = null;
 
 export async function registerVersionIfNeeded(
   kv: KVNamespace,
@@ -53,8 +55,12 @@ export async function registerVersionIfNeeded(
 ): Promise<boolean> {
   const publishedAt = new Date().toISOString();
 
-  // Upsert to Postgres catalog once per isolate (i.e. once per deploy).
-  if (hyperdriveConnectionString && !catalogSynced) {
+  // Upsert to Postgres catalog, throttled to once per minute per isolate.
+  const now = Date.now();
+  if (
+    hyperdriveConnectionString &&
+    (!lastCatalogSyncMs || now - lastCatalogSyncMs > CATALOG_SYNC_INTERVAL_MS)
+  ) {
     try {
       await upsertCatalogVersion(hyperdriveConnectionString, {
         openclawVersion,
@@ -63,7 +69,7 @@ export async function registerVersionIfNeeded(
         imageDigest,
         publishedAt,
       });
-      catalogSynced = true;
+      lastCatalogSyncMs = now;
     } catch (e) {
       console.error(
         '[image-version] Failed to write catalog entry to Postgres:',
@@ -133,7 +139,7 @@ async function getOrRebuildIndex(kv: KVNamespace): Promise<string[]> {
   try {
     const raw = await kv.get(IMAGE_VERSION_INDEX_KEY, 'json');
     if (Array.isArray(raw) && raw.every(item => typeof item === 'string')) {
-      return raw as string[];
+      return raw;
     }
   } catch {
     // Fall through to rebuild
