@@ -10,13 +10,11 @@
   },
   "dependencies": {
     "@kilocode/db": "workspace:*",
+    "drizzle-orm": "catalog:",
     "hono": "^4.11.4",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.17.2",
     "zod": "catalog:"
-  },
-  "peerDependencies": {
-    "drizzle-orm": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260120.0",
