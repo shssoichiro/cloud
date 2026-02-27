@@ -86,33 +86,41 @@ export async function POST(req: NextRequest) {
         completedAt: new Date(),
       });
 
-      // Post comment on issue explaining failure
-      try {
-        if (ticket.platform_integration_id) {
-          const integration = await getIntegrationById(ticket.platform_integration_id);
+      // Post issue-level failure comment only for issue-triggered tickets.
+      // Review-comment-triggered tickets are notified on their original review thread.
+      if (ticket.trigger_source !== 'review_comment') {
+        try {
+          if (ticket.platform_integration_id) {
+            const integration = await getIntegrationById(ticket.platform_integration_id);
 
-          if (integration?.platform_installation_id) {
-            const tokenData = await generateGitHubInstallationToken(
-              integration.platform_installation_id
-            );
+            if (integration?.platform_installation_id) {
+              const tokenData = await generateGitHubInstallationToken(
+                integration.platform_installation_id
+              );
 
-            await postIssueComment({
-              repoFullName: ticket.repo_full_name,
-              issueNumber: ticket.issue_number,
-              body: `🤖 **Auto-Fix Update**\n\nI attempted to create a pull request to fix this issue, but encountered an error:\n\n\`\`\`\n${errorMessage || 'Unknown error'}\n\`\`\`\n\nThis issue may require manual attention.`,
-              githubToken: tokenData.token,
-            });
+              await postIssueComment({
+                repoFullName: ticket.repo_full_name,
+                issueNumber: ticket.issue_number,
+                body: `🤖 **Auto-Fix Update**\n\nI attempted to create a pull request to fix this issue, but encountered an error:\n\n\`\`\`\n${errorMessage || 'Unknown error'}\n\`\`\`\n\nThis issue may require manual attention.`,
+                githubToken: tokenData.token,
+              });
 
-            logExceptInTest('[auto-fix-pr-callback] Posted failure comment', { ticketId });
+              logExceptInTest('[auto-fix-pr-callback] Posted failure comment', { ticketId });
+            }
           }
+        } catch (commentError) {
+          errorExceptInTest('[auto-fix-pr-callback] Failed to post failure comment:', commentError);
+          captureException(commentError, {
+            tags: { operation: 'auto-fix-pr-callback', step: 'post-failure-comment' },
+            extra: { ticketId, sessionId },
+          });
+          // Continue - comment failure is not critical
         }
-      } catch (commentError) {
-        errorExceptInTest('[auto-fix-pr-callback] Failed to post failure comment:', commentError);
-        captureException(commentError, {
-          tags: { operation: 'auto-fix-pr-callback', step: 'post-failure-comment' },
-          extra: { ticketId, sessionId },
+      } else {
+        logExceptInTest('[auto-fix-pr-callback] Skipping issue comment for review-comment ticket', {
+          ticketId,
+          sessionId,
         });
-        // Continue - comment failure is not critical
       }
 
       // Trigger dispatch for pending fixes
