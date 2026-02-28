@@ -61,20 +61,15 @@ const patchChannelsSchema = z.object({
  */
 async function buildWorkerChannels(channels: z.infer<typeof updateConfigSchema>['channels']) {
   if (!channels) return undefined;
-  return {
-    telegramBotToken: channels.telegramBotToken
-      ? await encryptKiloClawSecret(channels.telegramBotToken)
-      : undefined,
-    discordBotToken: channels.discordBotToken
-      ? await encryptKiloClawSecret(channels.discordBotToken)
-      : undefined,
-    slackBotToken: channels.slackBotToken
-      ? await encryptKiloClawSecret(channels.slackBotToken)
-      : undefined,
-    slackAppToken: channels.slackAppToken
-      ? await encryptKiloClawSecret(channels.slackAppToken)
-      : undefined,
-  };
+
+  const [telegramBotToken, discordBotToken, slackBotToken, slackAppToken] = await Promise.all([
+    channels.telegramBotToken ? encryptKiloClawSecret(channels.telegramBotToken) : undefined,
+    channels.discordBotToken ? encryptKiloClawSecret(channels.discordBotToken) : undefined,
+    channels.slackBotToken ? encryptKiloClawSecret(channels.slackBotToken) : undefined,
+    channels.slackAppToken ? encryptKiloClawSecret(channels.slackAppToken) : undefined,
+  ]);
+
+  return { telegramBotToken, discordBotToken, slackBotToken, slackAppToken };
 }
 
 /**

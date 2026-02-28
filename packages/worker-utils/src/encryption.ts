@@ -62,7 +62,11 @@ function parsePemPrivateKey(pem: string): { der: ArrayBuffer; format: 'pkcs8' } 
     );
   }
 
-  return { der: base64ToBytes(body).buffer as ArrayBuffer, format: 'pkcs8' };
+  const bytes = base64ToBytes(body);
+  return {
+    der: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    format: 'pkcs8',
+  };
 }
 
 /** Strip PEM armour from an SPKI public key and decode the DER bytes. */
@@ -70,7 +74,8 @@ function parsePemPublicKey(pem: string): ArrayBuffer {
   const lines = pem.split('\n');
   const body = lines.filter(l => !l.startsWith('-----')).join('');
   if (!body) throw new EncryptionConfigurationError('PEM body is empty');
-  return base64ToBytes(body).buffer as ArrayBuffer;
+  const bytes = base64ToBytes(body);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
 
 // ---- public API ----
