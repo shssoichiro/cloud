@@ -6,6 +6,7 @@ import type { GastownEnv } from '../gastown.worker';
 
 export type AuthVariables = {
   agentJWT: AgentJWTPayload;
+  townId: string;
 };
 
 import { resolveSecret } from '../util/secret.util';
@@ -14,7 +15,8 @@ import { resolveSecret } from '../util/secret.util';
  * Auth middleware that requires a valid Gastown agent JWT via
  * `Authorization: Bearer <jwt>`.
  *
- * Sets `agentJWT` on the Hono context.
+ * Sets `agentJWT` and `townId` on the Hono context. Returns 403 if the
+ * JWT's townId doesn't match the route's `:townId` param (cross-town access).
  */
 export const authMiddleware = createMiddleware<GastownEnv>(async (c, next) => {
   const authHeader = c.req.header('Authorization');
@@ -45,6 +47,16 @@ export const authMiddleware = createMiddleware<GastownEnv>(async (c, next) => {
   }
 
   c.set('agentJWT', result.payload);
+
+  // Resolve and validate townId so handlers can use c.get('townId') directly.
+  const townIdResult = resolveTownId(c);
+  if (townIdResult.error) {
+    const message =
+      townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId';
+    return c.json(resError(message), townIdResult.status);
+  }
+  c.set('townId', townIdResult.townId);
+
   return next();
 });
 
@@ -89,7 +101,7 @@ type TownIdResult =
  * Returns a discriminated result: either the resolved townId, a 400 (no
  * townId available), or a 403 (cross-town access attempt).
  */
-export function resolveTownId(c: Context<GastownEnv>): TownIdResult {
+function resolveTownId(c: Context<GastownEnv>): TownIdResult {
   const fromParam = c.req.param('townId');
   const jwt = c.get('agentJWT');
 
@@ -100,14 +112,4 @@ export function resolveTownId(c: Context<GastownEnv>): TownIdResult {
   const townId = fromParam ?? jwt?.townId;
   if (!townId) return { error: 'missing', status: 400 };
   return { townId };
-}
-
-/**
- * Convenience wrapper: resolve townId or return null.
- * Preserves backward compatibility — callers that don't need to distinguish
- * 400 vs 403 can keep using this.
- */
-export function getTownId(c: Context<GastownEnv>): string | null {
-  const result = resolveTownId(c);
-  return result.townId ?? null;
 }

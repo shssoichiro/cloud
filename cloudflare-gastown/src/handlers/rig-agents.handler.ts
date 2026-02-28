@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { getTownDOStub } from '../dos/Town.do';
 import { resSuccess, resError } from '../util/res.util';
 import { parseJsonBody } from '../util/parse-json-body.util';
-import { resolveTownId } from '../middleware/auth.middleware';
 import { AgentRole, AgentStatus } from '../types';
 import type { GastownEnv } from '../gastown.worker';
 
@@ -42,13 +41,7 @@ export async function handleRegisterAgent(c: Context<GastownEnv>, params: { rigI
       400
     );
   }
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   const agent = await town.registerAgent({ ...parsed.data, rig_id: params.rigId });
   return c.json(resSuccess(agent), 201);
@@ -63,13 +56,7 @@ export async function handleListAgents(c: Context<GastownEnv>, params: { rigId: 
     return c.json(resError('Invalid role or status filter'), 400);
   }
 
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   const agents = await town.listAgents({
     role: role?.data,
@@ -83,13 +70,7 @@ export async function handleGetAgent(
   c: Context<GastownEnv>,
   params: { rigId: string; agentId: string }
 ) {
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   const agent = await town.getAgentAsync(params.agentId);
   if (!agent || agent.rig_id !== params.rigId) return c.json(resError('Agent not found'), 404);
@@ -111,13 +92,7 @@ export async function handleHookBead(
   console.log(
     `${AGENT_LOG} handleHookBead: rigId=${params.rigId} agentId=${params.agentId} beadId=${parsed.data.bead_id}`
   );
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   await town.hookBead(params.agentId, parsed.data.bead_id);
   console.log(`${AGENT_LOG} handleHookBead: hooked successfully`);
@@ -128,13 +103,7 @@ export async function handleUnhookBead(
   c: Context<GastownEnv>,
   params: { rigId: string; agentId: string }
 ) {
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   await town.unhookBead(params.agentId);
   return c.json(resSuccess({ unhooked: true }));
@@ -144,13 +113,7 @@ export async function handlePrime(
   c: Context<GastownEnv>,
   params: { rigId: string; agentId: string }
 ) {
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   const context = await town.prime(params.agentId);
   return c.json(resSuccess(context));
@@ -167,13 +130,7 @@ export async function handleAgentDone(
       400
     );
   }
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   await town.agentDone(params.agentId, parsed.data);
   return c.json(resSuccess({ done: true }));
@@ -194,13 +151,7 @@ export async function handleAgentCompleted(
       400
     );
   }
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   await town.agentCompleted(params.agentId, parsed.data);
   return c.json(resSuccess({ completed: true }));
@@ -217,13 +168,7 @@ export async function handleWriteCheckpoint(
       400
     );
   }
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   await town.writeCheckpoint(params.agentId, parsed.data.data);
   return c.json(resSuccess({ written: true }));
@@ -233,13 +178,7 @@ export async function handleCheckMail(
   c: Context<GastownEnv>,
   params: { rigId: string; agentId: string }
 ) {
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   const messages = await town.checkMail(params.agentId);
   return c.json(resSuccess(messages));
@@ -253,13 +192,7 @@ export async function handleHeartbeat(
   c: Context<GastownEnv>,
   params: { rigId: string; agentId: string }
 ) {
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   await town.touchAgentHeartbeat(params.agentId);
   return c.json(resSuccess({ heartbeat: true }));
@@ -285,13 +218,7 @@ export async function handleGetOrCreateAgent(c: Context<GastownEnv>, params: { r
   console.log(
     `${AGENT_LOG} handleGetOrCreateAgent: rigId=${params.rigId} role=${parsed.data.role}`
   );
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   const agent = await town.getOrCreateAgent(parsed.data.role, params.rigId);
   console.log(`${AGENT_LOG} handleGetOrCreateAgent: result=${JSON.stringify(agent).slice(0, 200)}`);
@@ -302,13 +229,7 @@ export async function handleDeleteAgent(
   c: Context<GastownEnv>,
   params: { rigId: string; agentId: string }
 ) {
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error)
-    return c.json(
-      resError(townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId'),
-      townIdResult.status
-    );
-  const townId = townIdResult.townId;
+  const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
   const agent = await town.getAgentAsync(params.agentId);
   if (!agent || agent.rig_id !== params.rigId) return c.json(resError('Agent not found'), 404);
