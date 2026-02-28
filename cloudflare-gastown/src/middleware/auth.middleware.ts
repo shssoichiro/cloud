@@ -12,11 +12,30 @@ export type AuthVariables = {
 import { resolveSecret } from '../util/secret.util';
 
 /**
+ * Resolves `townId` from the route param `:townId` and sets it on the Hono
+ * context. When the request is also authenticated (agentJWT is set),
+ * cross-checks the JWT's townId against the route param and returns 403 on
+ * mismatch.
+ *
+ * Must be applied unconditionally (even in dev) so handlers can always
+ * call `c.get('townId')`.
+ */
+export const townIdMiddleware = createMiddleware<GastownEnv>(async (c, next) => {
+  const townIdResult = resolveTownId(c);
+  if (townIdResult.error) {
+    const message =
+      townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId';
+    return c.json(resError(message), townIdResult.status);
+  }
+  c.set('townId', townIdResult.townId);
+  return next();
+});
+
+/**
  * Auth middleware that requires a valid Gastown agent JWT via
  * `Authorization: Bearer <jwt>`.
  *
- * Sets `agentJWT` and `townId` on the Hono context. Returns 403 if the
- * JWT's townId doesn't match the route's `:townId` param (cross-town access).
+ * Sets `agentJWT` on the Hono context.
  */
 export const authMiddleware = createMiddleware<GastownEnv>(async (c, next) => {
   const authHeader = c.req.header('Authorization');
@@ -47,16 +66,6 @@ export const authMiddleware = createMiddleware<GastownEnv>(async (c, next) => {
   }
 
   c.set('agentJWT', result.payload);
-
-  // Resolve and validate townId so handlers can use c.get('townId') directly.
-  const townIdResult = resolveTownId(c);
-  if (townIdResult.error) {
-    const message =
-      townIdResult.error === 'forbidden' ? 'Cross-town access denied' : 'Missing townId';
-    return c.json(resError(message), townIdResult.status);
-  }
-  c.set('townId', townIdResult.townId);
-
   return next();
 });
 

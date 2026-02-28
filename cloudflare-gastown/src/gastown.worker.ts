@@ -6,6 +6,7 @@ import { withCloudflareAccess, validateCfAccessRequest } from './middleware/cf-a
 import {
   authMiddleware,
   agentOnlyMiddleware,
+  townIdMiddleware,
   type AuthVariables,
 } from './middleware/auth.middleware';
 import {
@@ -134,10 +135,13 @@ app.get('/', c => c.html(dashboardHtml()));
 
 app.get('/health', c => c.json({ status: 'ok' }));
 
-// ── Auth ────────────────────────────────────────────────────────────────
+// ── Town ID + Auth ──────────────────────────────────────────────────────
 // All rig routes live under /api/towns/:townId/rigs/:rigId so the townId
-// is always available from the URL path. Auth middleware skipped in dev.
+// is always available from the URL path.
+// townIdMiddleware always runs (even in dev) so c.get('townId') is
+// guaranteed for handlers. Auth middleware is skipped in dev.
 
+app.use('/api/towns/:townId/rigs/:rigId/*', townIdMiddleware);
 app.use('/api/towns/:townId/rigs/:rigId/*', async (c, next) =>
   c.env.ENVIRONMENT === 'development' ? next() : authMiddleware(c, next)
 );
