@@ -139,6 +139,8 @@ type NotYetCostedUsageStats = {
 type JustTheCostsUsageStats = {
   cost_mUsd: number;
   cacheDiscount_mUsd?: number;
+  /** The real cost before any free/BYOK/promo zeroing. Set by processTokenData. */
+  market_cost?: number;
   inputTokens: number;
   outputTokens: number;
   cacheWriteTokens: number;
@@ -146,11 +148,7 @@ type JustTheCostsUsageStats = {
   is_byok: boolean | null;
 };
 
-export type MicrodollarUsageStats = NotYetCostedUsageStats &
-  JustTheCostsUsageStats & {
-    /** The real cost before any free/BYOK/promo zeroing. Set by processTokenData. */
-    market_cost?: number;
-  };
+export type MicrodollarUsageStats = NotYetCostedUsageStats & JustTheCostsUsageStats;
 
 export type PromptInfo = {
   system_prompt_prefix: string;
