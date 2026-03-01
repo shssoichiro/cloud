@@ -140,7 +140,7 @@ export class TriggerDO extends DurableObject<Env> {
 
     await this.ctx.storage.put('config', config);
 
-    const values = {
+    const insertValues = {
       trigger_id: config.triggerId,
       namespace: config.namespace,
       user_id: config.userId,
@@ -159,12 +159,15 @@ export class TriggerDO extends DurableObject<Env> {
       webhook_auth_secret_hash: webhookAuth?.secretHash ?? null,
     };
 
+    // On conflict, update all fields except the PK and created_at (preserve original creation time)
+    const { trigger_id: _pk, created_at: _ca, ...updateValues } = insertValues;
+
     this.db
       .insert(triggerConfigTable)
-      .values(values)
+      .values(insertValues)
       .onConflictDoUpdate({
         target: triggerConfigTable.trigger_id,
-        set: values,
+        set: updateValues,
       })
       .run();
 

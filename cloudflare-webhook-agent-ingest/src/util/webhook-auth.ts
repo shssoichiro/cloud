@@ -1,4 +1,4 @@
-import { timingSafeEqual } from '@kilocode/worker-utils';
+import { timingSafeEqual } from '@kilocode/encryption';
 
 export type WebhookAuthInput = {
   header: string;
