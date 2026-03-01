@@ -551,6 +551,10 @@ export class TriggerDO extends DurableObject<Env> {
 
     await this.ctx.storage.deleteAll();
 
+    // Re-run migrations so the schema is present if this instance receives further requests
+    // before Cloudflare evicts it (deleteAll wipes the __drizzle_migrations tracking table too)
+    migrate(this.db, migrations);
+
     logger.info('Trigger deleted');
 
     return { success: true };
