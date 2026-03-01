@@ -47,7 +47,12 @@ const REVIEW_JOIN = /* sql */ `
 function toReviewQueueEntry(row: MergeRequestBeadRecord): ReviewQueueEntry {
   return {
     id: row.bead_id,
-    agent_id: row.assignee_agent_bead_id ?? row.created_by ?? '',
+    // The polecat that submitted the review — stored in metadata (not assignee,
+    // which is set to the refinery when it claims the MR bead via hookBead).
+    agent_id:
+      typeof row.metadata?.source_agent_id === 'string'
+        ? row.metadata.source_agent_id
+        : (row.created_by ?? ''),
     bead_id:
       typeof row.metadata?.source_bead_id === 'string' ? row.metadata.source_bead_id : row.bead_id,
     rig_id: row.rig_id ?? '',
@@ -92,11 +97,11 @@ export function submitToReviewQueue(sql: SqlStorage, input: ReviewQueueInput): v
       input.summary ?? null,
       input.rig_id,
       null,
-      input.agent_id,
+      null, // assignee left null — refinery claims it via hookBead
       'medium',
       JSON.stringify(['gt:merge-request']),
-      JSON.stringify({ source_bead_id: input.bead_id }),
-      input.agent_id,
+      JSON.stringify({ source_bead_id: input.bead_id, source_agent_id: input.agent_id }),
+      input.agent_id, // created_by records who submitted
       timestamp,
       timestamp,
       null,
@@ -256,66 +261,53 @@ export function agentDone(sql: SqlStorage, agentId: string, input: AgentDoneInpu
   if (!agent.current_hook_bead_id) throw new Error(`Agent ${agentId} has no hooked bead`);
 
   if (agent.role === 'refinery') {
-    // Refinery agents merge the code themselves then call gt_done.
-    // Find the in-progress review entry whose source_bead_id matches the
-    // hooked bead and complete it, which also closes the original bead.
-    completeReviewForSourceBead(sql, agent.current_hook_bead_id, agentId);
+    // The refinery is hooked to the MR bead. Complete it and close the
+    // source bead (read from the MR's metadata).
+    const mrBeadId = agent.current_hook_bead_id;
+    completeReviewFromMRBead(sql, mrBeadId, agentId);
     unhookBead(sql, agentId);
     return;
   }
 
+  const sourceBead = agent.current_hook_bead_id;
+
   submitToReviewQueue(sql, {
     agent_id: agentId,
-    bead_id: agent.current_hook_bead_id,
+    bead_id: sourceBead,
     rig_id: agent.rig_id ?? '',
     branch: input.branch,
     pr_url: input.pr_url,
     summary: input.summary,
   });
 
+  // Close the source bead (matches upstream gt done behavior). The polecat's
+  // work is done — the MR bead now tracks the merge lifecycle. The source
+  // bead retains its assignee so we know which agent worked on it.
   unhookBead(sql, agentId);
+  closeBead(sql, sourceBead, agentId);
 }
 
 /**
- * Find the merge_request bead whose metadata.source_bead_id matches the
- * given bead and complete it as 'merged'. Also closes the original bead.
- *
- * Used when a refinery agent finishes: it has already merged the code
- * itself, so we just need to mark the review + source bead as done.
+ * Complete a review given the MR bead id directly (the refinery is hooked
+ * to the MR bead). Marks the MR as merged and closes the source bead
+ * referenced in the MR's metadata.
  */
-function completeReviewForSourceBead(sql: SqlStorage, sourceBeadId: string, agentId: string): void {
-  // Find the merge_request bead for this source bead (most recent first)
-  const rows = [
-    ...query(
-      sql,
-      /* sql */ `
-        ${REVIEW_JOIN}
-        WHERE ${beads.status} IN ('open', 'in_progress')
-          AND json_extract(${beads.metadata}, '$.source_bead_id') = ?
-        ORDER BY ${beads.created_at} DESC
-        LIMIT 1
-      `,
-      [sourceBeadId]
-    ),
-  ];
+function completeReviewFromMRBead(sql: SqlStorage, mrBeadId: string, agentId: string): void {
+  // Read the source_bead_id from the MR bead's metadata
+  const mrBead = getBead(sql, mrBeadId);
+  const sourceBeadId = mrBead?.metadata?.source_bead_id;
 
-  if (rows.length > 0) {
-    const parsed = MergeRequestBeadRecord.parse(rows[0]);
-    const entry = toReviewQueueEntry(parsed);
-    completeReview(sql, entry.id, 'merged');
+  completeReview(sql, mrBeadId, 'merged');
 
+  if (typeof sourceBeadId === 'string') {
     logBeadEvent(sql, {
       beadId: sourceBeadId,
       agentId,
       eventType: 'review_completed',
       newValue: 'merged',
-      metadata: { completedBy: 'refinery' },
+      metadata: { completedBy: 'refinery', mr_bead_id: mrBeadId },
     });
   }
-
-  // Close the original bead regardless of whether we found a review entry.
-  // The refinery confirmed the work is merged — the source bead is done.
-  closeBead(sql, sourceBeadId, agentId);
 }
 
 /**

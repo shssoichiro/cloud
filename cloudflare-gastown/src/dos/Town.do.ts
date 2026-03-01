@@ -1477,7 +1477,10 @@ export class TownDO extends DurableObject<Env> {
         polecatAgentId: entry.agent_id,
       });
 
-      agents.hookBead(this.sql, refineryAgent.id, entry.bead_id);
+      // Hook the refinery to the MR bead (entry.id), not the source bead
+      // (entry.bead_id). The source bead stays closed with its original
+      // polecat assignee preserved.
+      agents.hookBead(this.sql, refineryAgent.id, entry.id);
 
       const started = await dispatch.startAgentInContainer(this.env, this.ctx.storage, {
         townId: this.townId,
@@ -1487,7 +1490,7 @@ export class TownDO extends DurableObject<Env> {
         agentName: refineryAgent.name,
         role: 'refinery',
         identity: refineryAgent.identity,
-        beadId: entry.bead_id,
+        beadId: entry.id,
         beadTitle: `Review merge: ${entry.branch} → ${rigConfig.defaultBranch}`,
         beadBody: entry.summary ?? '',
         checkpoint: null,
