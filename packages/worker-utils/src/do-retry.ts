@@ -1,5 +1,3 @@
-declare const scheduler: undefined | { wait: (ms: number) => Promise<void> };
-
 export type DORetryConfig = {
   maxAttempts: number;
   baseBackoffMs: number;
@@ -43,9 +41,6 @@ function calculateBackoff(attempt: number, config: DORetryConfig): number {
 }
 
 function waitMs(ms: number): Promise<void> {
-  if (typeof scheduler !== 'undefined' && scheduler?.wait) {
-    return scheduler.wait(ms);
-  }
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
