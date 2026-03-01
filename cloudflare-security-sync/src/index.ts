@@ -206,9 +206,10 @@ export default {
         runId,
         error: error instanceof Error ? error.message : String(error),
       });
+      throw error;
+    } finally {
+      ctx.waitUntil(sendBetterStackHeartbeat(env.SECURITY_SYNC_BETTERSTACK_HEARTBEAT_URL, failed));
     }
-
-    ctx.waitUntil(sendBetterStackHeartbeat(env.SECURITY_SYNC_BETTERSTACK_HEARTBEAT_URL, failed));
   },
 
   async queue(batch: MessageBatch<SecuritySyncMessage>, env: CloudflareEnv): Promise<void> {
