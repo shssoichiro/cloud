@@ -263,7 +263,12 @@ export async function startSecurityAnalysis(params: {
   forceSandbox?: boolean;
   retrySandboxOnly?: boolean;
   organizationId?: string;
-}): Promise<{ started: boolean; error?: string; errorCode?: AnalysisErrorCode; triageOnly?: boolean }> {
+}): Promise<{
+  started: boolean;
+  error?: string;
+  errorCode?: AnalysisErrorCode;
+  triageOnly?: boolean;
+}> {
   const {
     findingId,
     user,

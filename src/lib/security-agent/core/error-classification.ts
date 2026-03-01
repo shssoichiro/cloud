@@ -38,7 +38,7 @@ const NOT_FOUND_PATTERNS = [
 export function classifyAnalysisError(error: unknown): ClassifiedError {
   const raw = error instanceof Error ? error.message : String(error);
 
-  if (CLONE_PATTERNS.some((p) => p.test(raw))) {
+  if (CLONE_PATTERNS.some(p => p.test(raw))) {
     return {
       code: 'CLONE_FAILED',
       userMessage:
@@ -46,7 +46,7 @@ export function classifyAnalysisError(error: unknown): ClassifiedError {
     };
   }
 
-  if (AUTH_PATTERNS.some((p) => p.test(raw))) {
+  if (AUTH_PATTERNS.some(p => p.test(raw))) {
     return {
       code: 'AUTH_FAILED',
       userMessage:
@@ -54,11 +54,10 @@ export function classifyAnalysisError(error: unknown): ClassifiedError {
     };
   }
 
-  if (NOT_FOUND_PATTERNS.some((p) => p.test(raw))) {
+  if (NOT_FOUND_PATTERNS.some(p => p.test(raw))) {
     return {
       code: 'REPO_NOT_FOUND',
-      userMessage:
-        'Repository not found. It may have been deleted, renamed, or made private.',
+      userMessage: 'Repository not found. It may have been deleted, renamed, or made private.',
     };
   }
 
