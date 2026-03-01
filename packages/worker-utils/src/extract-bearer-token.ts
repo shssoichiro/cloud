@@ -7,5 +7,5 @@ export function extractBearerToken(authHeader: string | null | undefined): strin
   if (!authHeader) return null;
   const trimmed = authHeader.trim();
   if (trimmed.slice(0, 7).toLowerCase() !== 'bearer ') return null;
-  return trimmed.slice(7);
+  return trimmed.slice(7).trim() || null;
 }

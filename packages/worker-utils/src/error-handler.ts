@@ -21,7 +21,7 @@ export function createErrorHandler(
     });
     return c.json(
       includeMessage
-        ? { error: 'Internal server error', message }
+        ? { error: 'Internal server error', message: message || 'Unknown error' }
         : { error: 'Internal server error' },
       500
     );
