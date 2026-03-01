@@ -14,8 +14,8 @@ export {
   // Batch helpers
   decryptSecrets,
   mergeEnvVarsWithSecrets,
-} from './encryption.js';
+} from './encryption';
 
-export type { EncryptedEnvelope } from './encryption.js';
+export type { EncryptedEnvelope } from './encryption';
 
-export { timingSafeEqual } from './timing-safe-equal.js';
+export { timingSafeEqual } from './timing-safe-equal';

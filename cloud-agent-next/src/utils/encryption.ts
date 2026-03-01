@@ -4,6 +4,8 @@
  * Re-exports from @kilocode/encryption with cloud-agent-specific aliases.
  */
 
+import type { EncryptedEnvelope } from '@kilocode/encryption';
+
 export {
   decryptWithPrivateKey,
   decryptSecrets,
@@ -14,4 +16,4 @@ export {
 
 export type { EncryptedEnvelope as EncryptedSecretEnvelope } from '@kilocode/encryption';
 
-export type EncryptedSecrets = Record<string, import('@kilocode/encryption').EncryptedEnvelope>;
+export type EncryptedSecrets = Record<string, EncryptedEnvelope>;
