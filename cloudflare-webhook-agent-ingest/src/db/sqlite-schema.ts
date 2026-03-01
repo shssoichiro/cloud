@@ -27,7 +27,7 @@ export const requests = sqliteTable(
     error_message: text('error_message'),
   },
   table => [
-    index('idx_requests_timestamp').on(table.timestamp),
+    index('idx_requests_timestamp').on(sql`${table.timestamp} desc`),
     index('idx_requests_status').on(table.process_status),
     index('idx_requests_session').on(table.cloud_agent_session_id),
     check(

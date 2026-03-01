@@ -1,5 +1,5 @@
 import journal from './meta/_journal.json';
-import m0000 from './0000_swift_bruce_banner.sql';
+import m0000 from './0000_lumpy_loners.sql';
 
 export default {
   journal,

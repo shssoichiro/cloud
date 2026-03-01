@@ -103,7 +103,7 @@ export class TriggerDO extends DurableObject<Env> {
     super(ctx, env);
     this.db = drizzle(ctx.storage, { logger: false });
     void ctx.blockConcurrencyWhile(async () => {
-      migrate(this.db, migrations);
+      await migrate(this.db, migrations);
     });
   }
 
@@ -546,14 +546,11 @@ export class TriggerDO extends DurableObject<Env> {
   }
 
   async deleteTrigger(): Promise<{ success: boolean }> {
-    this.db.delete(triggerConfigTable).run();
-    this.db.delete(requestsTable).run();
-
     await this.ctx.storage.deleteAll();
 
     // Re-run migrations so the schema is present if this instance receives further requests
     // before Cloudflare evicts it (deleteAll wipes the __drizzle_migrations tracking table too)
-    migrate(this.db, migrations);
+    await migrate(this.db, migrations);
 
     logger.info('Trigger deleted');
 

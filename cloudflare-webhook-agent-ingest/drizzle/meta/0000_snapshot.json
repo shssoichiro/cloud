@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "3a9acb2c-b8bf-40e7-a68e-fb3e0967142e",
+  "id": "213c5471-e2eb-44e1-ab60-979ea5fc1b13",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "requests": {
@@ -118,7 +118,7 @@
       "indexes": {
         "idx_requests_timestamp": {
           "name": "idx_requests_timestamp",
-          "columns": ["timestamp"],
+          "columns": ["\"timestamp\" desc"],
           "isUnique": false
         },
         "idx_requests_status": {
@@ -267,6 +267,14 @@
     "columns": {}
   },
   "internal": {
-    "indexes": {}
+    "indexes": {
+      "idx_requests_timestamp": {
+        "columns": {
+          "\"timestamp\" desc": {
+            "isExpression": true
+          }
+        }
+      }
+    }
   }
 }
