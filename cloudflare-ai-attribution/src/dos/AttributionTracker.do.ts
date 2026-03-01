@@ -24,14 +24,17 @@ export class AttributionTrackerDO extends DurableObject<Env> {
     super(ctx, env);
     this.db = drizzle(ctx.storage, { logger: false });
     void this.ctx.blockConcurrencyWhile(async () => {
-      migrate(this.db, migrations);
+      await migrate(this.db, migrations);
       logger.info('Database migrated');
     });
   }
 
   clearAllData() {
+    // eslint-disable-next-line drizzle/enforce-delete-with-where -- intentional: truncate all rows
     this.db.delete(linesAdded).run();
+    // eslint-disable-next-line drizzle/enforce-delete-with-where -- intentional: truncate all rows
     this.db.delete(linesRemoved).run();
+    // eslint-disable-next-line drizzle/enforce-delete-with-where -- intentional: truncate all rows
     this.db.delete(attributionsMetadata).run();
   }
 
