@@ -109,7 +109,16 @@ export function createEventQueries(db: DrizzleSqliteDODatabase, rawSql: SqlStora
         .toSQL();
       const cursor = rawSql.exec(query, ...params);
       for (const row of cursor) {
-        yield row as StoredEvent;
+        // rawSql.exec yields Record<string, SqlStorageValue>; narrow each field
+        // explicitly rather than a blanket `as` cast on the whole row object.
+        yield {
+          id: row.id as number,
+          execution_id: row.execution_id as string,
+          session_id: row.session_id as string,
+          stream_event_type: row.stream_event_type as string,
+          payload: row.payload as string,
+          timestamp: row.timestamp as number,
+        } satisfies StoredEvent;
       }
     },
 

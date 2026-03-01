@@ -413,7 +413,7 @@ export class SessionService {
     };
   }
 
-  private async getSaferEnvVars(
+  private getSaferEnvVars(
     userEnvVars: Record<string, string> | undefined,
     sessionHome: string,
     sessionId: string,
@@ -430,7 +430,7 @@ export class SessionService {
     gitToken?: string,
     platform?: 'github' | 'gitlab',
     mcpServers?: Record<string, MCPServerConfig>
-  ): Promise<Record<string, string>> {
+  ): Record<string, string> {
     // Use override if available, otherwise use original values from API
     const kilocodeToken = env.KILOCODE_TOKEN_OVERRIDE ?? originalToken;
     const kilocodeOrganizationId = env.KILOCODE_ORG_ID_OVERRIDE ?? originalOrgId;
@@ -446,7 +446,7 @@ export class SessionService {
           'Encrypted secrets provided but AGENT_ENV_VARS_PRIVATE_KEY is not configured on the worker'
         );
       }
-      baseEnvVars = await mergeEnvVarsWithSecrets(baseEnvVars, encryptedSecrets, privateKey);
+      baseEnvVars = mergeEnvVarsWithSecrets(baseEnvVars, encryptedSecrets, privateKey);
       logger
         .withTags({ secretCount: Object.keys(encryptedSecrets).length })
         .info('Decrypted and merged encrypted secrets');
@@ -591,7 +591,7 @@ export class SessionService {
     const { sessionId, sessionHome, workspacePath, envVars } = context;
 
     // Decrypt secrets and merge with env vars (just-in-time decryption)
-    const saferEnvVars = await this.getSaferEnvVars(
+    const saferEnvVars = this.getSaferEnvVars(
       envVars,
       sessionHome,
       sessionId,
@@ -1275,8 +1275,9 @@ export class SessionService {
         `Session ${sessionId} has no kiloSessionId in metadata. Cannot restore snapshot.`
       );
     }
-    await this.restoreSessionSnapshot(session, sessionId, metadata.kiloSessionId, env, userId);
-
+    // Clone first so .git exists when `kilo import` runs — the CLI derives the
+    // project ID from the repo's root commit hash; without a repo the FK on
+    // session.project_id fails.
     await restoreWorkspace(session, context.workspacePath, context.branchName, {
       githubRepo: metadata.githubRepo,
       githubToken: freshGithubToken ?? metadata.githubToken,
@@ -1285,6 +1286,8 @@ export class SessionService {
       gitAuthorEnv: getGitAuthorEnv(env, metadata.githubAppType),
       lastSeenBranch: metadata.upstreamBranch,
     });
+
+    await this.restoreSessionSnapshot(session, sessionId, metadata.kiloSessionId, env, userId);
 
     // Re-run setup commands (fresh clone, need to reinstall)
     if (metadata.setupCommands && metadata.setupCommands.length > 0) {
