@@ -25,6 +25,8 @@ import type {
   SecurityFindingTriage,
   SecurityReviewOwner,
 } from '../core/types';
+import type { AnalysisErrorCode } from '../core/error-classification';
+import { classifyAnalysisError } from '../core/error-classification';
 import type { User, SecurityFinding } from '@kilocode/db/schema';
 import {
   trackSecurityAgentAnalysisStarted,
@@ -261,7 +263,7 @@ export async function startSecurityAnalysis(params: {
   forceSandbox?: boolean;
   retrySandboxOnly?: boolean;
   organizationId?: string;
-}): Promise<{ started: boolean; error?: string; triageOnly?: boolean }> {
+}): Promise<{ started: boolean; error?: string; errorCode?: AnalysisErrorCode; triageOnly?: boolean }> {
   const {
     findingId,
     user,
@@ -526,13 +528,16 @@ export async function startSecurityAnalysis(params: {
       // Clean up the prepared session
       void client.deleteSession(cloudAgentSessionId).catch(() => {});
 
-      await updateAnalysisStatus(findingId, 'failed', {
-        error: initiateError instanceof Error ? initiateError.message : String(initiateError),
-      });
-      return {
-        started: false,
-        error: initiateError instanceof Error ? initiateError.message : String(initiateError),
-      };
+      const classified = classifyAnalysisError(initiateError);
+      // Default to SANDBOX_FAILED for initiation errors unless a more specific code applies
+      const isUnknown = classified.code === 'UNKNOWN';
+      const errorCode = isUnknown ? ('SANDBOX_FAILED' as const) : classified.code;
+      const userMessage = isUnknown
+        ? 'Sandbox analysis failed to start. Please try again.'
+        : classified.userMessage;
+
+      await updateAnalysisStatus(findingId, 'failed', { error: userMessage });
+      return { started: false, error: userMessage, errorCode };
     }
 
     return { started: true, triageOnly: false };
@@ -543,13 +548,15 @@ export async function startSecurityAnalysis(params: {
       throw error;
     }
 
+    const classified = classifyAnalysisError(error);
+
     await updateAnalysisStatus(findingId, 'failed', {
-      error: error instanceof Error ? error.message : String(error),
+      error: classified.userMessage,
     });
     captureException(error, {
-      tags: { operation: 'startSecurityAnalysis' },
+      tags: { operation: 'startSecurityAnalysis', errorCode: classified.code },
       extra: { findingId, githubRepo, correlationId },
     });
-    return { started: false, error: error instanceof Error ? error.message : String(error) };
+    return { started: false, error: classified.userMessage, errorCode: classified.code };
   }
 }
