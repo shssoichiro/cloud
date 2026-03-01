@@ -30,7 +30,7 @@ export type HonoContext = {
 
 const app = new Hono<HonoContext>();
 
-// Logger middleware - must be first to establish context
+// @ts-expect-error workers-tagged-logger returns Handler typed against an older hono; incompatible with hono 4.12+
 app.use('*', useWorkersLogger('ai-attribution'));
 
 // Health check endpoint (no auth required)

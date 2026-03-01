@@ -11,16 +11,15 @@
   "dependencies": {
     "@kilocode/db": "workspace:*",
     "drizzle-orm": "catalog:",
-    "hono": "^4.11.4",
-    "jsonwebtoken": "^9.0.3",
-    "pg": "^8.17.2",
+    "hono": "catalog:",
+    "jsonwebtoken": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260120.0",
-    "@types/jsonwebtoken": "^9.0.10",
+    "@types/jsonwebtoken": "catalog:",
     "@types/node": "^22",
     "vitest": "^3.2.4",
-    "wrangler": "^4.61.0"
+    "wrangler": "catalog:"
   }
 }

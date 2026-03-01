@@ -24,22 +24,22 @@
   "dependencies": {
     "@kilocode/db": "workspace:*",
     "drizzle-orm": "catalog:",
-    "hono": "^4.11.4",
-    "workers-tagged-logger": "^1.0.0",
+    "hono": "catalog:",
+    "workers-tagged-logger": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.12.8",
-    "@eslint/eslintrc": "^3.3.3",
-    "@eslint/js": "^9.39.0",
+    "@eslint/eslintrc": "catalog:",
+    "@eslint/js": "catalog:",
     "@types/node": "^22",
     "@typescript/native-preview": "7.0.0-dev.20251019.1",
     "@vitest/ui": "^3.2.4",
-    "eslint": "^9.39.2",
-    "prettier": "^3.6.2",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.2",
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
     "vitest": "^3.2.4",
-    "wrangler": "^4.61.0"
+    "wrangler": "catalog:"
   }
 }

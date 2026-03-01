@@ -13,12 +13,12 @@
   "dependencies": {
     "@kilocode/plugin": "1.0.23",
     "@kilocode/sdk": "1.0.23",
-    "hono": "^4.11.4",
-    "zod": "^4.3.5"
+    "hono": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "^1.2.17",
-    "typescript": "^5.9.3",
+    "typescript": "catalog:",
     "vitest": "^3.2.4"
   }
 }

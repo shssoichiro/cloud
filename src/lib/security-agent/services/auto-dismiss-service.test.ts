@@ -69,9 +69,8 @@ let writebackDependabotDismissal: typeof writebackDependabotDismissalType;
 let maybeAutoDismissAnalysis: typeof maybeAutoDismissAnalysisType;
 
 beforeAll(async () => {
-  ({ writebackDependabotDismissal, maybeAutoDismissAnalysis } = await import(
-    './auto-dismiss-service'
-  ));
+  ({ writebackDependabotDismissal, maybeAutoDismissAnalysis } =
+    await import('./auto-dismiss-service'));
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────

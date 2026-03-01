@@ -18,6 +18,7 @@ export type HonoContext = {
 
 const app = new Hono<HonoContext>();
 
+// @ts-expect-error workers-tagged-logger returns Handler typed against an older hono; incompatible with hono 4.12+
 app.use('*', useWorkersLogger('webhook-agent'));
 
 app.get('/health', c => {
