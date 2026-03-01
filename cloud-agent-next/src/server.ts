@@ -202,7 +202,7 @@ app.use(
 );
 
 app.notFound(createNotFoundHandler());
-app.onError(createErrorHandler(logger, { includeMessage: false }));
+app.onError(createErrorHandler(logger));
 
 export default {
   fetch: app.fetch,

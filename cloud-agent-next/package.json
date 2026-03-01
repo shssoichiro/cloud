@@ -27,7 +27,6 @@
   "dependencies": {
     "@cloudflare/sandbox": "0.7.5",
     "@kilocode/db": "workspace:*",
-    "@kilocode/encryption": "workspace:*",
     "@kilocode/worker-utils": "workspace:*",
     "@hono/trpc-server": "^0.4.2",
     "@octokit/auth-app": "catalog:",
@@ -48,6 +47,7 @@
     "@types/node": "^22",
     "@typescript/native-preview": "7.0.0-dev.20251019.1",
     "@vitest/ui": "^3.2.4",
+    "drizzle-kit": "catalog:",
     "eslint": "catalog:",
     "prettier": "catalog:",
     "typescript": "catalog:",
