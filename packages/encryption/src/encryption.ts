@@ -9,15 +9,15 @@ import {
 } from 'node:crypto';
 
 export class EncryptionConfigurationError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'EncryptionConfigurationError';
   }
 }
 
 export class EncryptionFormatError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'EncryptionFormatError';
   }
 }
@@ -84,7 +84,9 @@ export function encryptWithPublicKey(
     };
   } catch (error) {
     if (error instanceof Error) {
-      throw new EncryptionConfigurationError(`Encryption failed: ${error.message}`);
+      throw new EncryptionConfigurationError(`Encryption failed: ${error.message}`, {
+        cause: error,
+      });
     }
     throw new EncryptionConfigurationError('Encryption failed with unknown error');
   }
@@ -159,7 +161,9 @@ export function decryptWithPrivateKey(
       throw error;
     }
     if (error instanceof Error) {
-      throw new EncryptionConfigurationError(`Decryption failed: ${error.message}`);
+      throw new EncryptionConfigurationError(`Decryption failed: ${error.message}`, {
+        cause: error,
+      });
     }
     throw new EncryptionConfigurationError('Decryption failed with unknown error');
   }
