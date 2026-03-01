@@ -389,13 +389,21 @@ export class CloudAgentSession extends DurableObject {
 
             const now = Date.now();
 
-            // Mark execution as failed
-            await this.updateExecutionStatus({
+            // Mark execution as failed — if another codepath already moved it
+            // to a terminal state, skip the broadcast and cleanup.
+            const statusResult = await this.updateExecutionStatus({
               executionId: activeExecutionId,
               status: 'failed',
               error: 'Wrapper disconnected',
               completedAt: now,
             });
+
+            if (!statusResult.ok) {
+              logger
+                .withFields({ executionId: activeExecutionId, error: statusResult.error })
+                .info('Skipping disconnect cleanup - status transition failed');
+              return;
+            }
 
             // Clear active execution (updateStatus should do this, but ensure it)
             await this.executionQueries.clearActiveExecution();
