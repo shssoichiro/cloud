@@ -14,6 +14,9 @@
     "local_protocol": "http",
     "ip": "0.0.0.0",
   },
+  "triggers": {
+    "crons": ["0 */6 * * *"],
+  },
   "queues": {
     "producers": [
       {
@@ -45,21 +48,12 @@
       "entrypoint": "GitTokenRPCEntrypoint",
     },
   ],
-  "secrets_store_secrets": [
-    {
-      "binding": "SECURITY_SYNC_WORKER_AUTH_TOKEN",
-      "store_id": "342a86d9e3a94da698e82d0c6e2a36f0",
-      "secret_name": "SECURITY_SYNC_WORKER_AUTH_TOKEN_PROD",
-    },
-    {
-      "binding": "SECURITY_SYNC_WORKER_HMAC_SECRET",
-      "store_id": "342a86d9e3a94da698e82d0c6e2a36f0",
-      "secret_name": "SECURITY_SYNC_WORKER_HMAC_SECRET_PROD",
-    },
-  ],
   "env": {
     "dev": {
       "name": "cloudflare-security-sync-dev",
+      "triggers": {
+        "crons": ["0 */6 * * *"],
+      },
       "queues": {
         "producers": [
           {
@@ -89,18 +83,6 @@
           "binding": "GIT_TOKEN_SERVICE",
           "service": "git-token-service-dev",
           "entrypoint": "GitTokenRPCEntrypoint",
-        },
-      ],
-      "secrets_store_secrets": [
-        {
-          "binding": "SECURITY_SYNC_WORKER_AUTH_TOKEN",
-          "store_id": "342a86d9e3a94da698e82d0c6e2a36f0",
-          "secret_name": "SECURITY_SYNC_WORKER_AUTH_TOKEN_DEV",
-        },
-        {
-          "binding": "SECURITY_SYNC_WORKER_HMAC_SECRET",
-          "store_id": "342a86d9e3a94da698e82d0c6e2a36f0",
-          "secret_name": "SECURITY_SYNC_WORKER_HMAC_SECRET_DEV",
         },
       ],
     },

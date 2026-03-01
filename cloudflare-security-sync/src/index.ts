@@ -2,31 +2,6 @@ import { z } from 'zod';
 import { createDatabase } from './db';
 import { syncOwner } from './sync';
 
-const MAX_SIGNATURE_AGE_SECONDS = 5 * 60;
-
-const SecuritySyncOwnerSchema = z
-  .object({
-    owner: z
-      .object({
-        organizationId: z.string().uuid().optional(),
-        userId: z.string().uuid().optional(),
-      })
-      .refine(value => Boolean(value.organizationId || value.userId), {
-        message: 'owner.organizationId or owner.userId is required',
-      }),
-    ownerKey: z.string().min(1),
-  })
-  .refine(value => value.ownerKey.startsWith('org:') || value.ownerKey.startsWith('user:'), {
-    message: 'ownerKey must be org:<id> or user:<id>',
-  });
-
-const DispatchRequestSchema = z.object({
-  schemaVersion: z.literal(1),
-  runId: z.string().uuid(),
-  dispatchedAt: z.string().datetime(),
-  owners: z.array(SecuritySyncOwnerSchema),
-});
-
 const SecuritySyncMessageSchema = z.object({
   schemaVersion: z.literal(1),
   runId: z.string().uuid(),
@@ -45,103 +20,45 @@ const SecuritySyncMessageSchema = z.object({
   dispatchedAt: z.string().datetime(),
 });
 
-type DispatchRequest = z.infer<typeof DispatchRequestSchema>;
 export type SecuritySyncMessage = z.infer<typeof SecuritySyncMessageSchema>;
+
+type OwnerEntry = {
+  owner: { organizationId?: string; userId?: string };
+  ownerKey: string;
+};
+
+type AgentConfigOwnerRow = {
+  owned_by_organization_id: string | null;
+  owned_by_user_id: string | null;
+};
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 
-function timingSafeEqual(left: string, right: string): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  let mismatch = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  }
-
-  return mismatch === 0;
-}
-
-async function computeSignature(secret: string, payload: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const digest = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
-  const hex = Array.from(new Uint8Array(digest))
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('');
-
-  return `sha256=${hex}`;
-}
-
-function validateBearerAuth(request: Request, expectedToken: string): boolean {
-  const authorization = request.headers.get('authorization');
-  if (!authorization) return false;
-  const expected = `Bearer ${expectedToken}`;
-  if (authorization.length !== expected.length) return false;
-  return timingSafeEqual(authorization, expected);
-}
-
-async function validateSignedDispatchRequest(
-  request: Request,
-  rawBody: string,
-  hmacSecret: string
-): Promise<boolean> {
-  const timestampHeader = request.headers.get('x-security-sync-timestamp');
-  const signatureHeader = request.headers.get('x-security-sync-signature');
-
-  if (!timestampHeader || !signatureHeader) {
-    return false;
-  }
-
-  const timestamp = Number(timestampHeader);
-  if (!Number.isFinite(timestamp)) {
-    return false;
-  }
-
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  if (Math.abs(nowSeconds - timestamp) > MAX_SIGNATURE_AGE_SECONDS) {
-    return false;
-  }
-
-  const payloadToSign = `${timestampHeader}.${rawBody}`;
-  const expectedSignature = await computeSignature(hmacSecret, payloadToSign);
-  return timingSafeEqual(expectedSignature, signatureHeader);
-}
-
-// Cloudflare Queues sendBatch limit
 const QUEUE_SEND_BATCH_LIMIT = 100;
 
-async function enqueueDispatchMessages(
+async function enqueueOwners(
   queue: Queue<SecuritySyncMessage>,
-  requestBody: DispatchRequest
+  runId: string,
+  dispatchedAt: string,
+  owners: OwnerEntry[]
 ): Promise<number> {
-  if (requestBody.owners.length === 0) {
-    return 0;
-  }
+  if (owners.length === 0) return 0;
 
-  const messages: MessageSendRequest<SecuritySyncMessage>[] = requestBody.owners.map(owner => ({
+  const messages: MessageSendRequest<SecuritySyncMessage>[] = owners.map(({ owner, ownerKey }) => ({
     body: {
       schemaVersion: 1,
-      runId: requestBody.runId,
-      messageId: `${requestBody.runId}:${owner.ownerKey}:0`,
-      owner: owner.owner,
-      ownerKey: owner.ownerKey,
+      runId,
+      messageId: `${runId}:${ownerKey}:0`,
+      owner,
+      ownerKey,
       chunkIndex: 0,
       chunkCount: 1,
-      dispatchedAt: requestBody.dispatchedAt,
+      dispatchedAt,
     },
     contentType: 'json',
   }));
@@ -153,90 +70,50 @@ async function enqueueDispatchMessages(
   return messages.length;
 }
 
-async function handleDispatch(request: Request, env: CloudflareEnv): Promise<Response> {
-  const authToken = await env.SECURITY_SYNC_WORKER_AUTH_TOKEN.get();
-  if (!authToken) {
-    console.error('SECURITY_SYNC_WORKER_AUTH_TOKEN is not configured');
-    return jsonResponse({ success: false, error: 'Server misconfiguration' }, 500);
-  }
-  if (!validateBearerAuth(request, authToken)) {
-    return jsonResponse({ success: false, error: 'Unauthorized' }, 401);
-  }
-
-  const rawBody = await request.text();
-  const hmacSecret = await env.SECURITY_SYNC_WORKER_HMAC_SECRET.get();
-  if (!hmacSecret) {
-    console.error('SECURITY_SYNC_WORKER_HMAC_SECRET is not configured');
-    return jsonResponse({ success: false, error: 'Server misconfiguration' }, 500);
-  }
-  const signatureValid = await validateSignedDispatchRequest(request, rawBody, hmacSecret);
-  if (!signatureValid) {
-    return jsonResponse({ success: false, error: 'Invalid request signature' }, 401);
-  }
-
-  let parsedJson: unknown;
+async function sendBetterStackHeartbeat(heartbeatUrl: string, failed: boolean): Promise<void> {
+  if (!heartbeatUrl) return;
+  const url = failed ? `${heartbeatUrl}/fail` : heartbeatUrl;
   try {
-    parsedJson = JSON.parse(rawBody);
+    await fetch(url, { signal: AbortSignal.timeout(5000) });
   } catch {
-    return jsonResponse({ success: false, error: 'Invalid JSON payload' }, 400);
+    // best-effort
   }
-  const parsedRequest = DispatchRequestSchema.safeParse(parsedJson);
-  if (!parsedRequest.success) {
-    return jsonResponse(
-      {
-        success: false,
-        error: 'Invalid dispatch payload',
-      },
-      400
-    );
-  }
+}
 
-  const enqueuedMessages = await enqueueDispatchMessages(env.SYNC_QUEUE, parsedRequest.data);
-
-  return jsonResponse({
-    success: true,
-    runId: parsedRequest.data.runId,
-    ownerCount: parsedRequest.data.owners.length,
-    enqueuedMessages,
-  });
+function resolveOwner(
+  raw: SecuritySyncMessage['owner']
+): { organizationId: string } | { userId: string } | null {
+  if (raw.organizationId) return { organizationId: raw.organizationId };
+  if (raw.userId) return { userId: raw.userId };
+  return null;
 }
 
 async function processSecuritySyncMessage(
   message: Message<SecuritySyncMessage>,
   env: CloudflareEnv
 ): Promise<void> {
-  const parsedMessage = SecuritySyncMessageSchema.safeParse(message.body);
-  if (!parsedMessage.success) {
-    console.error('Invalid security sync queue message', {
-      errors: parsedMessage.error.issues,
-    });
+  const parsed = SecuritySyncMessageSchema.safeParse(message.body);
+  if (!parsed.success) {
+    console.error('Invalid security sync queue message', { errors: parsed.error.issues });
     message.ack();
     return;
   }
 
-  const body = parsedMessage.data;
+  const body = parsed.data;
 
   console.info('Security sync queue message received', {
     runId: body.runId,
     ownerKey: body.ownerKey,
     messageId: body.messageId,
-    chunkIndex: body.chunkIndex,
-    chunkCount: body.chunkCount,
-    dispatchTime: body.dispatchedAt,
   });
-  function resolveOwner(
-    raw: typeof body.owner
-  ): { organizationId: string } | { userId: string } | null {
-    if (raw.organizationId) return { organizationId: raw.organizationId };
-    if (raw.userId) return { userId: raw.userId };
-    return null;
-  }
+
   const owner = resolveOwner(body.owner);
   if (!owner) {
     console.error('Owner has neither organizationId nor userId', { messageId: body.messageId });
     message.ack();
     return;
   }
+
   const db = createDatabase(env.HYPERDRIVE.connectionString);
   const startTime = Date.now();
 
@@ -247,14 +124,13 @@ async function processSecuritySyncMessage(
     runId: body.runId,
   });
 
-  const durationMs = Date.now() - startTime;
   console.info('Security sync completed for owner', {
     runId: body.runId,
     ownerKey: body.ownerKey,
     synced: result.synced,
     errors: result.errors,
     staleRepos: result.staleRepos,
-    durationMs,
+    durationMs: Date.now() - startTime,
   });
 
   message.ack();
@@ -272,21 +148,67 @@ export default {
       });
     }
 
-    if (request.method === 'POST' && url.pathname === '/dispatch') {
-      try {
-        return await handleDispatch(request, env);
-      } catch (error) {
-        return jsonResponse(
-          {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown dispatch error',
-          },
-          500
-        );
+    return jsonResponse({ success: false, error: 'Not found' }, 404);
+  },
+
+  async scheduled(_controller: ScheduledController, env: CloudflareEnv, ctx: ExecutionContext) {
+    const runId = crypto.randomUUID();
+    let failed = false;
+
+    try {
+      const db = createDatabase(env.HYPERDRIVE.connectionString);
+      const rows = await db.query<AgentConfigOwnerRow>(`
+        SELECT owned_by_organization_id, owned_by_user_id
+        FROM agent_configs
+        WHERE agent_type = 'security_scan'
+          AND platform = 'github'
+          AND is_enabled = true
+          AND (owned_by_organization_id IS NOT NULL OR owned_by_user_id IS NOT NULL)
+      `);
+
+      const deduplicated = new Map<string, OwnerEntry>();
+      for (const row of rows) {
+        if (row.owned_by_organization_id) {
+          const key = `org:${row.owned_by_organization_id}`;
+          if (!deduplicated.has(key)) {
+            deduplicated.set(key, {
+              owner: { organizationId: row.owned_by_organization_id },
+              ownerKey: key,
+            });
+          }
+        } else if (row.owned_by_user_id) {
+          const key = `user:${row.owned_by_user_id}`;
+          if (!deduplicated.has(key)) {
+            deduplicated.set(key, {
+              owner: { userId: row.owned_by_user_id },
+              ownerKey: key,
+            });
+          }
+        }
       }
+
+      const owners = [...deduplicated.values()];
+      const enqueuedMessages = await enqueueOwners(
+        env.SYNC_QUEUE,
+        runId,
+        new Date().toISOString(),
+        owners
+      );
+
+      console.info('Security sync scheduled dispatch completed', {
+        runId,
+        ownerCount: owners.length,
+        enqueuedMessages,
+      });
+    } catch (error) {
+      failed = true;
+      console.error('Security sync scheduled dispatch failed', {
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
-    return jsonResponse({ success: false, error: 'Not found' }, 404);
+    ctx.waitUntil(sendBetterStackHeartbeat(env.SECURITY_SYNC_BETTERSTACK_HEARTBEAT_URL, failed));
   },
 
   async queue(batch: MessageBatch<SecuritySyncMessage>, env: CloudflareEnv): Promise<void> {
