@@ -281,6 +281,10 @@ export function SettingsTab({
         <div className="space-y-4">
           <div>
             <h3 className="text-foreground mb-1 text-sm font-medium">Default Model</h3>
+            <p className="text-muted-foreground mb-2 text-xs">
+              The model used for new conversations. Can be changed per-conversation in the OpenClaw
+              Control UI.
+            </p>
           </div>
 
           <ModelCombobox
