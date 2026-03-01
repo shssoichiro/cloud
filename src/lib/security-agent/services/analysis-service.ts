@@ -26,7 +26,7 @@ import type {
   SecurityReviewOwner,
 } from '../core/types';
 import type { AnalysisErrorCode } from '../core/error-classification';
-import { classifyAnalysisError } from '../core/error-classification';
+import { classifyAnalysisError, isUserActionableError } from '../core/error-classification';
 import type { User, SecurityFinding } from '@kilocode/db/schema';
 import {
   trackSecurityAgentAnalysisStarted,
@@ -519,12 +519,6 @@ export async function startSecurityAnalysis(params: {
         throw initiateError;
       }
 
-      logError('initiateFromPreparedSession failed', {
-        correlationId,
-        findingId,
-        cloudAgentSessionId,
-        error: initiateError,
-      });
       // Clean up the prepared session
       void client.deleteSession(cloudAgentSessionId).catch(() => {});
 
@@ -535,6 +529,15 @@ export async function startSecurityAnalysis(params: {
       const userMessage = isUnknown
         ? 'Sandbox analysis failed to start. Please try again.'
         : classified.userMessage;
+
+      const logFn = isUserActionableError(errorCode) ? warn : logError;
+      logFn('initiateFromPreparedSession failed', {
+        correlationId,
+        findingId,
+        cloudAgentSessionId,
+        errorCode,
+        error: initiateError,
+      });
 
       await updateAnalysisStatus(findingId, 'failed', { error: userMessage });
       return { started: false, error: userMessage, errorCode };
@@ -553,10 +556,20 @@ export async function startSecurityAnalysis(params: {
     await updateAnalysisStatus(findingId, 'failed', {
       error: classified.userMessage,
     });
-    captureException(error, {
-      tags: { operation: 'startSecurityAnalysis', errorCode: classified.code },
-      extra: { findingId, githubRepo, correlationId },
-    });
+    if (isUserActionableError(classified.code)) {
+      warn('Analysis failed (user-actionable)', {
+        correlationId,
+        findingId,
+        githubRepo,
+        errorCode: classified.code,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } else {
+      captureException(error, {
+        tags: { operation: 'startSecurityAnalysis', errorCode: classified.code },
+        extra: { findingId, githubRepo, correlationId },
+      });
+    }
     return { started: false, error: classified.userMessage, errorCode: classified.code };
   }
 }

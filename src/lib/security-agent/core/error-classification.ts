@@ -68,6 +68,11 @@ export function classifyAnalysisError(error: unknown): ClassifiedError {
   };
 }
 
+/** User-actionable errors that should not be reported as Sentry exceptions. */
+export function isUserActionableError(code: AnalysisErrorCode): boolean {
+  return code === 'CLONE_FAILED' || code === 'AUTH_FAILED' || code === 'REPO_NOT_FOUND';
+}
+
 export function trpcCodeForAnalysisError(code: AnalysisErrorCode | undefined): TRPCError['code'] {
   switch (code) {
     case 'CLONE_FAILED':
