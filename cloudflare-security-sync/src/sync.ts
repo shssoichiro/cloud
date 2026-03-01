@@ -8,6 +8,7 @@
  * and the GitHub REST API via fetch (with tokens from GIT_TOKEN_SERVICE).
  */
 
+import { z } from 'zod';
 import type { Database } from './db';
 
 // ---------------------------------------------------------------------------
@@ -93,6 +94,15 @@ type SecurityAgentConfig = {
   repository_selection_mode: 'all' | 'selected';
   selected_repository_ids?: number[];
 };
+
+const securityAgentConfigSchema = z.object({
+  sla_critical_days: z.number(),
+  sla_high_days: z.number(),
+  sla_medium_days: z.number(),
+  sla_low_days: z.number(),
+  repository_selection_mode: z.enum(['all', 'selected']),
+  selected_repository_ids: z.array(z.number()).optional(),
+});
 
 const DEFAULT_SLA_CONFIG: SecurityAgentConfig = {
   sla_critical_days: 15,
@@ -187,7 +197,7 @@ export async function getOwnerConfig(
 
   const repoNameToId = new Map(allRepos.map(r => [r.full_name, r.id]));
 
-  const securityConfig = agentConfig.config as Partial<SecurityAgentConfig>;
+  const securityConfig = securityAgentConfigSchema.partial().parse(agentConfig.config);
   let selectedRepos: string[];
   if (
     securityConfig.repository_selection_mode === 'selected' &&
@@ -365,13 +375,18 @@ async function getSecurityAgentConfig(
 
   const rows = await db.query<{ config: Record<string, unknown> }>(
     `SELECT config FROM agent_configs
-     WHERE agent_type = 'security_scan' AND platform = 'github' AND ${ownerColumn} = $1
+     WHERE agent_type = 'security_scan' AND platform = 'github' AND is_enabled = true AND ${ownerColumn} = $1
      LIMIT 1`,
     [ownerId]
   );
 
   if (rows.length === 0) return DEFAULT_SLA_CONFIG;
-  return { ...DEFAULT_SLA_CONFIG, ...(rows[0].config as Partial<SecurityAgentConfig>) };
+  const parsed = securityAgentConfigSchema.partial().safeParse(rows[0].config);
+  if (!parsed.success) {
+    console.warn('Invalid security agent config, using defaults', { error: parsed.error.message });
+    return DEFAULT_SLA_CONFIG;
+  }
+  return { ...DEFAULT_SLA_CONFIG, ...parsed.data };
 }
 
 // ---------------------------------------------------------------------------
@@ -521,7 +536,12 @@ async function pruneStaleReposFromConfig(
   );
   if (rows.length === 0) return;
 
-  const config = rows[0].config as Partial<SecurityAgentConfig>;
+  const parsed = securityAgentConfigSchema.partial().safeParse(rows[0].config);
+  if (!parsed.success) {
+    console.warn('Invalid security agent config, skipping prune', { error: parsed.error.message });
+    return;
+  }
+  const config = parsed.data;
   if (
     config.repository_selection_mode !== 'selected' ||
     !config.selected_repository_ids ||
