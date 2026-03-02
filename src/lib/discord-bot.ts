@@ -15,7 +15,6 @@ import {
   getOwnerFromInstallation,
   getModel,
 } from '@/lib/integrations/discord-service';
-import type { PlatformIntegration } from '@/db/schema';
 import { runBot } from '@/lib/bots/core/run-bot';
 import {
   formatGitHubRepositoriesForPrompt,
@@ -28,6 +27,7 @@ import {
 } from '@/lib/discord-bot/discord-channel-context';
 import { getDiscordBotAuthTokenForOwner } from '@/lib/discord/auth';
 import { buildDiscordMessageLink } from '@/lib/discord-bot/discord-utils';
+import type { PlatformIntegration } from '@kilocode/db';
 
 // Version string for API requests
 const DISCORD_BOT_VERSION = '5.0.0';

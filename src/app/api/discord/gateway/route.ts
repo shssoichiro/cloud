@@ -5,8 +5,8 @@ import { DISCORD_BOT_TOKEN } from '@/lib/config.server';
 import { CRON_SECRET } from '@/lib/config.server';
 import { APP_URL } from '@/lib/constants';
 import { db, sql } from '@/lib/drizzle';
-import { discord_gateway_listener } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { discord_gateway_listener } from '@kilocode/db';
 
 export const maxDuration = 800;
 
