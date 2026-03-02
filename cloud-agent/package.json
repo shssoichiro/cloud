@@ -39,6 +39,9 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.12.8",
     "@kilocode/eslint-config": "workspace:*",
+    "drizzle-kit": "catalog:",
+    "@eslint/eslintrc": "catalog:",
+    "@eslint/js": "catalog:",
     "@types/jsonwebtoken": "catalog:",
     "@types/node": "^22",
     "@typescript/native-preview": "7.0.0-dev.20251019.1",
