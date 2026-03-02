@@ -182,6 +182,10 @@ export const adminKiloclawVersionsRouter = createTRPCRouter({
       })
       .returning();
 
+    if (!result) {
+      throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create pin' });
+    }
+
     return result;
   }),
 

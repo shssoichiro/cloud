@@ -31,7 +31,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Command,
@@ -526,32 +525,6 @@ export function PinsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-const tabTriggerClass =
-  'text-muted-foreground hover:text-foreground data-[state=active]:border-foreground data-[state=active]:text-foreground rounded-none border-b-2 border-transparent px-0 py-3 text-sm font-medium transition-colors data-[state=active]:border-0 data-[state=active]:border-b-2 data-[state=active]:bg-transparent data-[state=active]:shadow-none';
-
-export function KiloclawVersionsPage() {
-  return (
-    <div className="flex w-full flex-col gap-y-4">
-      <Tabs defaultValue="versions">
-        <TabsList className="h-auto w-full justify-start gap-6 rounded-none border-b bg-transparent p-0">
-          <TabsTrigger value="versions" className={tabTriggerClass}>
-            Versions
-          </TabsTrigger>
-          <TabsTrigger value="pins" className={tabTriggerClass}>
-            Pins
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="versions" className="mt-4">
-          <VersionsTab />
-        </TabsContent>
-        <TabsContent value="pins" className="mt-4">
-          <PinsTab />
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }
