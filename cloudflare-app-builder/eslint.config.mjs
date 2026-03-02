@@ -5,12 +5,4 @@ import baseConfig from '@kilocode/eslint-config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig([
-  ...baseConfig(__dirname),
-  {
-    files: ['**/*.ts'],
-    rules: {
-      '@typescript-eslint/restrict-template-expressions': 'off',
-    },
-  },
-]);
+export default defineConfig([...baseConfig(__dirname)]);
