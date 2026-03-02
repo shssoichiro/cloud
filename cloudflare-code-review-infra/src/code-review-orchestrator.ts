@@ -910,7 +910,7 @@ export class CodeReviewOrchestrator extends DurableObject<Env> {
             }
 
             try {
-              const event: SseEvent = JSON.parse(data) as unknown as SseEvent;
+              const event = JSON.parse(data) as SseEvent;
               totalEventsReceived++;
 
               // Track event type counts

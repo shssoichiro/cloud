@@ -334,10 +334,19 @@ app.all('*', async c => {
 
       if (typeof data === 'string') {
         try {
-          const parsed = JSON.parse(data) as { error?: { message?: string } };
-          if (parsed.error?.message) {
-            parsed.error.message = transformErrorMessage(parsed.error.message);
-            data = JSON.stringify(parsed);
+          const parsed: unknown = JSON.parse(data);
+          if (
+            typeof parsed === 'object' &&
+            parsed !== null &&
+            'error' in parsed &&
+            typeof (parsed as Record<string, unknown>).error === 'object' &&
+            (parsed as Record<string, unknown>).error !== null
+          ) {
+            const error = (parsed as Record<string, Record<string, unknown>>).error;
+            if (typeof error.message === 'string') {
+              error.message = transformErrorMessage(error.message);
+              data = JSON.stringify(parsed);
+            }
           }
         } catch {
           // Not JSON -- pass through

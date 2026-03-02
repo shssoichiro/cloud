@@ -326,7 +326,7 @@ export class SessionIngestDO extends DurableObject<Env> {
   async clear(): Promise<void> {
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
-    void migrate(this.db, migrations);
+    await migrate(this.db, migrations);
   }
 }
 

@@ -108,9 +108,7 @@ app.post('/fix/:ticketId/cancel', async c => {
   try {
     const ticketId = c.req.param('ticketId');
 
-    // Get Durable Object instance — cancel is not yet implemented in the DO
-    const id = c.env.AUTO_FIX_ORCHESTRATOR.idFromName(ticketId);
-    const _stub = c.env.AUTO_FIX_ORCHESTRATOR.get(id);
+    // TODO: cancel is not yet implemented in the DO
     return c.json({ ticketId, status: 'cancelled' });
   } catch (error) {
     console.error('[AutoFixWorker] Cancel error:', error);

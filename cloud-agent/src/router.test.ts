@@ -253,14 +253,24 @@ describe('router sessionId validation', () => {
             message: 'stopped',
           });
           buildContextMock.mockImplementation(
-            ({ sandboxId, orgId, userId, sessionId }: Record<string, unknown>) => ({
+            ({
               sandboxId,
               orgId,
               userId,
               sessionId,
-              sessionHome: `/home/${sessionId as string}`,
-              workspacePath: `/workspace/${sessionId as string}`,
-              branchName: `session/${sessionId as string}`,
+            }: {
+              sandboxId: string;
+              orgId: string | undefined;
+              userId: string;
+              sessionId: string;
+            }) => ({
+              sandboxId,
+              orgId,
+              userId,
+              sessionId,
+              sessionHome: `/home/${sessionId}`,
+              workspacePath: `/workspace/${sessionId}`,
+              branchName: `session/${sessionId}`,
             })
           );
           const mockSession = { token: 'session' };

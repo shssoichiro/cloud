@@ -105,7 +105,7 @@ export function extractOrgIdFromUrl(url: URL): string | undefined {
   if (!inputParam) return undefined;
 
   try {
-    const input: unknown = JSON.parse(inputParam) as unknown;
+    const input: unknown = JSON.parse(inputParam);
     if (input && typeof input === 'object' && 'kilocodeOrganizationId' in input) {
       const value = (input as Record<string, unknown>).kilocodeOrganizationId;
       if (typeof value === 'string') {
@@ -130,7 +130,7 @@ export function extractSessionIdFromUrl(url: URL): string | undefined {
   if (!inputParam) return undefined;
 
   try {
-    const input: unknown = JSON.parse(inputParam) as unknown;
+    const input: unknown = JSON.parse(inputParam);
     if (input && typeof input === 'object' && 'sessionId' in input) {
       const value = (input as Record<string, unknown>).sessionId;
       if (typeof value === 'string') {

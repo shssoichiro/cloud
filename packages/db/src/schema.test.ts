@@ -24,7 +24,7 @@ describe('database schema', () => {
     };
 
     // Generate current schema state
-    const currentSchema: unknown = generateDrizzleJson(schema, latestSnapshot.id);
+    const currentSchema = generateDrizzleJson(schema, latestSnapshot.id);
 
     // Generate migration diff
     const migrationStatements = await generateMigration(latestSnapshot, currentSchema);

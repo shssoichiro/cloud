@@ -11,7 +11,7 @@ export function parseKilocodeOutput(line: string): IngestEvent {
   const candidates = [line, stripAnsi(line)];
   for (const candidate of candidates) {
     try {
-      const parsed: unknown = JSON.parse(candidate) as unknown;
+      const parsed: unknown = JSON.parse(candidate);
       return { streamEventType: 'kilocode', data: parsed, timestamp };
     } catch {
       // try next candidate

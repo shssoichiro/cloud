@@ -150,7 +150,7 @@ export class CloudflareAPI {
 
       if (!response.ok) {
         const errorText = await response.text();
-        const errorObj: unknown = JSON.parse(errorText) as unknown;
+        const errorObj: unknown = JSON.parse(errorText);
 
         throw new Error('Failed to create asset upload session', {
           cause: errorObj,
