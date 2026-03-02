@@ -32,7 +32,7 @@ export function isTerminalEvent(data: Record<string, unknown>): TerminalCheck {
     return { isTerminal: true, reason: 'Insufficient funds' };
   }
   if (data.type === 'ask' && data.ask === 'api_req_failed') {
-    const text = String(data.text ?? '');
+    const text = typeof data.text === 'string' ? data.text : '';
     if (text.includes('payment') || text.includes('credit') || text.includes('balance')) {
       return { isTerminal: true, reason: 'API request failed: payment issue' };
     }

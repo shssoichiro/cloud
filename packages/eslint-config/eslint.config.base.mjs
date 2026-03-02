@@ -44,12 +44,11 @@ export default function baseConfig(tsconfigRootDir) {
         '@typescript-eslint/no-var-requires': 'error',
 
         '@typescript-eslint/no-unsafe-assignment': 'error',
-        // Disabled rules — too noisy to enable across the monorepo today.
         '@typescript-eslint/no-unsafe-member-access': 'error',
         '@typescript-eslint/no-unsafe-argument': 'error',
-        '@typescript-eslint/no-base-to-string': 'off',
+        '@typescript-eslint/no-base-to-string': 'error',
         '@typescript-eslint/no-unsafe-call': 'error',
-        '@typescript-eslint/no-empty-object-type': 'off',
+        '@typescript-eslint/no-empty-object-type': 'error',
       },
     },
     {

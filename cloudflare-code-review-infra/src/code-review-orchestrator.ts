@@ -1030,7 +1030,8 @@ export class CodeReviewOrchestrator extends DurableObject<Env> {
                 if (payload.content) {
                   message = payload.content;
                 } else if (payload.say === 'api_req_started') {
-                  const provider = String(payload.metadata?.inferenceProvider || 'API');
+                  const rawProvider = payload.metadata?.inferenceProvider;
+                  const provider = typeof rawProvider === 'string' ? rawProvider : 'API';
                   const tokensIn = Number(payload.metadata?.tokensIn ?? 0);
                   const tokensOut = Number(payload.metadata?.tokensOut ?? 0);
                   const cost = Number(payload.metadata?.cost ?? 0);
@@ -1051,8 +1052,10 @@ export class CodeReviewOrchestrator extends DurableObject<Env> {
                     }
                   }
                 } else if (payload.ask === 'use_mcp_server' && payload.metadata) {
-                  const serverName = String(payload.metadata.serverName ?? '');
-                  const toolName = String(payload.metadata.toolName ?? '');
+                  const rawServerName = payload.metadata.serverName;
+                  const serverName = typeof rawServerName === 'string' ? rawServerName : '';
+                  const rawToolName = payload.metadata.toolName;
+                  const toolName = typeof rawToolName === 'string' ? rawToolName : '';
                   const args = payload.metadata.arguments;
                   message = `Using ${serverName}/${toolName}`;
 

@@ -244,7 +244,7 @@ export async function* streamKilocodeExecution(
 
       switch (event.type) {
         case 'stdout': {
-          const data = String(event.data || '');
+          const data = typeof event.data === 'string' ? event.data : '';
           const lines = data.split('\n').filter((line: string) => line.trim());
 
           for (const line of lines) {
@@ -254,10 +254,10 @@ export async function* streamKilocodeExecution(
               // Check if this is a session_created event
               if (
                 parsed.event === 'session_created' &&
-                parsed.sessionId &&
+                typeof parsed.sessionId === 'string' &&
                 !kiloSessionIdCaptured
               ) {
-                const capturedSessionId = String(parsed.sessionId);
+                const capturedSessionId = parsed.sessionId;
                 const uuidResult = uuidSchema.safeParse(capturedSessionId);
                 if (uuidResult.success) {
                   kiloSessionIdCaptured = true;
@@ -324,12 +324,15 @@ export async function* streamKilocodeExecution(
         }
 
         case 'stderr': {
-          yield emitOutputEvent(String(event.data || ''), 'stderr', timestamp, sessionId);
+          const stderrData = typeof event.data === 'string' ? event.data : '';
+          yield emitOutputEvent(stderrData, 'stderr', timestamp, sessionId);
           break;
         }
 
         case 'complete': {
-          const exitCode = Number.parseInt(String(event.exitCode || 0));
+          const exitCode = Number.parseInt(
+            String(typeof event.exitCode === 'number' ? event.exitCode : 0)
+          );
 
           // Check if this was an interrupt (SIGINT=130, SIGTERM=143, SIGKILL=137)
           if (exitCode === 130 || exitCode === 143 || exitCode === 137) {
@@ -370,7 +373,7 @@ export async function* streamKilocodeExecution(
         case 'error': {
           yield {
             streamEventType: 'error',
-            error: String(event.error || 'Unknown error'),
+            error: typeof event.error === 'string' ? event.error : 'Unknown error',
             timestamp,
             sessionId,
           };

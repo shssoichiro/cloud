@@ -228,7 +228,8 @@ export function createConnectionManager(
         // Check for terminal errors
         if (event.streamEventType === 'kilocode') {
           const data = event.data as Record<string, unknown>;
-          const terminal = isTerminalErrorEvent({ event: String(data.event ?? ''), data });
+          const eventName = typeof data.event === 'string' ? data.event : '';
+          const terminal = isTerminalErrorEvent({ event: eventName, data });
           if (terminal.isTerminal) {
             callbacks.onTerminalError(terminal.reason ?? 'terminal error');
             return;
