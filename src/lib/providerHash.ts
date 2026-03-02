@@ -26,7 +26,9 @@ export function generateProviderSpecificHash(payload: string, provider: Provider
 export function generateOpenRouterUpstreamSafetyIdentifier(userId: string): string | null {
   const orgId = getEnvVariable('OPENROUTER_ORG_ID');
   if (!orgId) {
-    console.error('[generateOpenRouterUpstreamSafetyIdentifier] OPENROUTER_ORG_ID is not set, please run vercel env pull');
+    console.error(
+      '[generateOpenRouterUpstreamSafetyIdentifier] OPENROUTER_ORG_ID is not set, please run vercel env pull'
+    );
     return null;
   }
   return crypto
