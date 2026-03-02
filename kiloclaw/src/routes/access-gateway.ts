@@ -167,7 +167,7 @@ async function redeemCodeAndSetCookie(
   c: Context<AppEnv>,
   code: string,
   userId: string
-): Promise<{ redirectUrl: string } | { error: string; status: 400 | 401 | 500 }> {
+): Promise<{ redirectUrl: string } | { error: string; status: 401 | 500 }> {
   const connectionString = c.env.HYPERDRIVE?.connectionString;
   if (!connectionString) {
     console.error('[access-gateway] HYPERDRIVE not configured');

@@ -28,8 +28,9 @@ export function AccessCodeActions({
     try {
       const code = await generateAccessCode();
       if (code) {
-        const url = `${gatewayUrl}&auth_code=${encodeURIComponent(code)}`;
-        window.open(url, '_blank', 'noopener,noreferrer');
+        const url = new URL(gatewayUrl, window.location.origin);
+        url.searchParams.set('auth_code', code);
+        window.open(url.toString(), '_blank', 'noopener,noreferrer');
       }
     } catch {
       toast.error('Failed to generate access code for auto-login');
