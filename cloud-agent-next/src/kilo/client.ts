@@ -323,13 +323,11 @@ export class KiloClient {
 
       try {
         const errorBody = JSON.parse(responseBody) as unknown;
-        if (
-          errorBody &&
-          typeof errorBody === 'object' &&
-          'message' in errorBody &&
-          (errorBody as Record<string, unknown>).message
-        ) {
-          errorMessage = `${errorMessage} - ${String((errorBody as Record<string, unknown>).message)}`;
+        if (errorBody && typeof errorBody === 'object' && 'message' in errorBody) {
+          const body = errorBody as Record<string, unknown>;
+          if (body.message) {
+            errorMessage = `${errorMessage} - ${String(body.message)}`;
+          }
         }
       } catch {
         if (responseBody && responseBody.length < 200) {

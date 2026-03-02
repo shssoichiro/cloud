@@ -1353,7 +1353,6 @@ export class TownDO extends DurableObject<Env> {
 
     for (const working of workingAgents) {
       const agentId = working.bead_id;
-      const _hookBeadId = working.current_hook_bead_id;
       const lastActivity = working.last_activity_at;
 
       const containerInfo = await dispatch.checkAgentContainerStatus(this.env, townId, agentId);

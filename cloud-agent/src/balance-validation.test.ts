@@ -394,7 +394,7 @@ describe('balance-validation', () => {
           })
         );
 
-        const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
         const headers = init.headers as Headers;
         expect(headers.get('Authorization')).toBe('Bearer valid-token');
         expect(headers.get('X-KiloCode-OrganizationId')).toBe(orgId);
@@ -413,7 +413,7 @@ describe('balance-validation', () => {
 
         await validateAuthAndBalance('Bearer valid-token', undefined, mockEnv);
 
-        const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
         const headers = init.headers as Headers;
         expect(headers.get('Authorization')).toBe('Bearer valid-token');
         expect(headers.get('X-KiloCode-OrganizationId')).toBeNull();

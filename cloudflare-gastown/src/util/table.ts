@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument */
-
 import type { z } from 'zod';
 
 export type TableInput = {
@@ -19,16 +17,16 @@ export type TableQueryInterpolator<T extends TableInput> = {
 };
 
 export function getTable<T extends TableInput>(table: T): TableQueryInterpolator<T> {
-  const columns: {
-    [K in T['columns'][number]]: K;
-  } = {} as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic mapped type requires any
+  const columns = {} as { [K in T['columns'][number]]: K };
 
-  const columnsWithTable: {
-    [K in T['columns'][number]]: `${T['name']}.${K}`;
-  } = {} as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic mapped type requires any
+  const columnsWithTable = {} as { [K in T['columns'][number]]: `${T['name']}.${K}` };
 
   for (const key of table.columns) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic key assignment on generic type
     (columns as any)[key] = key;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic key assignment on generic type
     (columnsWithTable as any)[key] = [table.name, key].join('.');
   }
 
@@ -47,6 +45,7 @@ export function getTable<T extends TableInput>(table: T): TableQueryInterpolator
   return result;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Zod schema shape is inherently any-typed
 export function getTableFromZodSchema<Name extends string, Schema extends z.ZodObject<any>>(
   name: Name,
   schema: Schema
@@ -54,6 +53,7 @@ export function getTableFromZodSchema<Name extends string, Schema extends z.ZodO
   name: Name;
   columns: Array<Extract<keyof z.infer<Schema>, string>>;
 }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return -- return type is enforced by the signature
   return getTable({ name, columns: Object.keys(schema.shape) }) as any;
 }
 
@@ -80,5 +80,6 @@ export function getCreateTableQueryFromTable<T extends BaseTableQueryInterpolato
 }
 
 function objectKeys<T>(obj: T): Array<keyof T> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return -- generic Object.keys wrapper
   return Object.keys(obj as any) as any;
 }

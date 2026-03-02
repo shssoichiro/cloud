@@ -1071,6 +1071,8 @@ export class CodeReviewOrchestrator extends DurableObject<Env> {
 
                   if (typeof args === 'string') {
                     content = args;
+                  } else if (args != null) {
+                    content = JSON.stringify(args);
                   }
                 } else {
                   message = payload.say || event.message || '';
