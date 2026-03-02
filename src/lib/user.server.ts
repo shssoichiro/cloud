@@ -429,10 +429,7 @@ const authOptions: NextAuthOptions = {
           return redirectUrlForCode('USER-NOT-FOUND', accountInfo.google_user_email);
         }
 
-        if (
-          isEmailBlacklistedByDomain(accountInfo.google_user_email) ||
-          isBlockedTLD(accountInfo.google_user_email)
-        ) {
+        if (isEmailBlacklistedByDomain(accountInfo.google_user_email)) {
           sentryLogger('auth', 'warning')(
             `SECURITY: Blacklisted: ${accountInfo.google_user_email}`,
             accountInfo
@@ -445,6 +442,16 @@ const authOptions: NextAuthOptions = {
 
         // Check if this is an existing user with a different primary email
         const existingUser = await findAndSyncExistingUser(accountInfo);
+
+        // Block new signups from blocked TLDs (existing users can still sign in)
+        if (!existingUser && isBlockedTLD(accountInfo.google_user_email)) {
+          sentryLogger('auth', 'warning')(
+            `SECURITY: Blocked TLD signup: ${accountInfo.google_user_email}`,
+            accountInfo
+          );
+
+          return redirectUrlForCode(`BLOCKED`, accountInfo.google_user_email);
+        }
         if (existingUser) {
           const primaryEmailDomain = getLowerDomainFromEmail(existingUser.google_user_email);
           if (primaryEmailDomain) {
@@ -773,7 +780,7 @@ async function validateUserAuthorization(
 ): Promise<GetAuthResponse> {
   if (!user) {
     return authError(401, 'User not found', kiloUserId);
-  } else if (isUserBlacklistedByDomain(user) || isBlockedTLD(user.google_user_email)) {
+  } else if (isUserBlacklistedByDomain(user)) {
     return authError(403, 'Access denied (R0)', kiloUserId);
   } else if (!opts.DANGEROUS_allowBlockedUsers && user.blocked_reason) {
     return report_blocked_user(kiloUserId);

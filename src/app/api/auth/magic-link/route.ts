@@ -37,15 +37,18 @@ export async function POST(request: NextRequest) {
     return turnstileResult.response;
   }
 
-  if (isEmailBlacklistedByDomain(email) || isBlockedTLD(email)) {
+  if (isEmailBlacklistedByDomain(email)) {
     return NextResponse.json({ success: false, error: 'BLOCKED' }, { status: 403 });
   }
 
   // Check if this is an existing user (sign-in) or new user (signup)
   const existingUser = await findUserByEmail(email);
 
-  // For new users, enforce stricter email validation
+  // For new users, enforce stricter email validation and TLD blocking
   if (!existingUser) {
+    if (isBlockedTLD(email)) {
+      return NextResponse.json({ success: false, error: 'BLOCKED' }, { status: 403 });
+    }
     const signupValidation = validateMagicLinkSignupEmail(email);
     if (!signupValidation.valid) {
       return NextResponse.json({ success: false, error: signupValidation.error }, { status: 400 });
