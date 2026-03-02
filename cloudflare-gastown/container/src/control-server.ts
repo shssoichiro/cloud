@@ -95,7 +95,7 @@ app.get('/health', c => {
 
 // POST /agents/start
 app.post('/agents/start', async c => {
-  const body = await c.req.json().catch(() => null);
+  const body: unknown = await c.req.json().catch(() => null);
   const parsed = StartAgentRequest.safeParse(body);
   if (!parsed.success) {
     console.error('[control-server] /agents/start: invalid request body', parsed.error.issues);
@@ -143,7 +143,7 @@ app.post('/agents/:agentId/message', async c => {
   if (!getAgentStatus(agentId)) {
     return c.json({ error: `Agent ${agentId} not found` }, 404);
   }
-  const body = await c.req.json().catch(() => null);
+  const body: unknown = await c.req.json().catch(() => null);
   const parsed = SendMessageRequest.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
@@ -234,7 +234,7 @@ export function consumeStreamTicket(ticket: string): string | null {
 // Runs the merge synchronously and reports the result back to the Rig DO
 // via a callback to the completeReview endpoint.
 app.post('/git/merge', async c => {
-  const body = await c.req.json().catch(() => null);
+  const body: unknown = await c.req.json().catch(() => null);
   const parsed = MergeRequest.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
@@ -651,10 +651,12 @@ export function startControlServer(): void {
 
         // Event stream — handle subscribe messages
         try {
-          const msg = JSON.parse(String(message));
-          if (msg.type === 'subscribe' && msg.agentId) {
-            ws.data.agentId = msg.agentId;
-            console.log(`[control-server] WebSocket subscribed to agent=${msg.agentId}`);
+          const msg = JSON.parse(String(message)) as unknown;
+          const rec =
+            typeof msg === 'object' && msg !== null ? (msg as Record<string, unknown>) : null;
+          if (rec && rec.type === 'subscribe' && typeof rec.agentId === 'string') {
+            ws.data.agentId = rec.agentId;
+            console.log(`[control-server] WebSocket subscribed to agent=${rec.agentId}`);
           }
         } catch {
           // Ignore

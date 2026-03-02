@@ -1401,8 +1401,10 @@ export class CloudAgentSession extends DurableObject {
       GITHUB_TOKEN_CACHE: Reflect.get(this.env, 'GITHUB_TOKEN_CACHE'),
       GITHUB_APP_ID: Reflect.get(this.env, 'GITHUB_APP_ID'),
       GITHUB_APP_PRIVATE_KEY: Reflect.get(this.env, 'GITHUB_APP_PRIVATE_KEY'),
-      GITHUB_LITE_APP_ID: Reflect.get(this.env, 'GITHUB_LITE_APP_ID'),
-      GITHUB_LITE_APP_PRIVATE_KEY: Reflect.get(this.env, 'GITHUB_LITE_APP_PRIVATE_KEY'),
+      GITHUB_LITE_APP_ID: Reflect.get(this.env, 'GITHUB_LITE_APP_ID') as string | undefined,
+      GITHUB_LITE_APP_PRIVATE_KEY: Reflect.get(this.env, 'GITHUB_LITE_APP_PRIVATE_KEY') as
+        | string
+        | undefined,
     });
   }
 

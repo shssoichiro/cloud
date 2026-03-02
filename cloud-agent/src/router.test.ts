@@ -247,15 +247,17 @@ describe('router sessionId validation', () => {
             failedProcessIds: [],
             message: 'stopped',
           });
-          buildContextMock.mockImplementation(({ sandboxId, orgId, userId, sessionId }) => ({
-            sandboxId,
-            orgId,
-            userId,
-            sessionId,
-            sessionHome: `/home/${sessionId}`,
-            workspacePath: `/workspace/${sessionId}`,
-            branchName: `session/${sessionId}`,
-          }));
+          buildContextMock.mockImplementation(
+            ({ sandboxId, orgId, userId, sessionId }: Record<string, unknown>) => ({
+              sandboxId,
+              orgId,
+              userId,
+              sessionId,
+              sessionHome: `/home/${sessionId as string}`,
+              workspacePath: `/workspace/${sessionId as string}`,
+              branchName: `session/${sessionId as string}`,
+            })
+          );
           const mockSession = { token: 'session' };
           getOrCreateSessionMock.mockResolvedValue(mockSession);
 
@@ -268,7 +270,7 @@ describe('router sessionId validation', () => {
             env: {
               Sandbox: {} as TRPCContext['env']['Sandbox'],
               CLOUD_AGENT_SESSION: {
-                idFromName: vi.fn(id => ({ id })),
+                idFromName: vi.fn((id: string) => ({ id })),
                 get: vi.fn(() => ({
                   deleteSession: vi.fn().mockResolvedValue(undefined),
                   markAsInterrupted: vi.fn().mockResolvedValue(undefined),
@@ -616,7 +618,7 @@ describe('router sessionId validation', () => {
           env: {
             Sandbox: {} as TRPCContext['env']['Sandbox'],
             CLOUD_AGENT_SESSION: {
-              idFromName: vi.fn(id => ({ id })),
+              idFromName: vi.fn((id: string) => ({ id })),
               get: vi.fn(() => ({
                 deleteSession: vi.fn().mockResolvedValue(undefined),
                 markAsInterrupted: vi.fn().mockResolvedValue(undefined),
@@ -642,15 +644,17 @@ describe('router sessionId validation', () => {
         vi.mocked(getSandbox).mockReturnValue(mockSandbox);
 
         // Mock buildContext
-        buildContextMock.mockImplementation(({ sandboxId, orgId, userId, sessionId }) => ({
-          sandboxId,
-          orgId,
-          userId,
-          sessionId,
-          sessionHome: `/home/${sessionId as string}`,
-          workspacePath: `/workspace/${sessionId as string}`,
-          branchName: `session/${sessionId as string}`,
-        }));
+        buildContextMock.mockImplementation(
+          ({ sandboxId, orgId, userId, sessionId }: Record<string, unknown>) => ({
+            sandboxId,
+            orgId,
+            userId,
+            sessionId,
+            sessionHome: `/home/${sessionId as string}`,
+            workspacePath: `/workspace/${sessionId as string}`,
+            branchName: `session/${sessionId as string}`,
+          })
+        );
 
         // Mock getOrCreateSession to return our mock session
         getOrCreateSessionMock.mockResolvedValue(mockSession);
@@ -827,7 +831,7 @@ describe('router sessionId validation', () => {
           env: {
             Sandbox: {} as TRPCContext['env']['Sandbox'],
             CLOUD_AGENT_SESSION: {
-              idFromName: vi.fn(id => ({ id })),
+              idFromName: vi.fn((id: string) => ({ id })),
               get: vi.fn(() => ({
                 getMetadata: mockGetMetadata,
                 getActiveExecutionId: vi.fn().mockResolvedValue(null),

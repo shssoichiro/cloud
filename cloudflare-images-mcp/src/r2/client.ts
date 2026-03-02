@@ -28,11 +28,11 @@ type R2ListResult = {
 const xmlParser = new XMLParser();
 
 function parseListObjectsV2Response(xml: string): R2ListResult {
-  const parsed = xmlParser.parse(xml);
-  const result = parsed.ListBucketResult;
+  const parsed: Record<string, unknown> = xmlParser.parse(xml) as Record<string, unknown>;
+  const result = parsed.ListBucketResult as Record<string, unknown>;
 
   const isTruncated = result.IsTruncated === true || result.IsTruncated === 'true';
-  const nextContinuationToken: string | undefined = result.NextContinuationToken;
+  const nextContinuationToken = result.NextContinuationToken as string | undefined;
 
   // Contents may be absent (empty), a single object, or an array
   const raw = result.Contents;

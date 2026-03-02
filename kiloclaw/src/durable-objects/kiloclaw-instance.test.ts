@@ -765,7 +765,7 @@ describe('gateway process control via controller', () => {
         headers: expect.objectContaining({
           Accept: 'application/json',
           'fly-force-instance-id': 'machine-1',
-        }),
+        }) as unknown,
       })
     );
 
@@ -1414,14 +1414,15 @@ describe('start: 412 insufficient resources recovery', () => {
     const regions412Call = (flyClient.createVolumeWithFallback as Mock).mock.calls[0];
     expect(regions412Call[1]).toEqual(
       expect.objectContaining({
-        compute: expect.objectContaining({ cpus: 2, memory_mb: 3072 }),
+        compute: expect.objectContaining({ cpus: 2, memory_mb: 3072 }) as unknown,
       })
     );
     // Regions are shuffled, so just check the set (deprioritize is a no-op here
     // because 'iad' is not in FLY_REGION='us,eu')
     expect(regions412Call[2].sort()).toEqual(['eu', 'us']);
     // source_volume_id should NOT be set for fresh provision
-    const createVolumeCall = (flyClient.createVolumeWithFallback as Mock).mock.calls[0][1];
+    const createVolumeCall = (flyClient.createVolumeWithFallback as Mock).mock
+      .calls[0][1] as Record<string, unknown>;
     expect(createVolumeCall.source_volume_id).toBeUndefined();
 
     // Machine was created on retry
@@ -1461,7 +1462,7 @@ describe('start: 412 insufficient resources recovery', () => {
     expect(regionsForkCall[1]).toEqual(
       expect.objectContaining({
         source_volume_id: 'vol-1',
-        compute: expect.objectContaining({ cpus: 2, memory_mb: 3072 }),
+        compute: expect.objectContaining({ cpus: 2, memory_mb: 3072 }) as unknown,
       })
     );
     // Regions are shuffled — check the set
@@ -1526,7 +1527,7 @@ describe('start: 412 insufficient resources recovery', () => {
     expect(regionsUpdateCall[1]).toEqual(
       expect.objectContaining({
         source_volume_id: 'vol-1',
-        compute: expect.objectContaining({ cpus: 2, memory_mb: 3072 }),
+        compute: expect.objectContaining({ cpus: 2, memory_mb: 3072 }) as unknown,
       })
     );
     // Regions are shuffled then deprioritized — check the set

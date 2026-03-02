@@ -246,15 +246,27 @@ describe('router sessionId validation', () => {
             failedProcessIds: [],
             message: 'stopped',
           });
-          buildContextMock.mockImplementation(({ sandboxId, orgId, userId, sessionId }) => ({
-            sandboxId,
-            orgId,
-            userId,
-            sessionId,
-            sessionHome: `/home/${sessionId}`,
-            workspacePath: `/workspace/${sessionId}`,
-            branchName: `session/${sessionId}`,
-          }));
+          buildContextMock.mockImplementation(
+            ({
+              sandboxId,
+              orgId,
+              userId,
+              sessionId,
+            }: {
+              sandboxId: string;
+              orgId: string | undefined;
+              userId: string;
+              sessionId: string;
+            }) => ({
+              sandboxId,
+              orgId,
+              userId,
+              sessionId,
+              sessionHome: `/home/${sessionId}`,
+              workspacePath: `/workspace/${sessionId}`,
+              branchName: `session/${sessionId}`,
+            })
+          );
           const mockSession = { token: 'session' };
           getOrCreateSessionMock.mockResolvedValue(mockSession);
 
@@ -267,7 +279,7 @@ describe('router sessionId validation', () => {
             env: {
               Sandbox: {} as TRPCContext['env']['Sandbox'],
               CLOUD_AGENT_SESSION: {
-                idFromName: vi.fn(id => ({ id })),
+                idFromName: vi.fn((id: string) => ({ id })),
                 get: vi.fn(() => ({
                   deleteSession: vi.fn().mockResolvedValue(undefined),
                   markAsInterrupted: vi.fn().mockResolvedValue(undefined),
@@ -610,7 +622,7 @@ describe('router sessionId validation', () => {
           env: {
             Sandbox: {} as TRPCContext['env']['Sandbox'],
             CLOUD_AGENT_SESSION: {
-              idFromName: vi.fn(id => ({ id })),
+              idFromName: vi.fn((id: string) => ({ id })),
               get: vi.fn(() => ({
                 getMetadata: mockGetMetadata,
                 getActiveExecutionId: vi.fn().mockResolvedValue(null),

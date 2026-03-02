@@ -330,11 +330,11 @@ app.all('*', async c => {
 
     // Container -> Client relay with error transformation
     containerWs.addEventListener('message', event => {
-      let data = event.data;
+      let data = event.data as string | ArrayBuffer;
 
       if (typeof data === 'string') {
         try {
-          const parsed = JSON.parse(data);
+          const parsed = JSON.parse(data) as { error?: { message?: string } };
           if (parsed.error?.message) {
             parsed.error.message = transformErrorMessage(parsed.error.message);
             data = JSON.stringify(parsed);
