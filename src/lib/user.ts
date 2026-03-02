@@ -57,6 +57,7 @@ import { failureResult, successResult, trpcFailure } from '@/lib/maybe-result';
 import type { TRPCError } from '@trpc/server';
 import type { UUID } from 'node:crypto';
 import type { AuthProviderId } from '@/lib/auth/provider-metadata';
+import { generateOpenRouterUpstreamSafetyIdentifier } from '@/lib/providerHash';
 
 const workos = new WorkOS(WORKOS_API_KEY);
 
@@ -263,6 +264,7 @@ export async function createOrUpdateUser(
     hosted_domain: args.hosted_domain,
     is_admin: shouldBeAdmin(args.google_user_email, args.hosted_domain),
     stripe_customer_id: stripeCustomer.id,
+    openrouter_upstream_safety_identifier: generateOpenRouterUpstreamSafetyIdentifier(newUserId),
   } satisfies typeof kilocode_users.$inferInsert;
 
   const savedUser = await db.transaction(async tx => {

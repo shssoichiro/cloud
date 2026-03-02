@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import type { Provider } from '@/lib/providers';
+import { PROVIDERS, type Provider } from '@/lib/providers';
+import { getEnvVariable } from '@/lib/dotenvx';
 
 /**
  * Generates a service-specific SHA256 hash.
@@ -20,4 +21,15 @@ export function generateProviderSpecificHash(payload: string, provider: Provider
     .createHash('sha256')
     .update(salt + pepper + payload)
     .digest('base64');
+}
+
+export function generateOpenRouterUpstreamSafetyIdentifier(userId: string) {
+  return crypto
+    .createHash('sha256')
+    .update(
+      getEnvVariable('OPENROUTER_ORG_KEY') +
+        '-' +
+        generateProviderSpecificHash(userId, PROVIDERS.OPENROUTER)
+    )
+    .digest('hex');
 }
