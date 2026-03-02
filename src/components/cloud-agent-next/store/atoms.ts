@@ -287,7 +287,7 @@ export const addUserMessageAtom = atom(
     }
   ) => {
     const { sessionId, content, agent = 'code', model = { providerID: '', modelID: '' } } = payload;
-    const messageId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const messageId = `optimistic-${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const partId = `part_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const now = Date.now();
 
@@ -328,6 +328,38 @@ export const addUserMessageAtom = atom(
     set(partsMapAtom, partsMap);
   }
 );
+
+/**
+ * Remove the optimistic user message (if any) from the store.
+ * No-op when no optimistic message exists (avoids unnecessary Map copies / subscriber notifications).
+ */
+export const removeOptimisticMessageAtom = atom(null, (get, set) => {
+  const messagesMap = get(messagesMapAtom);
+
+  // Find the optimistic message without copying first
+  let optimisticId: string | null = null;
+  for (const id of messagesMap.keys()) {
+    if (id.startsWith('optimistic-')) {
+      optimisticId = id;
+      break;
+    }
+  }
+  if (!optimisticId) return;
+
+  const message = messagesMap.get(optimisticId);
+  const newMessagesMap = new Map(messagesMap);
+  const newPartsMap = new Map(get(partsMapAtom));
+
+  if (message) {
+    for (const part of message.parts) {
+      newPartsMap.delete(part.id);
+    }
+  }
+  newMessagesMap.delete(optimisticId);
+
+  set(messagesMapAtom, newMessagesMap);
+  set(partsMapAtom, newPartsMap);
+});
 
 /**
  * Update a message in a child session.

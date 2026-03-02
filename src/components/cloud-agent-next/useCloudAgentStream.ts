@@ -40,6 +40,8 @@ import {
   autocommitStatusAtom,
   standaloneQuestionAtom,
   clearStandaloneQuestionAtom,
+  addUserMessageAtom,
+  removeOptimisticMessageAtom,
 } from './store/atoms';
 import {
   updateHighWaterMarkAtom,
@@ -65,6 +67,8 @@ export type UseCloudAgentStreamOptions = {
   onSessionInitiated?: () => void;
   /** Callback when the agent asks a question */
   onQuestionAsked?: () => void;
+  /** Callback when sendMessage fails — receives the original message text for restoring to input */
+  onSendFailed?: (messageText: string) => void;
 };
 
 export type UseCloudAgentStreamReturn = {
@@ -102,6 +106,7 @@ export function useCloudAgentStream({
   onKiloSessionCreated,
   onSessionInitiated,
   onQuestionAsked,
+  onSendFailed,
 }: UseCloudAgentStreamOptions): UseCloudAgentStreamReturn {
   const trpcClient = useRawTRPCClient();
 
@@ -120,6 +125,10 @@ export function useCloudAgentStream({
   const setQuestionRequestId = useSetAtom(setQuestionRequestIdAtom);
   const setStandaloneQuestion = useSetAtom(standaloneQuestionAtom);
   const clearStandaloneQuestion = useSetAtom(clearStandaloneQuestionAtom);
+
+  // Atoms for optimistic message display
+  const addUserMessage = useSetAtom(addUserMessageAtom);
+  const removeOptimisticMessage = useSetAtom(removeOptimisticMessageAtom);
 
   // Atom for organization ID (used by QuestionToolCard for tRPC calls)
   const setSessionOrganizationId = useSetAtom(sessionOrganizationIdAtom);
@@ -156,6 +165,7 @@ export function useCloudAgentStream({
   const onKiloSessionCreatedRef = useRef(onKiloSessionCreated);
   const onSessionInitiatedRef = useRef(onSessionInitiated);
   const onQuestionAskedRef = useRef(onQuestionAsked);
+  const onSendFailedRef = useRef(onSendFailed);
 
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -172,6 +182,10 @@ export function useCloudAgentStream({
   useEffect(() => {
     onQuestionAskedRef.current = onQuestionAsked;
   }, [onQuestionAsked]);
+
+  useEffect(() => {
+    onSendFailedRef.current = onSendFailed;
+  }, [onSendFailed]);
 
   useEffect(() => {
     cloudAgentSessionIdRef.current = cloudAgentSessionIdProp ?? null;
@@ -191,6 +205,11 @@ export function useCloudAgentStream({
     () => ({
       onMessageUpdated: (sessionId, messageId, message, parentSessionId) => {
         if (parentSessionId === null) {
+          // When the server echoes a user message, remove the optimistic placeholder first
+          if (message.info.role === 'user') {
+            removeOptimisticMessage();
+          }
+
           // Root session message
           updateMessage({ messageId, info: message.info, parts: message.parts });
 
@@ -345,6 +364,7 @@ export function useCloudAgentStream({
       setQuestionRequestId,
       setStandaloneQuestion,
       clearStandaloneQuestion,
+      removeOptimisticMessage,
     ]
   );
 
@@ -706,6 +726,9 @@ export function useCloudAgentStream({
         return;
       }
 
+      // Display the user's message optimistically before the server echoes it back
+      addUserMessage({ sessionId: activeCloudAgentSessionId, content: message, agent: mode });
+
       // Update ref to match the session we're sending to
       cloudAgentSessionIdRef.current = activeCloudAgentSessionId;
 
@@ -743,13 +766,25 @@ export function useCloudAgentStream({
           await connectWebSocket(result.cloudAgentSessionId);
         }
       } catch (err) {
+        // Remove the optimistic message on failure and restore text to input
+        removeOptimisticMessage();
+        onSendFailedRef.current?.(message);
+
         const errorMessage = formatStreamError(err);
         setLocalError(errorMessage);
         setError(errorMessage);
         setIsStreaming(false);
       }
     },
-    [trpcClient, connectWebSocket, formatStreamError, setError, setIsStreaming]
+    [
+      trpcClient,
+      connectWebSocket,
+      formatStreamError,
+      setError,
+      setIsStreaming,
+      addUserMessage,
+      removeOptimisticMessage,
+    ]
   );
 
   return {
