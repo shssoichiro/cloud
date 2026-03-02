@@ -539,8 +539,6 @@ export async function syncOwner(params: {
     return { synced: 0, errors: 0, staleRepos: [] };
   }
 
-  const token = await gitTokenService.getToken(config.installationId);
-
   const totalResult: SyncResult = { synced: 0, errors: 0, staleRepos: [] };
   let firstError: Error | null = null;
   let successfulRepos = 0;
@@ -549,7 +547,8 @@ export async function syncOwner(params: {
     try {
       const repoResult = await syncRepo({
         db: database,
-        token,
+        gitTokenService,
+        installationId: config.installationId,
         owner,
         platformIntegrationId: config.platformIntegrationId,
         repoFullName,
@@ -614,13 +613,23 @@ export async function syncOwner(params: {
 
 async function syncRepo(params: {
   db: WorkerDb;
-  token: string;
+  gitTokenService: GitTokenService;
+  installationId: string;
   owner: SecurityReviewOwner;
   platformIntegrationId: string;
   repoFullName: string;
   slaConfig: SecurityAgentConfig;
 }): Promise<SyncResult> {
-  const { db: database, token, owner, platformIntegrationId, repoFullName, slaConfig } = params;
+  const {
+    db: database,
+    gitTokenService,
+    installationId,
+    owner,
+    platformIntegrationId,
+    repoFullName,
+    slaConfig,
+  } = params;
+  const token = await gitTokenService.getToken(installationId);
   const result: SyncResult = { synced: 0, errors: 0, staleRepos: [] };
 
   const [repoOwner, repoName] = repoFullName.split('/');
