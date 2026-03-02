@@ -65,8 +65,9 @@ vi.mock('../lib/image-version', async () => {
 
 // -- Mock db --
 vi.mock('../db', () => ({
-  createDatabaseConnection: vi.fn(),
-  InstanceStore: vi.fn(),
+  getWorkerDb: vi.fn(() => ({})),
+  getActiveInstance: vi.fn().mockResolvedValue(null),
+  markInstanceDestroyed: vi.fn().mockResolvedValue(undefined),
 }));
 
 // -- Mock gateway/env --
@@ -831,6 +832,42 @@ describe('gateway process control via controller', () => {
       );
     });
 
+    fetchSpy.mockRestore();
+  });
+
+  it('restoreConfig calls the controller config restore endpoint and preserves signaled', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, { flyMachineId: 'machine-1', flyAppName: 'acct-test' });
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, signaled: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    const result = await instance.restoreConfig('base');
+
+    expect(result).toEqual({ ok: true, signaled: true });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://acct-test.fly.dev/_kilo/config/restore/base');
+    fetchSpy.mockRestore();
+  });
+
+  it('restoreConfig surfaces signaled: false when gateway was not running', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, { flyMachineId: 'machine-1', flyAppName: 'acct-test' });
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, signaled: false }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    const result = await instance.restoreConfig('base');
+
+    expect(result).toEqual({ ok: true, signaled: false });
     fetchSpy.mockRestore();
   });
 
@@ -1807,7 +1844,7 @@ describe('approveDevicePairingRequest', () => {
       '58f4ac67-12b4-4f6e-adee-ff3463a7c30c'
     );
 
-    expect(result).toEqual({ success: false, message: 'request not found' });
+    expect(result).toEqual({ success: false, message: 'Approval failed' });
   });
 });
 
@@ -1868,13 +1905,9 @@ describe('auto-destroy stale provisioned instances', () => {
     };
 
     const markDestroyed = vi.fn(markImpl);
-    (db.createDatabaseConnection as Mock).mockReturnValue({});
-    (db.InstanceStore as Mock).mockImplementation(function instanceStoreMock() {
-      return {
-        markDestroyed,
-        getActiveInstance: vi.fn().mockResolvedValue(null),
-      };
-    });
+    (db.getWorkerDb as Mock).mockReturnValue({});
+    (db.getActiveInstance as Mock).mockResolvedValue(null);
+    (db.markInstanceDestroyed as Mock).mockImplementation(markDestroyed);
 
     const { instance, storage } = createInstance(undefined, env);
     return { instance, storage, markDestroyed };
@@ -1895,7 +1928,7 @@ describe('auto-destroy stale provisioned instances', () => {
     expect(storage._store.size).toBe(0);
     // Postgres mark-destroyed should have been called
     expect(markDestroyed).toHaveBeenCalledOnce();
-    expect(markDestroyed).toHaveBeenCalledWith('user-1', 'sandbox-1');
+    expect(markDestroyed).toHaveBeenCalledWith(expect.anything(), 'user-1', 'sandbox-1');
     // Metadata recovery ran first (listMachines), but found nothing
     expect(flyClient.listMachines).toHaveBeenCalled();
     // Volume reconciliation should not have run (destroyed before that)

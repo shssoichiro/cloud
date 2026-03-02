@@ -28,7 +28,6 @@ export const MISTRAL_API_KEY = getEnvVariable('MISTRAL_API_KEY');
 export const OPENAI_API_KEY = getEnvVariable('OPENAI_API_KEY');
 export const INTERNAL_API_SECRET = getEnvVariable('INTERNAL_API_SECRET');
 export const CODE_REVIEW_WORKER_AUTH_TOKEN = getEnvVariable('CODE_REVIEW_WORKER_AUTH_TOKEN');
-export const MANAGED_INDEXING_ENABLED = true;
 
 if (!NEXTAUTH_SECRET) throw new Error('NEXTAUTH_SECRET is required JWT signing');
 if (!TURNSTILE_SECRET_KEY) throw new Error('NEXTAUTH_SECRET is required JWT signing');
@@ -112,7 +111,6 @@ export const SLACK_USER_FEEDBACK_WEBHOOK_URL = getEnvVariable('SLACK_USER_FEEDBA
 // Posts deploy threat alerts to a dedicated Slack channel.
 // Expected to be a Slack Incoming Webhook URL.
 export const SLACK_DEPLOY_THREAT_WEBHOOK_URL = getEnvVariable('SLACK_DEPLOY_THREAT_WEBHOOK_URL');
-export const ENABLE_MILVUS_DUAL_WRITE = true;
 
 // AI Attribution Service
 export const AI_ATTRIBUTION_ADMIN_SECRET = getEnvVariable('AI_ATTRIBUTION_ADMIN_SECRET');
@@ -144,6 +142,24 @@ if (process.env.NODE_ENV === 'production') {
  * The corresponding private key is stored in the cloud-agent worker.
  */
 export const AGENT_ENV_VARS_PUBLIC_KEY = getEnvVariable('AGENT_ENV_VARS_PUBLIC_KEY') || '';
+
+// Gastown Service
+export const GASTOWN_SERVICE_URL =
+  getEnvVariable('GASTOWN_SERVICE_URL') ||
+  (process.env.NODE_ENV === 'production' ? 'https://gastown.kiloapps.io' : 'http://localhost:8787');
+export const GASTOWN_CF_ACCESS_CLIENT_ID = getEnvVariable('GASTOWN_SERVICE_CF_ACCESS_CLIENT_ID');
+export const GASTOWN_CF_ACCESS_CLIENT_SECRET = getEnvVariable(
+  'GASTOWN_SERVICE_CF_ACCESS_CLIENT_SECRET'
+);
+
+if (process.env.NODE_ENV === 'production') {
+  if (!GASTOWN_CF_ACCESS_CLIENT_ID) {
+    throw new Error('GASTOWN_CF_ACCESS_CLIENT_ID is required in production');
+  }
+  if (!GASTOWN_CF_ACCESS_CLIENT_SECRET) {
+    throw new Error('GASTOWN_CF_ACCESS_CLIENT_SECRET is required in production');
+  }
+}
 
 // KiloClaw Worker
 export const KILOCLAW_API_URL = getEnvVariable('KILOCLAW_API_URL') || '';

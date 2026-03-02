@@ -1,4 +1,4 @@
-import { type User } from '@/db/schema';
+import { type User } from '@kilocode/db/schema';
 import { getBalanceForUser } from './user.balance';
 import { FIRST_TOPUP_BONUS_AMOUNT, APP_URL } from '@/lib/constants';
 import {
@@ -49,6 +49,7 @@ const normalUnconditionalNotifications: KiloNotification[] = [
       actionText: 'Learn more',
       actionURL: 'https://kilo.ai/docs/cli',
     },
+    showIn: ['extension'],
   },
   {
     id: 'kilo-cloud-agents-jan-15',

@@ -166,11 +166,11 @@ export const baseGetSessionSchema = z.object({
   cloudAgentSessionId: z.string(),
 });
 
-const executionStateSchema = z.object({
+export const executionStateSchema = z.object({
   id: z.string(),
-  status: z.enum(['queued', 'running', 'completed', 'failed', 'interrupted']),
+  status: z.enum(['pending', 'running', 'completed', 'failed', 'interrupted']),
   startedAt: z.number().optional(),
-  lastHeartbeat: z.number().optional(),
+  lastHeartbeat: z.number().nullable().optional(),
   processId: z.string().nullable().optional(),
   error: z.string().nullable().optional(),
   health: z.enum(['healthy', 'stale', 'unknown']).optional(),

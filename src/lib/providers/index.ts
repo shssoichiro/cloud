@@ -26,8 +26,8 @@ import {
   getModelUserByokProviders,
   type BYOKResult,
 } from '@/lib/byok';
-import type { CustomLlm } from '@/db/schema';
-import { custom_llm, type User } from '@/db/schema';
+import type { CustomLlm } from '@kilocode/db/schema';
+import { custom_llm, type User } from '@kilocode/db/schema';
 import type { OpenRouterInferenceProviderId } from '@/lib/providers/openrouter/inference-provider-id';
 import { OpenRouterInferenceProviderIdSchema } from '@/lib/providers/openrouter/inference-provider-id';
 import { applyCoreThinkProviderSettings } from '@/lib/providers/corethink';
@@ -109,7 +109,7 @@ export async function getProvider(
     }
   }
 
-  if (requestedModel.startsWith('kilo/') && organizationId) {
+  if (requestedModel.startsWith('kilo-internal/') && organizationId) {
     const [customLlm] = await db
       .select()
       .from(custom_llm)
@@ -189,40 +189,43 @@ function applyToolChoiceSetting(
   }
 }
 
-function getPreferredProvider(requestedModel: string): OpenRouterInferenceProviderId | null {
+function getPreferredProviderOrder(requestedModel: string): OpenRouterInferenceProviderId[] {
   if (isAnthropicModel(requestedModel)) {
-    return OpenRouterInferenceProviderIdSchema.enum['amazon-bedrock'];
+    return [
+      OpenRouterInferenceProviderIdSchema.enum['amazon-bedrock'],
+      OpenRouterInferenceProviderIdSchema.enum.anthropic,
+    ];
   }
   if (requestedModel.startsWith('minimax/')) {
-    return OpenRouterInferenceProviderIdSchema.enum.minimax;
+    return [OpenRouterInferenceProviderIdSchema.enum.minimax];
   }
   if (isMistralModel(requestedModel)) {
-    return OpenRouterInferenceProviderIdSchema.enum.mistral;
+    return [OpenRouterInferenceProviderIdSchema.enum.mistral];
   }
   if (isMoonshotModel(requestedModel)) {
-    return OpenRouterInferenceProviderIdSchema.enum.moonshotai;
+    return [OpenRouterInferenceProviderIdSchema.enum.moonshotai];
   }
   if (isZaiModel(requestedModel)) {
-    return OpenRouterInferenceProviderIdSchema.enum['z-ai'];
+    return [OpenRouterInferenceProviderIdSchema.enum['z-ai']];
   }
-  return null;
+  return [];
 }
 
 function applyPreferredProvider(
   requestedModel: string,
   requestToMutate: OpenRouterChatCompletionRequest
 ) {
-  const preferredProvider = getPreferredProvider(requestedModel);
-  if (!preferredProvider) {
+  const preferredProviderOrder = getPreferredProviderOrder(requestedModel);
+  if (preferredProviderOrder.length === 0) {
     return;
   }
   console.debug(
-    `[applyPreferredProvider] Preferentially routing ${requestedModel} to ${preferredProvider}`
+    `[applyPreferredProvider] Preferentially routing ${requestedModel} to ${preferredProviderOrder.join()}`
   );
   if (!requestToMutate.provider) {
-    requestToMutate.provider = { order: [preferredProvider] };
+    requestToMutate.provider = { order: preferredProviderOrder };
   } else if (!requestToMutate.provider.order) {
-    requestToMutate.provider.order = [preferredProvider];
+    requestToMutate.provider.order = preferredProviderOrder;
   }
 }
 

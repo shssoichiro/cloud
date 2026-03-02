@@ -25,10 +25,14 @@ const config: Config = {
   moduleNameMapper: {
     '^@/lib/integrations/platforms/github/adapter$':
       '<rootDir>/src/tests/setup/__mocks__/lib/integrations/platforms/github/adapter.ts',
+    '^@kilocode/db/(.*)$': '<rootDir>/packages/db/src/$1',
+    '^@kilocode/db$': '<rootDir>/packages/db/src/index.ts',
+    '^@kilocode/worker-utils$': '<rootDir>/packages/worker-utils/src/index.ts',
+    '^(\\.{1,2}/.+)\\.js$': '$1',
     '^@/(.*)$': '<rootDir>/src/$1',
     '^server-only$': '<rootDir>/src/tests/setup/__mocks__/server-only.js',
   },
-  testMatch: ['**/src/**/*.test.ts'],
+  testMatch: ['**/src/**/*.test.ts', '<rootDir>/packages/db/src/**/*.test.ts'],
   testPathIgnorePatterns: [
     '<rootDir>/.kilocode/',
     '<rootDir>/cloud-agent/',
@@ -36,7 +40,10 @@ const config: Config = {
     '<rootDir>/cloudflare-app-builder/',
     '<rootDir>/cloudflare-webhook-agent-ingest/',
     '<rootDir>/cloudflare-session-ingest/',
+    '<rootDir>/cloudflare-gastown/',
     '<rootDir>/kiloclaw/',
+    '<rootDir>/packages/encryption/',
+    '<rootDir>/packages/worker-utils/',
   ],
   transformIgnorePatterns: [
     'node_modules/.pnpm/(?!(@octokit|universal-user-agent|before-after-hook|bottleneck))',

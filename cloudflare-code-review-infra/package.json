@@ -11,10 +11,11 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250110.0",
-    "typescript": "^5.8.3",
-    "wrangler": "^4.61.0"
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
   },
   "dependencies": {
-    "hono": "^4.11.4"
+    "@kilocode/worker-utils": "workspace:*",
+    "hono": "catalog:"
   }
 }
