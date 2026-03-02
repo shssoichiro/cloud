@@ -201,7 +201,12 @@ export async function getOwnerConfig(
 
   const repoNameToId = new Map(allRepos.map(r => [r.full_name, r.id]));
 
-  const securityConfig = securityAgentConfigSchema.partial().parse(agentConfig.config);
+  const parsed = securityAgentConfigSchema.partial().safeParse(agentConfig.config);
+  if (!parsed.success) {
+    console.warn('Invalid security agent config, skipping owner', { error: parsed.error.message });
+    return null;
+  }
+  const securityConfig = parsed.data;
   let selectedRepos: string[];
   if (
     securityConfig.repository_selection_mode === 'selected' &&
