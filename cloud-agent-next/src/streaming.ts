@@ -330,9 +330,7 @@ export async function* streamKilocodeExecution(
         }
 
         case 'complete': {
-          const exitCode = Number.parseInt(
-            String(typeof event.exitCode === 'number' ? event.exitCode : 0)
-          );
+          const exitCode = typeof event.exitCode === 'number' ? event.exitCode : 0;
 
           // Check if this was an interrupt (SIGINT=130, SIGTERM=143, SIGKILL=137)
           if (exitCode === 130 || exitCode === 143 || exitCode === 137) {

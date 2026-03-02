@@ -24,6 +24,7 @@ describe('database schema', () => {
     };
 
     // Generate current schema state
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- generateDrizzleJson's return type contains `any` fields
     const currentSchema = generateDrizzleJson(schema, latestSnapshot.id);
 
     // Generate migration diff
