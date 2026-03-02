@@ -12,7 +12,7 @@ export function useAccessCode() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
 
-  const generateAccessCode = useCallback(async () => {
+  const generateAccessCode = useCallback(async (): Promise<string | null> => {
     setIsGenerating(true);
     try {
       const res = await fetch('/api/kiloclaw/access-code', { method: 'POST' });
@@ -20,12 +20,14 @@ export function useAccessCode() {
       const data = AccessCodeResponse.parse(await res.json());
       setAccessCode(data.code);
       setIsCopied(false);
+      return data.code;
     } catch (err) {
       const message =
         err instanceof z.ZodError
           ? 'Unexpected response from access code API'
           : 'Failed to generate access code';
       toast.error(message);
+      return null;
     } finally {
       setIsGenerating(false);
     }

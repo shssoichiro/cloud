@@ -1,6 +1,8 @@
 'use client';
 
-import { Check, Copy, ExternalLink, KeyRound } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { Check, Copy, ExternalLink, KeyRound, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAccessCode } from '../hooks/useAccessCode';
@@ -17,6 +19,24 @@ export function AccessCodeActions({
 }) {
   const { accessCode, isGenerating, isCopied, generateAccessCode, copyAccessCode } =
     useAccessCode();
+  const [isOpening, setIsOpening] = useState(false);
+
+  // Generate a fresh access code and open the gateway URL with it embedded,
+  // so the user doesn't have to copy-paste the code manually.
+  const openWithAutoAuth = useCallback(async () => {
+    setIsOpening(true);
+    try {
+      const code = await generateAccessCode();
+      if (code) {
+        const url = `${gatewayUrl}&auth_code=${encodeURIComponent(code)}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch {
+      toast.error('Failed to generate access code for auto-login');
+    } finally {
+      setIsOpening(false);
+    }
+  }, [gatewayUrl, generateAccessCode]);
 
   if (!canShow) return null;
 
@@ -24,7 +44,7 @@ export function AccessCodeActions({
     <>
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="outline" onClick={generateAccessCode} disabled={isGenerating}>
+          <Button variant="outline" onClick={() => generateAccessCode()} disabled={isGenerating}>
             <KeyRound className="mr-2 h-4 w-4" />
             {isGenerating ? 'Generating...' : 'Access Code'}
           </Button>
@@ -49,11 +69,18 @@ export function AccessCodeActions({
           </PopoverContent>
         )}
       </Popover>
-      <Button variant="primary" asChild className={OPEN_BUTTON_ACCENT_CLASS}>
-        <a href={gatewayUrl} target="_blank" rel="noopener noreferrer">
+      <Button
+        variant="primary"
+        className={OPEN_BUTTON_ACCENT_CLASS}
+        disabled={isOpening}
+        onClick={openWithAutoAuth}
+      >
+        {isOpening ? (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
           <ExternalLink className="mr-2 h-4 w-4" />
-          Open
-        </a>
+        )}
+        {isOpening ? 'Opening...' : 'Open'}
       </Button>
     </>
   );
