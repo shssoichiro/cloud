@@ -39,6 +39,7 @@ jobs:
           password: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Build and push Docker image
+        id: docker-build
         uses: docker/build-push-action@v6
         with:
           context: kiloclaw
@@ -74,7 +75,29 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           workingDirectory: kiloclaw
-          command: deploy --var FLY_IMAGE_TAG:${{ github.sha }} --var OPENCLAW_VERSION:${{ steps.openclaw-version.outputs.version }}
+          command: deploy --var FLY_IMAGE_TAG:${{ github.sha }} --var OPENCLAW_VERSION:${{ steps.openclaw-version.outputs.version }} --var FLY_IMAGE_DIGEST:${{ steps.docker-build.outputs.digest }}
+
+      # Deterministic catalog update — ensures Postgres has the trusted digest
+      # immediately, rather than waiting for the first user request to hit the worker.
+      # continue-on-error: the worker's self-registration (Path A) serves as fallback.
+      - name: Register version in catalog
+        id: register-version
+        continue-on-error: true
+        run: |
+          curl -sf -X POST "https://claw.kilosessions.ai/api/platform/publish-image-version" \
+            -H "Content-Type: application/json" \
+            -H "x-internal-api-key: ${{ secrets.KILOCLAW_INTERNAL_API_SECRET }}" \
+            -d '{
+              "openclawVersion": "${{ steps.openclaw-version.outputs.version }}",
+              "imageTag": "${{ github.sha }}",
+              "imageDigest": "${{ steps.docker-build.outputs.digest }}",
+              "setLatest": true
+            }'
+
+      - name: Warn on catalog update failure
+        if: steps.register-version.outcome == 'failure'
+        run: |
+          echo "::warning::Failed to update image catalog with digest. Catalog will be updated on first worker request via Path A."
 
       - name: Notify Slack
         continue-on-error: true
