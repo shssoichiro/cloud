@@ -31,7 +31,18 @@ import { cn } from '@/lib/utils';
 import { RepositoryMultiSelect, type Repository } from './RepositoryMultiSelect';
 import { PRIMARY_DEFAULT_MODEL } from '@/lib/models';
 import { REVIEW_PROMO_MODEL, REVIEW_PROMO_END } from '@/lib/code-reviews/core/constants';
+import {
+  getAvailableThinkingEfforts,
+  thinkingEffortLabel,
+} from '@/lib/code-reviews/core/model-variants';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 type Platform = 'github' | 'gitlab';
 
@@ -200,6 +211,7 @@ export function ReviewConfigForm({
   const [customInstructions, setCustomInstructions] = useState('');
   const [maxReviewTime, setMaxReviewTime] = useState([10]);
   const [selectedModel, setSelectedModel] = useState(PRIMARY_DEFAULT_MODEL);
+  const [thinkingEffort, setThinkingEffort] = useState<string | null>(null);
   const [repositorySelectionMode, setRepositorySelectionMode] = useState<'all' | 'selected'>('all');
   const [selectedRepositoryIds, setSelectedRepositoryIds] = useState<number[]>([]);
   // Repositories added from search results (for GitLab where pagination limits initial results)
@@ -224,6 +236,26 @@ export function ReviewConfigForm({
     typeof window !== 'undefined'
       ? `${window.location.origin}/api/webhooks/gitlab`
       : '/api/webhooks/gitlab';
+
+  // Available thinking effort variants for the selected model
+  const availableVariants = useMemo(
+    () => getAvailableThinkingEfforts(selectedModel),
+    [selectedModel]
+  );
+
+  // Reset thinking effort when the model changes and the current selection is invalid
+  useEffect(() => {
+    if (
+      thinkingEffort &&
+      availableVariants.length > 0 &&
+      !availableVariants.includes(thinkingEffort)
+    ) {
+      setThinkingEffort(null);
+    }
+    if (availableVariants.length === 0 && thinkingEffort) {
+      setThinkingEffort(null);
+    }
+  }, [availableVariants, thinkingEffort]);
 
   // Mutation for regenerating webhook secret
   const regenerateSecretMutation = useMutation(
@@ -284,6 +316,7 @@ export function ReviewConfigForm({
       setCustomInstructions(configData.customInstructions || '');
       setMaxReviewTime([configData.maxReviewTimeMinutes]);
       setSelectedModel(configData.modelSlug);
+      setThinkingEffort(configData.thinkingEffort ?? null);
       // For GitLab, default to 'selected' mode since 'all' is not supported
       const repoMode = configData.repositorySelectionMode || 'all';
       setRepositorySelectionMode(isGitLab ? 'selected' : repoMode);
@@ -433,6 +466,7 @@ export function ReviewConfigForm({
         customInstructions: customInstructions.trim() || undefined,
         maxReviewTimeMinutes: maxReviewTime[0],
         modelSlug: selectedModel,
+        thinkingEffort,
         repositorySelectionMode,
         selectedRepositoryIds,
         manuallyAddedRepositories,
@@ -447,6 +481,7 @@ export function ReviewConfigForm({
         customInstructions: customInstructions.trim() || undefined,
         maxReviewTimeMinutes: maxReviewTime[0],
         modelSlug: selectedModel,
+        thinkingEffort,
         repositorySelectionMode,
         selectedRepositoryIds,
         manuallyAddedRepositories,
@@ -524,6 +559,32 @@ export function ReviewConfigForm({
               isLoading={isLoadingModels}
               helperText="Choose the AI model to use for code reviews"
             />
+
+            {/* Thinking Effort — only shown when the model supports variants */}
+            {availableVariants.length > 0 && (
+              <div className="space-y-2">
+                <Label>Thinking Effort</Label>
+                <Select
+                  value={thinkingEffort ?? '__default__'}
+                  onValueChange={v => setThinkingEffort(v === '__default__' ? null : v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__default__">Default</SelectItem>
+                    {availableVariants.map(variant => (
+                      <SelectItem key={variant} value={variant}>
+                        {thinkingEffortLabel(variant)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-sm">
+                  Configure the model&apos;s reasoning intensity
+                </p>
+              </div>
+            )}
 
             {/* Review Style */}
             <div className="space-y-3">

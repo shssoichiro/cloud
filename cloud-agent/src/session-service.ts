@@ -742,7 +742,12 @@ export class SessionService {
       streamKilocodeExec: async function* (
         mode: string,
         prompt: string,
-        options?: { sessionId?: string; skipInterruptPolling?: boolean; images?: Images }
+        options?: {
+          sessionId?: string;
+          skipInterruptPolling?: boolean;
+          images?: Images;
+          variant?: string;
+        }
       ) {
         const currentIsFirst = isFirstCall;
         isFirstCall = false;
@@ -756,7 +761,13 @@ export class SessionService {
           context,
           mode,
           prompt,
-          { ...options, isFirstExecution: currentIsFirst, kiloSessionId, images: options?.images },
+          {
+            ...options,
+            isFirstExecution: currentIsFirst,
+            kiloSessionId,
+            images: options?.images,
+            variant: options?.variant,
+          },
           env
         )) {
           // Capture kiloSessionId from session_created event for subsequent calls
@@ -1721,7 +1732,12 @@ export interface PreparedSession {
   streamKilocodeExec: (
     mode: string,
     prompt: string,
-    options?: { sessionId?: string; skipInterruptPolling?: boolean; images?: Images }
+    options?: {
+      sessionId?: string;
+      skipInterruptPolling?: boolean;
+      images?: Images;
+      variant?: string;
+    }
   ) => AsyncGenerator<StreamEvent>;
 }
 

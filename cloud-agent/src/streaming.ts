@@ -119,6 +119,7 @@ export async function* streamKilocodeExecution(
     isFirstExecution?: boolean;
     kiloSessionId?: string;
     images?: Images;
+    variant?: string;
   },
   env?: PersistenceEnv
 ): AsyncGenerator<StreamEvent> {
@@ -161,8 +162,9 @@ export async function* streamKilocodeExecution(
   // Use provided kiloSessionId when resuming; otherwise skip --session
   const kiloSessionId: string | undefined = options?.kiloSessionId;
   const sessionFlag = kiloSessionId ? ` --session=${kiloSessionId}` : '';
+  const variantFlag = options?.variant ? ` --variant=${options.variant}` : '';
 
-  const command = `HOME=${sessionCtx.sessionHome} cat ${tmpFile} | kilocode --mode=${mode} --workspace=${sessionCtx.workspacePath} --auto --timeout=${cliTimeoutSeconds} --json${sessionFlag} ${attachArgs}`;
+  const command = `HOME=${sessionCtx.sessionHome} cat ${tmpFile} | kilocode --mode=${mode} --workspace=${sessionCtx.workspacePath} --auto --timeout=${cliTimeoutSeconds} --json${sessionFlag}${variantFlag} ${attachArgs}`;
   const stream = await session.execStream(command);
   const { sessionId, skipInterruptPolling } = options ?? {};
 

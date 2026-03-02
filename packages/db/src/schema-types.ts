@@ -286,6 +286,8 @@ export const CodeReviewAgentConfigSchema = z.object({
   custom_instructions: z.string().nullable().optional(),
   max_review_time_minutes: z.number().int().positive(),
   model_slug: z.string(),
+  // Thinking effort variant name (e.g. "high", "max", "thinking") — null means model default
+  thinking_effort: z.string().nullable().optional(),
   repository_selection_mode: z.enum(['all', 'selected']).optional(),
   selected_repository_ids: z.array(z.number()).optional(),
   // Manually added repositories (for GitLab where pagination limits results)
