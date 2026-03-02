@@ -65,6 +65,7 @@ export function ChatInput({
   useEffect(() => {
     if (initialValue !== undefined) {
       setValue(initialValue);
+      textareaRef.current?.focus();
     }
   }, [initialValue]);
 

@@ -157,6 +157,7 @@ export function useCloudAgentStream({
   const wsManagerRef = useRef<ReturnType<typeof createWebSocketManager> | null>(null);
   const notifiedKiloSessionIdsRef = useRef<Set<string>>(new Set());
   const sessionInitiatedFiredRef = useRef<Set<string>>(new Set());
+  const optimisticMessageIdRef = useRef<string | null>(null);
   const cloudAgentSessionIdRef = useRef<string | null>(cloudAgentSessionIdProp ?? null);
   const organizationIdRef = useRef<string | undefined>(organizationId);
 
@@ -205,9 +206,10 @@ export function useCloudAgentStream({
     () => ({
       onMessageUpdated: (sessionId, messageId, message, parentSessionId) => {
         if (parentSessionId === null) {
-          // When the server echoes a user message, remove the optimistic placeholder first
-          if (message.info.role === 'user') {
+          // When the server echoes the user message we displayed optimistically, remove the placeholder
+          if (optimisticMessageIdRef.current && message.info.role === 'user') {
             removeOptimisticMessage();
+            optimisticMessageIdRef.current = null;
           }
 
           // Root session message
@@ -727,7 +729,11 @@ export function useCloudAgentStream({
       }
 
       // Display the user's message optimistically before the server echoes it back
-      addUserMessage({ sessionId: activeCloudAgentSessionId, content: message, agent: mode });
+      optimisticMessageIdRef.current = addUserMessage({
+        sessionId: activeCloudAgentSessionId,
+        content: message,
+        agent: mode,
+      });
 
       // Update ref to match the session we're sending to
       cloudAgentSessionIdRef.current = activeCloudAgentSessionId;
@@ -766,9 +772,16 @@ export function useCloudAgentStream({
           await connectWebSocket(result.cloudAgentSessionId);
         }
       } catch (err) {
-        // Remove the optimistic message on failure and restore text to input
-        removeOptimisticMessage();
-        onSendFailedRef.current?.(message);
+        // Remove the optimistic message on failure and restore text to input.
+        // If the server already echoed the real message (race: server succeeded but
+        // client timed out), removeOptimisticMessage returns false and we skip
+        // restoring text to avoid confusing the user with both the chat message
+        // and a pre-filled input.
+        const wasStillOptimistic = removeOptimisticMessage();
+        optimisticMessageIdRef.current = null;
+        if (wasStillOptimistic) {
+          onSendFailedRef.current?.(message);
+        }
 
         const errorMessage = formatStreamError(err);
         setLocalError(errorMessage);

@@ -285,7 +285,7 @@ export const addUserMessageAtom = atom(
       agent?: string;
       model?: { providerID: string; modelID: string };
     }
-  ) => {
+  ): string => {
     const { sessionId, content, agent = 'code', model = { providerID: '', modelID: '' } } = payload;
     const messageId = `optimistic-${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const partId = `part_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -326,6 +326,8 @@ export const addUserMessageAtom = atom(
     const partsMap = new Map(get(partsMapAtom));
     partsMap.set(partId, { messageId, part: userMessage.parts[0] });
     set(partsMapAtom, partsMap);
+
+    return messageId;
   }
 );
 
@@ -333,7 +335,8 @@ export const addUserMessageAtom = atom(
  * Remove the optimistic user message (if any) from the store.
  * No-op when no optimistic message exists (avoids unnecessary Map copies / subscriber notifications).
  */
-export const removeOptimisticMessageAtom = atom(null, (get, set) => {
+/** Returns true if an optimistic message was found and removed. */
+export const removeOptimisticMessageAtom = atom(null, (get, set): boolean => {
   const messagesMap = get(messagesMapAtom);
 
   // Find the optimistic message without copying first
@@ -344,7 +347,7 @@ export const removeOptimisticMessageAtom = atom(null, (get, set) => {
       break;
     }
   }
-  if (!optimisticId) return;
+  if (!optimisticId) return false;
 
   const message = messagesMap.get(optimisticId);
   const newMessagesMap = new Map(messagesMap);
@@ -359,6 +362,7 @@ export const removeOptimisticMessageAtom = atom(null, (get, set) => {
 
   set(messagesMapAtom, newMessagesMap);
   set(partsMapAtom, newPartsMap);
+  return true;
 });
 
 /**
