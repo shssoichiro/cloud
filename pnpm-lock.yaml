@@ -1233,9 +1233,6 @@ importers:
       '@kilocode/eslint-config':
         specifier: workspace:*
         version: link:../packages/eslint-config
-      '@types/jsonwebtoken':
-        specifier: 'catalog:'
-        version: 9.0.10
       '@types/node':
         specifier: ^22
         version: 22.19.1
@@ -1245,6 +1242,9 @@ importers:
       eslint:
         specifier: 'catalog:'
         version: 9.39.3(jiti@2.6.1)
+      jose:
+        specifier: 'catalog:'
+        version: 6.1.3
       typescript:
         specifier: 'catalog:'
         version: 5.9.3

@@ -20,8 +20,8 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260120.0",
     "@kilocode/eslint-config": "workspace:*",
-    "@types/jsonwebtoken": "catalog:",
     "@types/node": "^22",
+    "jose": "catalog:",
     "drizzle-kit": "catalog:",
     "eslint": "catalog:",
     "typescript": "catalog:",

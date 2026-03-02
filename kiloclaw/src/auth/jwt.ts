@@ -9,7 +9,7 @@ export type ValidateResult =
 /**
  * Verify a Kilo JWT using HS256 symmetric secret.
  *
- * Checks: signature, expiration (built into jose), version === KILO_TOKEN_VERSION,
+ * Checks: signature, expiration (built into jose), version === 3 (via shared schema),
  * and optional env match against the worker's WORKER_ENV.
  */
 export async function validateKiloToken(
@@ -23,10 +23,6 @@ export async function validateKiloToken(
   } catch (err) {
     const message = err instanceof Error ? err.message : 'JWT verification failed';
     return { success: false, error: message };
-  }
-
-  if (payload.version !== KILO_TOKEN_VERSION) {
-    return { success: false, error: 'Invalid token' };
   }
 
   if (expectedEnv && payload.env && payload.env !== expectedEnv) {
