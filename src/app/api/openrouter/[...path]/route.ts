@@ -62,6 +62,8 @@ import { isActiveReviewPromo } from '@/lib/code-reviews/core/constants';
 import { isActiveCloudAgentPromo } from '@/lib/promotions/cloud-agent-promo';
 import { isKiloAutoModel, resolveAutoModel } from '@/lib/kilo-auto-model';
 
+export const maxDuration = 800;
+
 const MAX_TOKENS_LIMIT = 99999999999; // GPT4.1 default is ~32k
 
 const PAID_MODEL_AUTH_REQUIRED = 'PAID_MODEL_AUTH_REQUIRED';
