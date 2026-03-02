@@ -17,17 +17,13 @@ export type TableQueryInterpolator<T extends TableInput> = {
 };
 
 export function getTable<T extends TableInput>(table: T): TableQueryInterpolator<T> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic mapped type requires any
   const columns = {} as { [K in T['columns'][number]]: K };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic mapped type requires any
   const columnsWithTable = {} as { [K in T['columns'][number]]: `${T['name']}.${K}` };
 
   for (const key of table.columns) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic key assignment on generic type
-    (columns as any)[key] = key;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic key assignment on generic type
-    (columnsWithTable as any)[key] = [table.name, key].join('.');
+    (columns as Record<string, string>)[key] = key;
+    (columnsWithTable as Record<string, string>)[key] = [table.name, key].join('.');
   }
 
   const result: TableQueryInterpolator<T> = {
@@ -53,8 +49,12 @@ export function getTableFromZodSchema<Name extends string, Schema extends z.ZodO
   name: Name;
   columns: Array<Extract<keyof z.infer<Schema>, string>>;
 }> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return -- return type is enforced by the signature
-  return getTable({ name, columns: Object.keys(schema.shape) }) as any;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- z.ZodObject<any> generic taints schema.shape
+  const columns = Object.keys(schema.shape) as Extract<keyof z.infer<Schema>, string>[];
+  return getTable({ name, columns }) as TableQueryInterpolator<{
+    name: Name;
+    columns: Extract<keyof z.infer<Schema>, string>[];
+  }>;
 }
 
 export type BaseTableQueryInterpolator = TableQueryInterpolator<{
@@ -79,7 +79,6 @@ export function getCreateTableQueryFromTable<T extends BaseTableQueryInterpolato
     `.trim();
 }
 
-function objectKeys<T>(obj: T): Array<keyof T> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return -- generic Object.keys wrapper
-  return Object.keys(obj as any) as any;
+function objectKeys<T extends object>(obj: T): Array<keyof T> {
+  return Object.keys(obj) as Array<keyof T>;
 }
