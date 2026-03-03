@@ -310,11 +310,10 @@ export function useCloudAgentStream({
       onSessionStatusChanged: status => {
         setSessionStatus(status);
 
-        // Handle streaming state based on status
-        if (status.type === 'idle') {
-          setIsStreaming(false);
-          onCompleteRef.current?.();
-        } else if (status.type === 'busy') {
+        // Streaming is NOT stopped on idle — the wrapper's `complete` event
+        // (handled by onStreamingChanged) is the definitive signal, firing
+        // after autocommit finishes.
+        if (status.type === 'busy') {
           setIsStreaming(true);
           // Clear any previous indicator when session resumes
           setIndicator(null);
@@ -501,6 +500,9 @@ export function useCloudAgentStream({
       }
       if (code === 'NOT_FOUND') {
         return 'Cloud Agent service is unavailable right now. Please try again.';
+      }
+      if (code === 'CONFLICT' || httpStatus === 409) {
+        return 'Previous task is still finishing up. Please wait a moment.';
       }
       return 'Cloud Agent encountered an error. Please retry in a moment.';
     }

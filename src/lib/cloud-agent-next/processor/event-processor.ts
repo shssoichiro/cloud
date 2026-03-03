@@ -53,6 +53,7 @@ const HANDLED_EVENT_TYPES = new Set([
   'interrupted',
   'autocommit_started',
   'autocommit_completed',
+  'complete',
 ]);
 
 function isHandledEventType(type: string): boolean {
@@ -340,13 +341,10 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
 
     // Update streaming state based on status
     if (status.type === 'idle') {
-      // Complete user messages when session becomes idle (for both root and child)
+      // Complete user messages when session becomes idle (for both root and child).
+      // Streaming is NOT stopped here — the wrapper's `complete` event is the
+      // definitive signal (fires after autocommit finishes).
       completeUserMessages();
-
-      if (!fromChild && streaming) {
-        streaming = false;
-        callbacks.onStreamingChanged?.(false);
-      }
     } else if (status.type === 'busy') {
       // New execution started — prior termination state is stale
       terminated = false;
@@ -426,15 +424,9 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
    * but do NOT toggle the streaming flag or fire onStreamingChanged.
    */
   function handleSessionIdle(data: { sessionID: string }): void {
-    const fromChild = isChildSession(data.sessionID);
-
-    // Complete user messages for both root and child sessions
+    // Complete user messages for both root and child sessions.
+    // Streaming is NOT stopped here — the wrapper's `complete` event handles that.
     completeUserMessages();
-
-    if (!fromChild && streaming) {
-      streaming = false;
-      callbacks.onStreamingChanged?.(false);
-    }
   }
 
   /**
@@ -515,6 +507,17 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
   function handleInterrupted(): void {
     terminated = true;
     forceCompleteAllMessages();
+  }
+
+  /**
+   * Handle the wrapper's "complete" event — the execution is fully done
+   * (including autocommit). This is the definitive "safe to send another message" signal.
+   */
+  function handleExecutionComplete(): void {
+    if (streaming) {
+      streaming = false;
+      callbacks.onStreamingChanged?.(false);
+    }
   }
 
   /**
@@ -643,6 +646,10 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
 
       case 'interrupted':
         handleInterrupted();
+        break;
+
+      case 'complete':
+        handleExecutionComplete();
         break;
 
       case 'autocommit_started':
