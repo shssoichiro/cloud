@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { IMAGE_TAG_RE, IMAGE_TAG_MAX_LENGTH } from '../lib/image-tag-validation';
 
 export const EncryptedEnvelopeSchema = z.object({
   // AES-256-GCM ciphertext: 16-byte IV + ciphertext + 16-byte tag, base64-encoded.
@@ -52,7 +53,7 @@ export const InstanceConfigSchema = z.object({
   region: z.string().optional(),
   // If set, use this image tag instead of resolving latest from KV.
   // Set by the cloud app when the user has a version pin.
-  pinnedImageTag: z.string().optional(),
+  pinnedImageTag: z.string().regex(IMAGE_TAG_RE).max(IMAGE_TAG_MAX_LENGTH).optional(),
 });
 
 export type InstanceConfig = z.infer<typeof InstanceConfigSchema>;

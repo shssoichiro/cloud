@@ -64,7 +64,7 @@ import { ENCRYPTED_ENV_PREFIX, encryptEnvValue } from '../utils/env-encryption';
 import { z, type ZodType } from 'zod';
 import { resolveLatestVersion, resolveVersionByTag } from '../lib/image-version';
 import { lookupCatalogVersion } from '../lib/catalog-registration';
-import { ImageVariantSchema, type ImageVariant } from '../schemas/image-version';
+import { ImageVariantSchema } from '../schemas/image-version';
 
 type InstanceStatus = PersistedState['status'];
 
@@ -544,7 +544,10 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         console.log('[DO] Using pinned version:', pinned.openclawVersion, '→', pinned.imageTag);
       } else {
         // Pinned tag not found in KV or Postgres — use the tag directly but metadata is unknown.
+        // Clear version metadata to avoid stale values from a previous provision.
         console.warn('[DO] Pinned tag not found in KV or Postgres, using tag directly:', config.pinnedImageTag);
+        this.openclawVersion = null;
+        this.imageVariant = null;
         this.trackedImageTag = config.pinnedImageTag;
         this.trackedImageDigest = null;
       }

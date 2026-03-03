@@ -73,7 +73,9 @@ export const adminKiloclawVersionsRouter = createTRPCRouter({
   updateVersionStatus: adminProcedure
     .input(UpdateVersionStatusSchema)
     .mutation(async ({ input, ctx }) => {
-      // Prevent disabling the :latest version — it would break all unpinned users
+      // Prevent disabling the :latest version — it would break all unpinned users.
+      // Note: TOCTOU race exists between fetching latest from KV and the DB update below.
+      // Acceptable because this is an admin-only operation with low concurrent usage.
       if (input.status === 'disabled') {
         const client = new KiloClawInternalClient();
         try {
@@ -285,12 +287,25 @@ export const adminKiloclawVersionsRouter = createTRPCRouter({
 
     // Filter out entries that already exist
     const newEntries = kvVersions.filter(entry => !existingTags.has(entry.imageTag));
-    const skipped = kvVersions.length - newEntries.length;
 
-    // Bulk insert new entries
-    if (newEntries.length > 0) {
+    // Validate entries before inserting — KV data may be malformed
+    const IMAGE_TAG_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+    const VERSION_RE = /^\d{4}\.\d{1,2}\.\d{1,2}$/;
+    const VARIANT_RE = /^[a-z0-9-]{1,64}$/;
+    const validEntries = newEntries.filter(entry => {
+      if (!IMAGE_TAG_RE.test(entry.imageTag) || entry.imageTag.length > 128) return false;
+      if (!VERSION_RE.test(entry.openclawVersion)) return false;
+      if (!VARIANT_RE.test(entry.variant)) return false;
+      const ts = new Date(entry.publishedAt).getTime();
+      if (isNaN(ts)) return false;
+      return true;
+    });
+    const skipped = kvVersions.length - validEntries.length;
+
+    // Bulk insert validated new entries
+    if (validEntries.length > 0) {
       await db.insert(kiloclaw_image_catalog).values(
-        newEntries.map(entry => ({
+        validEntries.map(entry => ({
           openclaw_version: entry.openclawVersion,
           variant: entry.variant,
           image_tag: entry.imageTag,
@@ -301,7 +316,7 @@ export const adminKiloclawVersionsRouter = createTRPCRouter({
       );
     }
 
-    return { synced: newEntries.length, skipped, total: kvVersions.length };
+    return { synced: validEntries.length, skipped, total: kvVersions.length };
   }),
 
   searchUsers: adminProcedure
