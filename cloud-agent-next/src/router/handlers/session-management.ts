@@ -170,9 +170,8 @@ export function createSessionManagementHandlers() {
               logger.info('Session not found');
               return {
                 success: false,
-                killedProcessIds: [],
-                failedProcessIds: [],
                 message: 'Session not found',
+                processesFound: false,
               };
             }
 
@@ -245,16 +244,13 @@ export function createSessionManagementHandlers() {
               activeExecutionId ?? undefined
             );
 
-            logger
-              .withFields({
-                killedCount: result.killedProcessIds.length,
-                failedCount: result.failedProcessIds.length,
-              })
-              .info('Session interruption completed');
+            logger.info('Session interruption completed');
 
-            // If no processes were killed but there's still an active execution,
-            // the wrapper is already dead — clear the stale execution immediately
-            if (result.killedProcessIds.length === 0 && activeExecutionId) {
+            // If no processes were found but there's still an active execution,
+            // the wrapper is already dead — clear the stale execution immediately.
+            // Note: pkill always returns killedProcessIds: [], so we check
+            // processesFound instead to distinguish "killed" from "nothing to kill".
+            if (!result.processesFound && activeExecutionId) {
               logger
                 .withFields({ executionId: activeExecutionId })
                 .info('No processes found during interrupt - clearing stale active execution');

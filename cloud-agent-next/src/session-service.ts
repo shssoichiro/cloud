@@ -1350,9 +1350,8 @@ export class SessionService {
         if (execResult.exitCode === 0) {
           return {
             success: true,
-            killedProcessIds: [], // pkill doesn't report individual PIDs
-            failedProcessIds: [],
             message: 'Interrupted execution using pkill (executionId)',
+            processesFound: true,
           };
         }
         if (execResult.exitCode !== 1) {
@@ -1378,11 +1377,10 @@ export class SessionService {
 
         return {
           success: true,
-          killedProcessIds: [], // pkill doesn't report individual PIDs
-          failedProcessIds: [],
           message: execIdError
             ? `Interrupted execution using pkill (sessionId fallback). ${execIdError}`
             : 'Interrupted execution using pkill',
+          processesFound: true,
         };
       }
       if (sessionResult.exitCode === 1) {
@@ -1393,11 +1391,10 @@ export class SessionService {
 
         return {
           success: true,
-          killedProcessIds: [],
-          failedProcessIds: [],
           message: execIdError
             ? `No running processes found for this session. ${execIdError}`
             : 'No running processes found for this session',
+          processesFound: false,
         };
       }
 
@@ -1410,11 +1407,10 @@ export class SessionService {
 
       return {
         success: false,
-        killedProcessIds: [],
-        failedProcessIds: [],
         message: execIdError
           ? `${execIdError}; sessionId pkill failed with exit code ${sessionResult.exitCode}: ${sessionResult.stderr}`
           : `pkill failed with exit code ${sessionResult.exitCode}: ${sessionResult.stderr}`,
+        processesFound: false,
       };
     } catch (error) {
       logger.error('Interrupt with pkill failed', {
@@ -1464,9 +1460,8 @@ export class SessionService {
 
         return {
           success: true,
-          killedProcessIds: [],
-          failedProcessIds: [],
           message: 'No running kilocode processes found for this session',
+          processesFound: false,
         };
       }
 
@@ -1503,12 +1498,11 @@ export class SessionService {
 
       return {
         success: killed.length > 0,
-        killedProcessIds: killed,
-        failedProcessIds: failed,
         message:
           killed.length > 0
             ? `Interrupted execution: killed ${killed.length} process(es)${failed.length > 0 ? `, ${failed.length} failed` : ''}`
             : `Failed to kill any processes (${failed.length} attempts failed)`,
+        processesFound: true,
       };
     } catch (error) {
       logger.error('Interrupt operation failed', {
