@@ -51,7 +51,7 @@ export function useAutoScroll(
   // Custom replacer handles Map (JSON.stringify produces "{}" for Map by default).
   const extraTriggersKey = useMemo(
     () =>
-      JSON.stringify(extraScrollTriggers, (_key, value) =>
+      JSON.stringify(extraScrollTriggers, (_key, value: unknown) =>
         value instanceof Map ? [...value] : value
       ),
     [extraScrollTriggers]

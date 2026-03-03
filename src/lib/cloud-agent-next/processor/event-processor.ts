@@ -348,6 +348,8 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
         callbacks.onStreamingChanged?.(false);
       }
     } else if (status.type === 'busy') {
+      // New execution started — prior termination state is stale
+      terminated = false;
       if (!fromChild && !streaming) {
         streaming = true;
         callbacks.onStreamingChanged?.(true);

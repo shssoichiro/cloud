@@ -1462,6 +1462,44 @@ describe('createEventProcessor', () => {
 
       expect(callbacks.onError).toHaveBeenCalledWith('Real error', 'session-123');
     });
+
+    it('session.error after interrupted + new busy status should call onError', () => {
+      const callbacks: EventProcessorCallbacks = {
+        onStreamingChanged: jest.fn(),
+        onError: jest.fn(),
+      };
+      const processor = createEventProcessor({ callbacks });
+
+      // First execution: start streaming, then interrupt
+      processor.processEvent(
+        createKilocodeEvent('session.status', {
+          sessionID: 'session-123',
+          status: { type: 'busy' },
+        })
+      );
+      processor.processEvent(createEvent('interrupted', { reason: 'Session stopped' }));
+
+      // Second execution: new busy status (user sent another message)
+      processor.processEvent(
+        createKilocodeEvent('session.status', {
+          sessionID: 'session-123',
+          status: { type: 'busy' },
+        })
+      );
+
+      // session.error from the NEW execution should NOT be suppressed
+      processor.processEvent(
+        createKilocodeEvent('session.error', {
+          sessionID: 'session-123',
+          error: 'Real error from new execution',
+        })
+      );
+
+      expect(callbacks.onError).toHaveBeenCalledWith(
+        'Real error from new execution',
+        'session-123'
+      );
+    });
   });
 
   describe('invalid events', () => {
