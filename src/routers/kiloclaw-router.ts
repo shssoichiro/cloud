@@ -7,10 +7,11 @@ import { generateApiToken, TOKEN_EXPIRY } from '@/lib/tokens';
 import { KiloClawInternalClient, KiloClawApiError } from '@/lib/kiloclaw/kiloclaw-internal-client';
 import { KiloClawUserClient } from '@/lib/kiloclaw/kiloclaw-user-client';
 import { encryptKiloClawSecret } from '@/lib/kiloclaw/encryption';
-import { KILOCLAW_API_URL } from '@/lib/config.server';
-import { db } from '@/lib/drizzle';
-import { kiloclaw_version_pins } from '@kilocode/db/schema';
-import { eq } from 'drizzle-orm';
+import {
+  KILOCLAW_API_URL,
+  STRIPE_KILOCLAW_EARLYBIRD_PRICE_ID,
+  STRIPE_KILOCLAW_EARLYBIRD_COUPON_ID,
+} from '@/lib/config.server';
 import { sentryLogger } from '@/lib/utils.server';
 import type { KiloClawDashboardStatus, KiloCodeConfigResponse } from '@/lib/kiloclaw/types';
 import {
@@ -20,9 +21,8 @@ import {
 } from '@/lib/kiloclaw/instance-registry';
 import { client as stripe } from '@/lib/stripe-client';
 import { APP_URL } from '@/lib/constants';
-import { getEnvVariable } from '@/lib/dotenvx';
 import { db } from '@/lib/drizzle';
-import { kiloclaw_earlybird_purchases } from '@kilocode/db/schema';
+import { kiloclaw_earlybird_purchases, kiloclaw_version_pins } from '@kilocode/db/schema';
 import { eq } from 'drizzle-orm';
 
 const kilocodeDefaultModelSchema = z
@@ -412,22 +412,21 @@ export const kiloclawRouter = createTRPCRouter({
         });
       }
 
-      const priceId = getEnvVariable('STRIPE_KILOCLAW_EARLYBIRD_PRICE_ID');
-      if (!priceId) {
+      if (!STRIPE_KILOCLAW_EARLYBIRD_PRICE_ID) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Early bird pricing is not configured.',
         });
       }
 
-      const couponId = getEnvVariable('STRIPE_KILOCLAW_EARLYBIRD_COUPON_ID');
-
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
         customer: stripeCustomerId,
         billing_address_collection: 'required',
-        line_items: [{ price: priceId, quantity: 1 }],
-        ...(couponId ? { discounts: [{ coupon: couponId }] } : { allow_promotion_codes: true }),
+        line_items: [{ price: STRIPE_KILOCLAW_EARLYBIRD_PRICE_ID, quantity: 1 }],
+        ...(STRIPE_KILOCLAW_EARLYBIRD_COUPON_ID
+          ? { discounts: [{ coupon: STRIPE_KILOCLAW_EARLYBIRD_COUPON_ID }] }
+          : { allow_promotion_codes: true }),
         customer_update: {
           name: 'auto',
           address: 'auto',
