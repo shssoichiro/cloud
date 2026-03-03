@@ -160,8 +160,9 @@ function fireAuthEvent(
   user: Pick<User, 'id' | 'google_user_email' | 'created_at'>,
   eventType: 'signup' | 'signin',
   provider: AuthProviderId,
-  requestHeaders: Headers
+  requestHeaders?: Headers
 ) {
+  if (!requestHeaders) return;
   void reportAuthEvent({
     kilo_user_id: user.id,
     event_type: eventType,
@@ -184,9 +185,7 @@ export async function createOrUpdateUser(
 ): Promise<Result<{ user: User; isNew: boolean }, AuthErrorType>> {
   const existingUser = await findAndSyncExistingUser(args);
   if (existingUser) {
-    if (requestHeaders) {
-      fireAuthEvent(existingUser, 'signin', args.provider, requestHeaders);
-    }
+    fireAuthEvent(existingUser, 'signin', args.provider, requestHeaders);
 
     // User signed in or is being updated
     posthogClient.capture({
@@ -233,9 +232,7 @@ export async function createOrUpdateUser(
       if (!linkResult.success) {
         return { success: false, error: linkResult.error };
       }
-      if (requestHeaders) {
-        fireAuthEvent(userByEmail, 'signin', args.provider, requestHeaders);
-      }
+      fireAuthEvent(userByEmail, 'signin', args.provider, requestHeaders);
       // Successfully linked account, return the existing user
       posthogClient.capture({
         distinctId: userByEmail.google_user_email,
@@ -313,9 +310,7 @@ export async function createOrUpdateUser(
     return savedUser;
   });
 
-  if (requestHeaders) {
-    fireAuthEvent(savedUser, 'signup', args.provider, requestHeaders);
-  }
+  fireAuthEvent(savedUser, 'signup', args.provider, requestHeaders);
 
   // User created event in PostHog
   posthogClient.capture({
