@@ -23,9 +23,11 @@ const KILO_SERVER_START_PORT = 4096;
 /** Port range size for session-based port allocation */
 const KILO_SERVER_PORT_RANGE = 1000;
 
-/** Timeout for waiting for server to become healthy.
- * 180s to accommodate QEMU-emulated startup on Apple Silicon dev machines,
- * where the first-run SQLite migration can take 2+ minutes under emulation. */
+/** Upper bound for waiting for server to become healthy.
+ *  In production, servers start in < 10s (or crash immediately on failure).
+ *  180s accommodates QEMU-emulated startup on Apple Silicon dev machines,
+ *  where the first-run SQLite migration can take 2+ minutes under emulation.
+ *  This is a safe ceiling — it does not delay healthy production starts. */
 const KILO_SERVER_STARTUP_TIMEOUT_MS = 180_000;
 
 /** Timeout for creating a CLI session via curl (30 seconds) */
