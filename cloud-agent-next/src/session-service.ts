@@ -565,8 +565,10 @@ export class SessionService {
     };
 
     if (commandGuardPolicy) {
-      // Build bash permission rules from guard policy: allowed commands get "allow",
-      // denied commands get "deny". Patterns use glob-style matching (e.g. "ls *").
+      // Build bash permission rules from guard policy.
+      // Denied patterns (e.g. "git add *") are more specific than allowed patterns
+      // (e.g. "git *"); the CLI resolves overlapping globs most-specific-first,
+      // so denied sub-commands correctly override broader allows.
       const bashPermissions: Record<string, string> = {};
       for (const cmd of commandGuardPolicy.denied) {
         bashPermissions[`${cmd} *`] = 'deny';
@@ -575,6 +577,12 @@ export class SessionService {
         bashPermissions[`${cmd} *`] = 'allow';
       }
 
+      // Parity with old autoApproval config:
+      //   read: allow  (was read.enabled: true)
+      //   edit: deny   (was write.enabled: false)
+      //   webfetch/websearch/codesearch: deny  (was browser.enabled: false)
+      //   MCP: allowed by default (was mcp.enabled: true)
+      //   question: handled above (line 564) for non-interactive sessions
       Object.assign(permission, {
         read: 'allow',
         edit: 'deny',
