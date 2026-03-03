@@ -1,6 +1,6 @@
 {
-  "id": "f223a1da-6fdb-4664-be8f-861924909fa5",
-  "prevId": "346c8139-0d84-459f-9080-24f87916a781",
+  "id": "91d37907-2200-466b-9a13-72e331857e4a",
+  "prevId": "f223a1da-6fdb-4664-be8f-861924909fa5",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -86,9 +86,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_agent_configs_owned_by_user_id": {
           "name": "IDX_agent_configs_owned_by_user_id",
@@ -101,9 +101,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_agent_configs_agent_type": {
           "name": "IDX_agent_configs_agent_type",
@@ -116,9 +116,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_agent_configs_platform": {
           "name": "IDX_agent_configs_platform",
@@ -131,58 +131,58 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "agent_configs_owned_by_organization_id_organizations_id_fk": {
           "name": "agent_configs_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "agent_configs",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "agent_configs_owned_by_user_id_kilocode_users_id_fk": {
           "name": "agent_configs_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "agent_configs",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_agent_configs_org_agent_platform": {
           "name": "UQ_agent_configs_org_agent_platform",
+          "nullsNotDistinct": false,
           "columns": [
             "owned_by_organization_id",
             "agent_type",
             "platform"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "UQ_agent_configs_user_agent_platform": {
           "name": "UQ_agent_configs_user_agent_platform",
+          "nullsNotDistinct": false,
           "columns": [
             "owned_by_user_id",
             "agent_type",
             "platform"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -247,35 +247,35 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "agent_environment_profile_commands_profile_id_agent_environment_profiles_id_fk": {
           "name": "agent_environment_profile_commands_profile_id_agent_environment_profiles_id_fk",
           "tableFrom": "agent_environment_profile_commands",
+          "tableTo": "agent_environment_profiles",
           "columnsFrom": [
             "profile_id"
           ],
-          "tableTo": "agent_environment_profiles",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_agent_env_profile_commands_profile_sequence": {
           "name": "UQ_agent_env_profile_commands_profile_sequence",
+          "nullsNotDistinct": false,
           "columns": [
             "profile_id",
             "sequence"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -345,35 +345,35 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "agent_environment_profile_vars_profile_id_agent_environment_profiles_id_fk": {
           "name": "agent_environment_profile_vars_profile_id_agent_environment_profiles_id_fk",
           "tableFrom": "agent_environment_profile_vars",
+          "tableTo": "agent_environment_profiles",
           "columnsFrom": [
             "profile_id"
           ],
-          "tableTo": "agent_environment_profiles",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_agent_env_profile_vars_profile_key": {
           "name": "UQ_agent_env_profile_vars_profile_key",
+          "nullsNotDistinct": false,
           "columns": [
             "profile_id",
             "key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -455,10 +455,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"agent_environment_profiles\".\"owned_by_organization_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "UQ_agent_env_profiles_user_name": {
           "name": "UQ_agent_env_profiles_user_name",
@@ -477,10 +477,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"agent_environment_profiles\".\"owned_by_user_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "UQ_agent_env_profiles_org_default": {
           "name": "UQ_agent_env_profiles_org_default",
@@ -493,10 +493,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"agent_environment_profiles\".\"is_default\" = true AND \"agent_environment_profiles\".\"owned_by_organization_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "UQ_agent_env_profiles_user_default": {
           "name": "UQ_agent_env_profiles_user_default",
@@ -509,10 +509,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"agent_environment_profiles\".\"is_default\" = true AND \"agent_environment_profiles\".\"owned_by_user_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "IDX_agent_env_profiles_org_id": {
           "name": "IDX_agent_env_profiles_org_id",
@@ -525,9 +525,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_agent_env_profiles_user_id": {
           "name": "IDX_agent_env_profiles_user_id",
@@ -540,37 +540,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "agent_environment_profiles_owned_by_organization_id_organizations_id_fk": {
           "name": "agent_environment_profiles_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "agent_environment_profiles",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "agent_environment_profiles_owned_by_user_id_kilocode_users_id_fk": {
           "name": "agent_environment_profiles_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "agent_environment_profiles",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -656,9 +656,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -753,9 +753,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_app_builder_feedback_kilo_user_id": {
           "name": "IDX_app_builder_feedback_kilo_user_id",
@@ -768,9 +768,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_app_builder_feedback_project_id": {
           "name": "IDX_app_builder_feedback_project_id",
@@ -783,37 +783,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "app_builder_feedback_kilo_user_id_kilocode_users_id_fk": {
           "name": "app_builder_feedback_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "app_builder_feedback",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "cascade"
         },
         "app_builder_feedback_project_id_app_builder_projects_id_fk": {
           "name": "app_builder_feedback_project_id_app_builder_projects_id_fk",
           "tableFrom": "app_builder_feedback",
+          "tableTo": "app_builder_projects",
           "columnsFrom": [
             "project_id"
           ],
-          "tableTo": "app_builder_projects",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -884,34 +884,34 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "app_builder_project_sessions_project_id_app_builder_projects_id_fk": {
           "name": "app_builder_project_sessions_project_id_app_builder_projects_id_fk",
           "tableFrom": "app_builder_project_sessions",
+          "tableTo": "app_builder_projects",
           "columnsFrom": [
             "project_id"
           ],
-          "tableTo": "app_builder_projects",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_app_builder_project_sessions_cloud_agent_session_id": {
           "name": "UQ_app_builder_project_sessions_cloud_agent_session_id",
+          "nullsNotDistinct": false,
           "columns": [
             "cloud_agent_session_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1028,9 +1028,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_app_builder_projects_owned_by_user_id": {
           "name": "IDX_app_builder_projects_owned_by_user_id",
@@ -1043,9 +1043,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_app_builder_projects_owned_by_organization_id": {
           "name": "IDX_app_builder_projects_owned_by_organization_id",
@@ -1058,9 +1058,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_app_builder_projects_created_at": {
           "name": "IDX_app_builder_projects_created_at",
@@ -1073,9 +1073,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_app_builder_projects_last_message_at": {
           "name": "IDX_app_builder_projects_last_message_at",
@@ -1088,63 +1088,63 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "app_builder_projects_owned_by_user_id_kilocode_users_id_fk": {
           "name": "app_builder_projects_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "app_builder_projects",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "app_builder_projects_owned_by_organization_id_organizations_id_fk": {
           "name": "app_builder_projects_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "app_builder_projects",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "app_builder_projects_deployment_id_deployments_id_fk": {
           "name": "app_builder_projects_deployment_id_deployments_id_fk",
           "tableFrom": "app_builder_projects",
+          "tableTo": "deployments",
           "columnsFrom": [
             "deployment_id"
           ],
-          "tableTo": "deployments",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "app_builder_projects_git_platform_integration_id_platform_integrations_id_fk": {
           "name": "app_builder_projects_git_platform_integration_id_platform_integrations_id_fk",
           "tableFrom": "app_builder_projects",
+          "tableTo": "platform_integrations",
           "columnsFrom": [
             "git_platform_integration_id"
           ],
-          "tableTo": "platform_integrations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1218,15 +1218,15 @@
         "app_reported_messages_cli_session_id_cli_sessions_session_id_fk": {
           "name": "app_reported_messages_cli_session_id_cli_sessions_session_id_fk",
           "tableFrom": "app_reported_messages",
+          "tableTo": "cli_sessions",
           "columnsFrom": [
             "cli_session_id"
           ],
-          "tableTo": "cli_sessions",
           "columnsTo": [
             "session_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1432,9 +1432,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_fix_tickets_owned_by_org": {
           "name": "IDX_auto_fix_tickets_owned_by_org",
@@ -1447,9 +1447,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_fix_tickets_owned_by_user": {
           "name": "IDX_auto_fix_tickets_owned_by_user",
@@ -1462,9 +1462,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_fix_tickets_status": {
           "name": "IDX_auto_fix_tickets_status",
@@ -1477,9 +1477,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_fix_tickets_created_at": {
           "name": "IDX_auto_fix_tickets_created_at",
@@ -1492,9 +1492,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_fix_tickets_triage_ticket_id": {
           "name": "IDX_auto_fix_tickets_triage_ticket_id",
@@ -1507,9 +1507,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_fix_tickets_session_id": {
           "name": "IDX_auto_fix_tickets_session_id",
@@ -1522,76 +1522,76 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "auto_fix_tickets_owned_by_organization_id_organizations_id_fk": {
           "name": "auto_fix_tickets_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "auto_fix_tickets",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "auto_fix_tickets_owned_by_user_id_kilocode_users_id_fk": {
           "name": "auto_fix_tickets_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "auto_fix_tickets",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "auto_fix_tickets_platform_integration_id_platform_integrations_id_fk": {
           "name": "auto_fix_tickets_platform_integration_id_platform_integrations_id_fk",
           "tableFrom": "auto_fix_tickets",
+          "tableTo": "platform_integrations",
           "columnsFrom": [
             "platform_integration_id"
           ],
-          "tableTo": "platform_integrations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "auto_fix_tickets_triage_ticket_id_auto_triage_tickets_id_fk": {
           "name": "auto_fix_tickets_triage_ticket_id_auto_triage_tickets_id_fk",
           "tableFrom": "auto_fix_tickets",
+          "tableTo": "auto_triage_tickets",
           "columnsFrom": [
             "triage_ticket_id"
           ],
-          "tableTo": "auto_triage_tickets",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "auto_fix_tickets_cli_session_id_cli_sessions_session_id_fk": {
           "name": "auto_fix_tickets_cli_session_id_cli_sessions_session_id_fk",
           "tableFrom": "auto_fix_tickets",
+          "tableTo": "cli_sessions",
           "columnsFrom": [
             "cli_session_id"
           ],
-          "tableTo": "cli_sessions",
           "columnsTo": [
             "session_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1646,9 +1646,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -1745,10 +1745,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"auto_top_up_configs\".\"owned_by_user_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "UQ_auto_top_up_configs_owned_by_organization_id": {
           "name": "UQ_auto_top_up_configs_owned_by_organization_id",
@@ -1761,38 +1761,38 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"auto_top_up_configs\".\"owned_by_organization_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "auto_top_up_configs_owned_by_user_id_kilocode_users_id_fk": {
           "name": "auto_top_up_configs_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "auto_top_up_configs",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
         },
         "auto_top_up_configs_owned_by_organization_id_organizations_id_fk": {
           "name": "auto_top_up_configs_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "auto_top_up_configs",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -2023,9 +2023,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_triage_tickets_owned_by_org": {
           "name": "IDX_auto_triage_tickets_owned_by_org",
@@ -2038,9 +2038,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_triage_tickets_owned_by_user": {
           "name": "IDX_auto_triage_tickets_owned_by_user",
@@ -2053,9 +2053,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_triage_tickets_status": {
           "name": "IDX_auto_triage_tickets_status",
@@ -2068,9 +2068,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_triage_tickets_created_at": {
           "name": "IDX_auto_triage_tickets_created_at",
@@ -2083,9 +2083,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_triage_tickets_qdrant_point_id": {
           "name": "IDX_auto_triage_tickets_qdrant_point_id",
@@ -2098,9 +2098,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_triage_tickets_owner_status_created": {
           "name": "IDX_auto_triage_tickets_owner_status_created",
@@ -2125,9 +2125,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_triage_tickets_user_status_created": {
           "name": "IDX_auto_triage_tickets_user_status_created",
@@ -2152,9 +2152,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_auto_triage_tickets_repo_classification": {
           "name": "IDX_auto_triage_tickets_repo_classification",
@@ -2179,63 +2179,63 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "auto_triage_tickets_owned_by_organization_id_organizations_id_fk": {
           "name": "auto_triage_tickets_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "auto_triage_tickets",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "auto_triage_tickets_owned_by_user_id_kilocode_users_id_fk": {
           "name": "auto_triage_tickets_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "auto_triage_tickets",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "auto_triage_tickets_platform_integration_id_platform_integrations_id_fk": {
           "name": "auto_triage_tickets_platform_integration_id_platform_integrations_id_fk",
           "tableFrom": "auto_triage_tickets",
+          "tableTo": "platform_integrations",
           "columnsFrom": [
             "platform_integration_id"
           ],
-          "tableTo": "platform_integrations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "auto_triage_tickets_duplicate_of_ticket_id_auto_triage_tickets_id_fk": {
           "name": "auto_triage_tickets_duplicate_of_ticket_id_auto_triage_tickets_id_fk",
           "tableFrom": "auto_triage_tickets",
+          "tableTo": "auto_triage_tickets",
           "columnsFrom": [
             "duplicate_of_ticket_id"
           ],
-          "tableTo": "auto_triage_tickets",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2348,9 +2348,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_byok_api_keys_kilo_user_id": {
           "name": "IDX_byok_api_keys_kilo_user_id",
@@ -2363,9 +2363,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_byok_api_keys_provider_id": {
           "name": "IDX_byok_api_keys_provider_id",
@@ -2378,56 +2378,56 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "byok_api_keys_organization_id_organizations_id_fk": {
           "name": "byok_api_keys_organization_id_organizations_id_fk",
           "tableFrom": "byok_api_keys",
+          "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "byok_api_keys_kilo_user_id_kilocode_users_id_fk": {
           "name": "byok_api_keys_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "byok_api_keys",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_byok_api_keys_org_provider": {
           "name": "UQ_byok_api_keys_org_provider",
+          "nullsNotDistinct": false,
           "columns": [
             "organization_id",
             "provider_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "UQ_byok_api_keys_user_provider": {
           "name": "UQ_byok_api_keys_user_provider",
+          "nullsNotDistinct": false,
           "columns": [
             "kilo_user_id",
             "provider_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2569,9 +2569,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cli_sessions_created_at": {
           "name": "IDX_cli_sessions_created_at",
@@ -2584,9 +2584,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cli_sessions_updated_at": {
           "name": "IDX_cli_sessions_updated_at",
@@ -2599,9 +2599,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cli_sessions_organization_id": {
           "name": "IDX_cli_sessions_organization_id",
@@ -2614,9 +2614,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cli_sessions_user_updated": {
           "name": "IDX_cli_sessions_user_updated",
@@ -2635,73 +2635,73 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "cli_sessions_kilo_user_id_kilocode_users_id_fk": {
           "name": "cli_sessions_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "cli_sessions",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "cli_sessions_forked_from_cli_sessions_session_id_fk": {
           "name": "cli_sessions_forked_from_cli_sessions_session_id_fk",
           "tableFrom": "cli_sessions",
+          "tableTo": "cli_sessions",
           "columnsFrom": [
             "forked_from"
           ],
-          "tableTo": "cli_sessions",
           "columnsTo": [
             "session_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "cli_sessions_parent_session_id_cli_sessions_session_id_fk": {
           "name": "cli_sessions_parent_session_id_cli_sessions_session_id_fk",
           "tableFrom": "cli_sessions",
+          "tableTo": "cli_sessions",
           "columnsFrom": [
             "parent_session_id"
           ],
-          "tableTo": "cli_sessions",
           "columnsTo": [
             "session_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "cli_sessions_organization_id_organizations_id_fk": {
           "name": "cli_sessions_organization_id_organizations_id_fk",
           "tableFrom": "cli_sessions",
+          "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "cli_sessions_cloud_agent_session_id_unique": {
           "name": "cli_sessions_cloud_agent_session_id_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "cloud_agent_session_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2813,9 +2813,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "UQ_cli_sessions_v2_public_id": {
           "name": "UQ_cli_sessions_v2_public_id",
@@ -2828,10 +2828,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"cli_sessions_v2\".\"public_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "UQ_cli_sessions_v2_cloud_agent_session_id": {
           "name": "UQ_cli_sessions_v2_cloud_agent_session_id",
@@ -2844,10 +2844,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"cli_sessions_v2\".\"cloud_agent_session_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "IDX_cli_sessions_v2_organization_id": {
           "name": "IDX_cli_sessions_v2_organization_id",
@@ -2860,9 +2860,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cli_sessions_v2_kilo_user_id": {
           "name": "IDX_cli_sessions_v2_kilo_user_id",
@@ -2875,9 +2875,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cli_sessions_v2_created_at": {
           "name": "IDX_cli_sessions_v2_created_at",
@@ -2890,9 +2890,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cli_sessions_v2_user_updated": {
           "name": "IDX_cli_sessions_v2_user_updated",
@@ -2911,52 +2911,52 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "cli_sessions_v2_kilo_user_id_kilocode_users_id_fk": {
           "name": "cli_sessions_v2_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "cli_sessions_v2",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "cli_sessions_v2_organization_id_organizations_id_fk": {
           "name": "cli_sessions_v2_organization_id_organizations_id_fk",
           "tableFrom": "cli_sessions_v2",
+          "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "cli_sessions_v2_parent_session_id_kilo_user_id_fk": {
           "name": "cli_sessions_v2_parent_session_id_kilo_user_id_fk",
           "tableFrom": "cli_sessions_v2",
+          "tableTo": "cli_sessions_v2",
           "columnsFrom": [
             "parent_session_id",
             "kilo_user_id"
           ],
-          "tableTo": "cli_sessions_v2",
           "columnsTo": [
             "session_id",
             "kilo_user_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -3077,7 +3077,7 @@
         },
         "cli_session_id": {
           "name": "cli_session_id",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -3176,9 +3176,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_cloud_agent_code_reviews_owned_by_org_id": {
           "name": "idx_cloud_agent_code_reviews_owned_by_org_id",
@@ -3191,9 +3191,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_cloud_agent_code_reviews_owned_by_user_id": {
           "name": "idx_cloud_agent_code_reviews_owned_by_user_id",
@@ -3206,9 +3206,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_cloud_agent_code_reviews_session_id": {
           "name": "idx_cloud_agent_code_reviews_session_id",
@@ -3221,9 +3221,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_cloud_agent_code_reviews_cli_session_id": {
           "name": "idx_cloud_agent_code_reviews_cli_session_id",
@@ -3236,9 +3236,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_cloud_agent_code_reviews_status": {
           "name": "idx_cloud_agent_code_reviews_status",
@@ -3251,9 +3251,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_cloud_agent_code_reviews_repo": {
           "name": "idx_cloud_agent_code_reviews_repo",
@@ -3266,9 +3266,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_cloud_agent_code_reviews_pr_number": {
           "name": "idx_cloud_agent_code_reviews_pr_number",
@@ -3287,9 +3287,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_cloud_agent_code_reviews_created_at": {
           "name": "idx_cloud_agent_code_reviews_created_at",
@@ -3302,9 +3302,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_cloud_agent_code_reviews_pr_author_github_id": {
           "name": "idx_cloud_agent_code_reviews_pr_author_github_id",
@@ -3317,63 +3317,50 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "cloud_agent_code_reviews_owned_by_organization_id_organizations_id_fk": {
           "name": "cloud_agent_code_reviews_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "cloud_agent_code_reviews",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "cloud_agent_code_reviews_owned_by_user_id_kilocode_users_id_fk": {
           "name": "cloud_agent_code_reviews_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "cloud_agent_code_reviews",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "cloud_agent_code_reviews_platform_integration_id_platform_integrations_id_fk": {
           "name": "cloud_agent_code_reviews_platform_integration_id_platform_integrations_id_fk",
           "tableFrom": "cloud_agent_code_reviews",
+          "tableTo": "platform_integrations",
           "columnsFrom": [
             "platform_integration_id"
           ],
-          "tableTo": "platform_integrations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
-        },
-        "cloud_agent_code_reviews_cli_session_id_cli_sessions_session_id_fk": {
-          "name": "cloud_agent_code_reviews_cli_session_id_cli_sessions_session_id_fk",
-          "tableFrom": "cloud_agent_code_reviews",
-          "columnsFrom": [
-            "cli_session_id"
-          ],
-          "tableTo": "cli_sessions",
-          "columnsTo": [
-            "session_id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3472,9 +3459,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cloud_agent_feedback_kilo_user_id": {
           "name": "IDX_cloud_agent_feedback_kilo_user_id",
@@ -3487,9 +3474,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cloud_agent_feedback_cloud_agent_session_id": {
           "name": "IDX_cloud_agent_feedback_cloud_agent_session_id",
@@ -3502,37 +3489,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "cloud_agent_feedback_kilo_user_id_kilocode_users_id_fk": {
           "name": "cloud_agent_feedback_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "cloud_agent_feedback",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "cascade"
         },
         "cloud_agent_feedback_organization_id_organizations_id_fk": {
           "name": "cloud_agent_feedback_organization_id_organizations_id_fk",
           "tableFrom": "cloud_agent_feedback",
+          "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3622,10 +3609,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"cloud_agent_webhook_triggers\".\"user_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "UQ_cloud_agent_webhook_triggers_org_trigger": {
           "name": "UQ_cloud_agent_webhook_triggers_org_trigger",
@@ -3644,10 +3631,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"cloud_agent_webhook_triggers\".\"organization_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "IDX_cloud_agent_webhook_triggers_user": {
           "name": "IDX_cloud_agent_webhook_triggers_user",
@@ -3660,9 +3647,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cloud_agent_webhook_triggers_org": {
           "name": "IDX_cloud_agent_webhook_triggers_org",
@@ -3675,9 +3662,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cloud_agent_webhook_triggers_active": {
           "name": "IDX_cloud_agent_webhook_triggers_active",
@@ -3690,9 +3677,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_cloud_agent_webhook_triggers_profile": {
           "name": "IDX_cloud_agent_webhook_triggers_profile",
@@ -3705,50 +3692,50 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "cloud_agent_webhook_triggers_user_id_kilocode_users_id_fk": {
           "name": "cloud_agent_webhook_triggers_user_id_kilocode_users_id_fk",
           "tableFrom": "cloud_agent_webhook_triggers",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "cloud_agent_webhook_triggers_organization_id_organizations_id_fk": {
           "name": "cloud_agent_webhook_triggers_organization_id_organizations_id_fk",
           "tableFrom": "cloud_agent_webhook_triggers",
+          "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "cloud_agent_webhook_triggers_profile_id_agent_environment_profiles_id_fk": {
           "name": "cloud_agent_webhook_triggers_profile_id_agent_environment_profiles_id_fk",
           "tableFrom": "cloud_agent_webhook_triggers",
+          "tableTo": "agent_environment_profiles",
           "columnsFrom": [
             "profile_id"
           ],
-          "tableTo": "agent_environment_profiles",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3847,9 +3834,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_code_indexing_manifest_kilo_user_id": {
           "name": "IDX_code_indexing_manifest_kilo_user_id",
@@ -3862,9 +3849,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_code_indexing_manifest_project_id": {
           "name": "IDX_code_indexing_manifest_project_id",
@@ -3877,9 +3864,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_code_indexing_manifest_file_hash": {
           "name": "IDX_code_indexing_manifest_file_hash",
@@ -3892,9 +3879,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_code_indexing_manifest_git_branch": {
           "name": "IDX_code_indexing_manifest_git_branch",
@@ -3907,9 +3894,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_code_indexing_manifest_created_at": {
           "name": "IDX_code_indexing_manifest_created_at",
@@ -3922,38 +3909,38 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "code_indexing_manifest_kilo_user_id_kilocode_users_id_fk": {
           "name": "code_indexing_manifest_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "code_indexing_manifest",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_code_indexing_manifest_org_user_project_hash_branch": {
           "name": "UQ_code_indexing_manifest_org_user_project_hash_branch",
+          "nullsNotDistinct": true,
           "columns": [
             "organization_id",
             "kilo_user_id",
             "project_id",
             "file_path",
             "git_branch"
-          ],
-          "nullsNotDistinct": true
+          ]
         }
       },
       "policies": {},
@@ -4021,9 +4008,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_code_indexing_search_kilo_user_id": {
           "name": "IDX_code_indexing_search_kilo_user_id",
@@ -4036,9 +4023,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_code_indexing_search_project_id": {
           "name": "IDX_code_indexing_search_project_id",
@@ -4057,9 +4044,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_code_indexing_search_created_at": {
           "name": "IDX_code_indexing_search_created_at",
@@ -4072,24 +4059,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "code_indexing_search_kilo_user_id_kilocode_users_id_fk": {
           "name": "code_indexing_search_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "code_indexing_search",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4208,9 +4195,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_credit_transactions_is_free": {
           "name": "IDX_credit_transactions_is_free",
@@ -4223,9 +4210,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_credit_transactions_kilo_user_id": {
           "name": "IDX_credit_transactions_kilo_user_id",
@@ -4238,9 +4225,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_credit_transactions_credit_category": {
           "name": "IDX_credit_transactions_credit_category",
@@ -4253,9 +4240,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_credit_transactions_stripe_payment_id": {
           "name": "IDX_credit_transactions_stripe_payment_id",
@@ -4268,9 +4255,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_credit_transactions_original_transaction_id": {
           "name": "IDX_credit_transactions_original_transaction_id",
@@ -4283,9 +4270,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_credit_transactions_coinbase_credit_block_id": {
           "name": "IDX_credit_transactions_coinbase_credit_block_id",
@@ -4298,9 +4285,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_credit_transactions_organization_id": {
           "name": "IDX_credit_transactions_organization_id",
@@ -4313,9 +4300,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_credit_transactions_unique_category": {
           "name": "IDX_credit_transactions_unique_category",
@@ -4334,10 +4321,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"credit_transactions\".\"check_category_uniqueness\" = TRUE",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -4511,9 +4498,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_deployment_builds_status": {
           "name": "idx_deployment_builds_status",
@@ -4526,24 +4513,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "deployment_builds_deployment_id_deployments_id_fk": {
           "name": "deployment_builds_deployment_id_deployments_id_fk",
           "tableFrom": "deployment_builds",
+          "tableTo": "deployments",
           "columnsFrom": [
             "deployment_id"
           ],
-          "tableTo": "deployments",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4615,35 +4602,35 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "deployment_env_vars_deployment_id_deployments_id_fk": {
           "name": "deployment_env_vars_deployment_id_deployments_id_fk",
           "tableFrom": "deployment_env_vars",
+          "tableTo": "deployments",
           "columnsFrom": [
             "deployment_id"
           ],
-          "tableTo": "deployments",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_deployment_env_vars_deployment_key": {
           "name": "UQ_deployment_env_vars_deployment_key",
+          "nullsNotDistinct": false,
           "columns": [
             "deployment_id",
             "key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -4698,9 +4685,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_deployment_events_timestamp": {
           "name": "idx_deployment_events_timestamp",
@@ -4713,9 +4700,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_deployment_events_type": {
           "name": "idx_deployment_events_type",
@@ -4728,24 +4715,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "deployment_events_build_id_deployment_builds_id_fk": {
           "name": "deployment_events_build_id_deployment_builds_id_fk",
           "tableFrom": "deployment_events",
+          "tableTo": "deployment_builds",
           "columnsFrom": [
             "build_id"
           ],
-          "tableTo": "deployment_builds",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -4811,9 +4798,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_deployment_threat_detections_created_at": {
           "name": "idx_deployment_threat_detections_created_at",
@@ -4826,37 +4813,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "deployment_threat_detections_deployment_id_deployments_id_fk": {
           "name": "deployment_threat_detections_deployment_id_deployments_id_fk",
           "tableFrom": "deployment_threat_detections",
+          "tableTo": "deployments",
           "columnsFrom": [
             "deployment_id"
           ],
-          "tableTo": "deployments",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "deployment_threat_detections_build_id_deployment_builds_id_fk": {
           "name": "deployment_threat_detections_build_id_deployment_builds_id_fk",
           "tableFrom": "deployment_threat_detections",
+          "tableTo": "deployment_builds",
           "columnsFrom": [
             "build_id"
           ],
-          "tableTo": "deployment_builds",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4987,9 +4974,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_deployments_owned_by_organization_id": {
           "name": "idx_deployments_owned_by_organization_id",
@@ -5002,9 +4989,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_deployments_platform_integration_id": {
           "name": "idx_deployments_platform_integration_id",
@@ -5017,9 +5004,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_deployments_repository_source_branch": {
           "name": "idx_deployments_repository_source_branch",
@@ -5038,9 +5025,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_deployments_threat_status_pending": {
           "name": "idx_deployments_threat_status_pending",
@@ -5053,48 +5040,48 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"deployments\".\"threat_status\" = 'pending_scan'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "deployments_owned_by_user_id_kilocode_users_id_fk": {
           "name": "deployments_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "deployments",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "deployments_owned_by_organization_id_organizations_id_fk": {
           "name": "deployments_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "deployments",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_deployments_deployment_slug": {
           "name": "UQ_deployments_deployment_slug",
+          "nullsNotDistinct": false,
           "columns": [
             "deployment_slug"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -5191,9 +5178,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_device_auth_requests_status": {
           "name": "IDX_device_auth_requests_status",
@@ -5206,9 +5193,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_device_auth_requests_expires_at": {
           "name": "IDX_device_auth_requests_expires_at",
@@ -5221,9 +5208,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_device_auth_requests_kilo_user_id": {
           "name": "IDX_device_auth_requests_kilo_user_id",
@@ -5236,24 +5223,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "device_auth_requests_kilo_user_id_kilocode_users_id_fk": {
           "name": "device_auth_requests_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "device_auth_requests",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -5330,9 +5317,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -5404,34 +5391,34 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "enrichment_data_user_id_kilocode_users_id_fk": {
           "name": "enrichment_data_user_id_kilocode_users_id_fk",
           "tableFrom": "enrichment_data",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_enrichment_data_user_id": {
           "name": "UQ_enrichment_data_user_id",
+          "nullsNotDistinct": false,
           "columns": [
             "user_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -5467,9 +5454,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -5508,9 +5495,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -5575,9 +5562,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_free_model_usage_created_at": {
           "name": "idx_free_model_usage_created_at",
@@ -5590,9 +5577,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -5631,9 +5618,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -5672,9 +5659,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -5713,9 +5700,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -5823,9 +5810,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_audit_log_kilo_user_id": {
           "name": "IDX_kilo_pass_audit_log_kilo_user_id",
@@ -5838,9 +5825,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_audit_log_kilo_pass_subscription_id": {
           "name": "IDX_kilo_pass_audit_log_kilo_pass_subscription_id",
@@ -5853,9 +5840,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_audit_log_action": {
           "name": "IDX_kilo_pass_audit_log_action",
@@ -5868,9 +5855,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_audit_log_result": {
           "name": "IDX_kilo_pass_audit_log_result",
@@ -5883,9 +5870,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_audit_log_idempotency_key": {
           "name": "IDX_kilo_pass_audit_log_idempotency_key",
@@ -5898,9 +5885,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_audit_log_stripe_event_id": {
           "name": "IDX_kilo_pass_audit_log_stripe_event_id",
@@ -5913,9 +5900,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_audit_log_stripe_invoice_id": {
           "name": "IDX_kilo_pass_audit_log_stripe_invoice_id",
@@ -5928,9 +5915,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_audit_log_stripe_subscription_id": {
           "name": "IDX_kilo_pass_audit_log_stripe_subscription_id",
@@ -5943,9 +5930,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_audit_log_related_credit_transaction_id": {
           "name": "IDX_kilo_pass_audit_log_related_credit_transaction_id",
@@ -5958,9 +5945,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_audit_log_related_monthly_issuance_id": {
           "name": "IDX_kilo_pass_audit_log_related_monthly_issuance_id",
@@ -5973,63 +5960,63 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "kilo_pass_audit_log_kilo_user_id_kilocode_users_id_fk": {
           "name": "kilo_pass_audit_log_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "kilo_pass_audit_log",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "cascade"
         },
         "kilo_pass_audit_log_kilo_pass_subscription_id_kilo_pass_subscriptions_id_fk": {
           "name": "kilo_pass_audit_log_kilo_pass_subscription_id_kilo_pass_subscriptions_id_fk",
           "tableFrom": "kilo_pass_audit_log",
+          "tableTo": "kilo_pass_subscriptions",
           "columnsFrom": [
             "kilo_pass_subscription_id"
           ],
-          "tableTo": "kilo_pass_subscriptions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "cascade"
         },
         "kilo_pass_audit_log_related_credit_transaction_id_credit_transactions_id_fk": {
           "name": "kilo_pass_audit_log_related_credit_transaction_id_credit_transactions_id_fk",
           "tableFrom": "kilo_pass_audit_log",
+          "tableTo": "credit_transactions",
           "columnsFrom": [
             "related_credit_transaction_id"
           ],
-          "tableTo": "credit_transactions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "cascade"
         },
         "kilo_pass_audit_log_related_monthly_issuance_id_kilo_pass_issuances_id_fk": {
           "name": "kilo_pass_audit_log_related_monthly_issuance_id_kilo_pass_issuances_id_fk",
           "tableFrom": "kilo_pass_audit_log",
+          "tableTo": "kilo_pass_issuances",
           "columnsFrom": [
             "related_monthly_issuance_id"
           ],
-          "tableTo": "kilo_pass_issuances",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -6115,9 +6102,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_issuance_items_credit_transaction_id": {
           "name": "IDX_kilo_pass_issuance_items_credit_transaction_id",
@@ -6130,55 +6117,55 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "kilo_pass_issuance_items_kilo_pass_issuance_id_kilo_pass_issuances_id_fk": {
           "name": "kilo_pass_issuance_items_kilo_pass_issuance_id_kilo_pass_issuances_id_fk",
           "tableFrom": "kilo_pass_issuance_items",
+          "tableTo": "kilo_pass_issuances",
           "columnsFrom": [
             "kilo_pass_issuance_id"
           ],
-          "tableTo": "kilo_pass_issuances",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
         },
         "kilo_pass_issuance_items_credit_transaction_id_credit_transactions_id_fk": {
           "name": "kilo_pass_issuance_items_credit_transaction_id_credit_transactions_id_fk",
           "tableFrom": "kilo_pass_issuance_items",
+          "tableTo": "credit_transactions",
           "columnsFrom": [
             "credit_transaction_id"
           ],
-          "tableTo": "credit_transactions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "kilo_pass_issuance_items_credit_transaction_id_unique": {
           "name": "kilo_pass_issuance_items_credit_transaction_id_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "credit_transaction_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "UQ_kilo_pass_issuance_items_issuance_kind": {
           "name": "UQ_kilo_pass_issuance_items_issuance_kind",
+          "nullsNotDistinct": false,
           "columns": [
             "kilo_pass_issuance_id",
             "kind"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -6260,10 +6247,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"kilo_pass_issuances\".\"stripe_invoice_id\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "IDX_kilo_pass_issuances_subscription_id": {
           "name": "IDX_kilo_pass_issuances_subscription_id",
@@ -6276,9 +6263,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_issuances_issue_month": {
           "name": "IDX_kilo_pass_issuances_issue_month",
@@ -6291,35 +6278,35 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "kilo_pass_issuances_kilo_pass_subscription_id_kilo_pass_subscriptions_id_fk": {
           "name": "kilo_pass_issuances_kilo_pass_subscription_id_kilo_pass_subscriptions_id_fk",
           "tableFrom": "kilo_pass_issuances",
+          "tableTo": "kilo_pass_subscriptions",
           "columnsFrom": [
             "kilo_pass_subscription_id"
           ],
-          "tableTo": "kilo_pass_subscriptions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_kilo_pass_issuances_subscription_issue_month": {
           "name": "UQ_kilo_pass_issuances_subscription_issue_month",
+          "nullsNotDistinct": false,
           "columns": [
             "kilo_pass_subscription_id",
             "issue_month"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -6433,9 +6420,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_scheduled_changes_status": {
           "name": "IDX_kilo_pass_scheduled_changes_status",
@@ -6448,9 +6435,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_scheduled_changes_stripe_subscription_id": {
           "name": "IDX_kilo_pass_scheduled_changes_stripe_subscription_id",
@@ -6463,9 +6450,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "UQ_kilo_pass_scheduled_changes_active_stripe_subscription_id": {
           "name": "UQ_kilo_pass_scheduled_changes_active_stripe_subscription_id",
@@ -6478,10 +6465,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"kilo_pass_scheduled_changes\".\"deleted_at\" is null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "IDX_kilo_pass_scheduled_changes_effective_at": {
           "name": "IDX_kilo_pass_scheduled_changes_effective_at",
@@ -6494,9 +6481,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_scheduled_changes_deleted_at": {
           "name": "IDX_kilo_pass_scheduled_changes_deleted_at",
@@ -6509,37 +6496,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "kilo_pass_scheduled_changes_kilo_user_id_kilocode_users_id_fk": {
           "name": "kilo_pass_scheduled_changes_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "kilo_pass_scheduled_changes",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
         },
         "kilo_pass_scheduled_changes_stripe_subscription_id_kilo_pass_subscriptions_stripe_subscription_id_fk": {
           "name": "kilo_pass_scheduled_changes_stripe_subscription_id_kilo_pass_subscriptions_stripe_subscription_id_fk",
           "tableFrom": "kilo_pass_scheduled_changes",
+          "tableTo": "kilo_pass_subscriptions",
           "columnsFrom": [
             "stripe_subscription_id"
           ],
-          "tableTo": "kilo_pass_subscriptions",
           "columnsTo": [
             "stripe_subscription_id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -6669,9 +6656,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_subscriptions_status": {
           "name": "IDX_kilo_pass_subscriptions_status",
@@ -6684,9 +6671,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kilo_pass_subscriptions_cadence": {
           "name": "IDX_kilo_pass_subscriptions_cadence",
@@ -6699,34 +6686,34 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "kilo_pass_subscriptions_kilo_user_id_kilocode_users_id_fk": {
           "name": "kilo_pass_subscriptions_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "kilo_pass_subscriptions",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "kilo_pass_subscriptions_stripe_subscription_id_unique": {
           "name": "kilo_pass_subscriptions_stripe_subscription_id_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "stripe_subscription_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -6808,9 +6795,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kiloclaw_access_codes_user_status": {
           "name": "IDX_kiloclaw_access_codes_user_status",
@@ -6829,9 +6816,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "UQ_kiloclaw_access_codes_one_active_per_user": {
           "name": "UQ_kiloclaw_access_codes_one_active_per_user",
@@ -6844,25 +6831,25 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "status = 'active'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "kiloclaw_access_codes_kilo_user_id_kilocode_users_id_fk": {
           "name": "kiloclaw_access_codes_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "kiloclaw_access_codes",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -6966,9 +6953,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_kiloclaw_image_catalog_variant": {
           "name": "IDX_kiloclaw_image_catalog_variant",
@@ -6981,9 +6968,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -6991,10 +6978,10 @@
       "uniqueConstraints": {
         "kiloclaw_image_catalog_image_tag_unique": {
           "name": "kiloclaw_image_catalog_image_tag_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "image_tag"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -7056,25 +7043,25 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"kiloclaw_instances\".\"destroyed_at\" is null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "kiloclaw_instances_user_id_kilocode_users_id_fk": {
           "name": "kiloclaw_instances_user_id_kilocode_users_id_fk",
           "tableFrom": "kiloclaw_instances",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -7138,51 +7125,51 @@
         "kiloclaw_version_pins_user_id_kilocode_users_id_fk": {
           "name": "kiloclaw_version_pins_user_id_kilocode_users_id_fk",
           "tableFrom": "kiloclaw_version_pins",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "kiloclaw_version_pins_image_tag_kiloclaw_image_catalog_image_tag_fk": {
           "name": "kiloclaw_version_pins_image_tag_kiloclaw_image_catalog_image_tag_fk",
           "tableFrom": "kiloclaw_version_pins",
+          "tableTo": "kiloclaw_image_catalog",
           "columnsFrom": [
             "image_tag"
           ],
-          "tableTo": "kiloclaw_image_catalog",
           "columnsTo": [
             "image_tag"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "kiloclaw_version_pins_pinned_by_kilocode_users_id_fk": {
           "name": "kiloclaw_version_pins_pinned_by_kilocode_users_id_fk",
           "tableFrom": "kiloclaw_version_pins",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "pinned_by"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "kiloclaw_version_pins_user_id_unique": {
           "name": "kiloclaw_version_pins_user_id_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "user_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -7366,10 +7353,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"kilocode_users\".\"openrouter_upstream_safety_identifier\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -7377,10 +7364,10 @@
       "uniqueConstraints": {
         "UQ_b1afacbcf43f2c7c4cb9f7e7faa": {
           "name": "UQ_b1afacbcf43f2c7c4cb9f7e7faa",
+          "nullsNotDistinct": false,
           "columns": [
             "google_user_email"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -7440,9 +7427,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_magic_link_tokens_expires_at": {
           "name": "idx_magic_link_tokens_expires_at",
@@ -7455,9 +7442,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -7595,9 +7582,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_abuse_classification": {
           "name": "idx_abuse_classification",
@@ -7610,9 +7597,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_kilo_user_id_created_at2": {
           "name": "idx_kilo_user_id_created_at2",
@@ -7631,9 +7618,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_microdollar_usage_organization_id": {
           "name": "idx_microdollar_usage_organization_id",
@@ -7646,10 +7633,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"microdollar_usage\".\"organization_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -7874,89 +7861,89 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "microdollar_usage_metadata_http_user_agent_id_http_user_agent_http_user_agent_id_fk": {
           "name": "microdollar_usage_metadata_http_user_agent_id_http_user_agent_http_user_agent_id_fk",
           "tableFrom": "microdollar_usage_metadata",
+          "tableTo": "http_user_agent",
           "columnsFrom": [
             "http_user_agent_id"
           ],
-          "tableTo": "http_user_agent",
           "columnsTo": [
             "http_user_agent_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "microdollar_usage_metadata_http_ip_id_http_ip_http_ip_id_fk": {
           "name": "microdollar_usage_metadata_http_ip_id_http_ip_http_ip_id_fk",
           "tableFrom": "microdollar_usage_metadata",
+          "tableTo": "http_ip",
           "columnsFrom": [
             "http_ip_id"
           ],
-          "tableTo": "http_ip",
           "columnsTo": [
             "http_ip_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "microdollar_usage_metadata_vercel_ip_city_id_vercel_ip_city_vercel_ip_city_id_fk": {
           "name": "microdollar_usage_metadata_vercel_ip_city_id_vercel_ip_city_vercel_ip_city_id_fk",
           "tableFrom": "microdollar_usage_metadata",
+          "tableTo": "vercel_ip_city",
           "columnsFrom": [
             "vercel_ip_city_id"
           ],
-          "tableTo": "vercel_ip_city",
           "columnsTo": [
             "vercel_ip_city_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "microdollar_usage_metadata_vercel_ip_country_id_vercel_ip_country_vercel_ip_country_id_fk": {
           "name": "microdollar_usage_metadata_vercel_ip_country_id_vercel_ip_country_vercel_ip_country_id_fk",
           "tableFrom": "microdollar_usage_metadata",
+          "tableTo": "vercel_ip_country",
           "columnsFrom": [
             "vercel_ip_country_id"
           ],
-          "tableTo": "vercel_ip_country",
           "columnsTo": [
             "vercel_ip_country_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "microdollar_usage_metadata_ja4_digest_id_ja4_digest_ja4_digest_id_fk": {
           "name": "microdollar_usage_metadata_ja4_digest_id_ja4_digest_ja4_digest_id_fk",
           "tableFrom": "microdollar_usage_metadata",
+          "tableTo": "ja4_digest",
           "columnsFrom": [
             "ja4_digest_id"
           ],
-          "tableTo": "ja4_digest",
           "columnsTo": [
             "ja4_digest_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "microdollar_usage_metadata_system_prompt_prefix_id_system_prompt_prefix_system_prompt_prefix_id_fk": {
           "name": "microdollar_usage_metadata_system_prompt_prefix_id_system_prompt_prefix_system_prompt_prefix_id_fk",
           "tableFrom": "microdollar_usage_metadata",
+          "tableTo": "system_prompt_prefix",
           "columnsFrom": [
             "system_prompt_prefix_id"
           ],
-          "tableTo": "system_prompt_prefix",
           "columnsTo": [
             "system_prompt_prefix_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -7994,9 +7981,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -8180,9 +8167,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_model_stats_slug": {
           "name": "IDX_model_stats_slug",
@@ -8195,9 +8182,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_model_stats_is_active": {
           "name": "IDX_model_stats_is_active",
@@ -8210,9 +8197,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_model_stats_creator_slug": {
           "name": "IDX_model_stats_creator_slug",
@@ -8225,9 +8212,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_model_stats_price_input": {
           "name": "IDX_model_stats_price_input",
@@ -8240,9 +8227,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_model_stats_coding_index": {
           "name": "IDX_model_stats_coding_index",
@@ -8255,9 +8242,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_model_stats_context_length": {
           "name": "IDX_model_stats_context_length",
@@ -8270,9 +8257,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -8280,17 +8267,17 @@
       "uniqueConstraints": {
         "model_stats_openrouter_id_unique": {
           "name": "model_stats_openrouter_id_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "openrouter_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         },
         "model_stats_slug_unique": {
           "name": "model_stats_slug_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "slug"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -8401,9 +8388,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_audit_logs_action": {
           "name": "IDX_organization_audit_logs_action",
@@ -8416,9 +8403,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_audit_logs_actor_id": {
           "name": "IDX_organization_audit_logs_actor_id",
@@ -8431,9 +8418,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_audit_logs_created_at": {
           "name": "IDX_organization_audit_logs_created_at",
@@ -8446,9 +8433,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -8538,9 +8525,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_invitations_org_id": {
           "name": "IDX_organization_invitations_org_id",
@@ -8553,9 +8540,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_invitations_email": {
           "name": "IDX_organization_invitations_email",
@@ -8568,9 +8555,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_invitations_expires_at": {
           "name": "IDX_organization_invitations_expires_at",
@@ -8583,9 +8570,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -8664,9 +8651,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_memberships_user_id": {
           "name": "IDX_organization_memberships_user_id",
@@ -8679,9 +8666,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -8689,11 +8676,11 @@
       "uniqueConstraints": {
         "UQ_organization_memberships_org_user": {
           "name": "UQ_organization_memberships_org_user",
+          "nullsNotDistinct": false,
           "columns": [
             "organization_id",
             "kilo_user_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -8795,9 +8782,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_seats_expires_at": {
           "name": "IDX_organization_seats_expires_at",
@@ -8810,9 +8797,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_seats_created_at": {
           "name": "IDX_organization_seats_created_at",
@@ -8825,9 +8812,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_seats_updated_at": {
           "name": "IDX_organization_seats_updated_at",
@@ -8840,9 +8827,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_seats_starts_at": {
           "name": "IDX_organization_seats_starts_at",
@@ -8855,9 +8842,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -8865,10 +8852,10 @@
       "uniqueConstraints": {
         "UQ_organization_seats_idempotency_key": {
           "name": "UQ_organization_seats_idempotency_key",
+          "nullsNotDistinct": false,
           "columns": [
             "idempotency_key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -8937,9 +8924,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_user_limits_user_id": {
           "name": "IDX_organization_user_limits_user_id",
@@ -8952,9 +8939,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -8962,12 +8949,12 @@
       "uniqueConstraints": {
         "UQ_organization_user_limits_org_user": {
           "name": "UQ_organization_user_limits_org_user",
+          "nullsNotDistinct": false,
           "columns": [
             "organization_id",
             "kilo_user_id",
             "limit_type"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -9042,9 +9029,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_organization_user_daily_usage_user_id": {
           "name": "IDX_organization_user_daily_usage_user_id",
@@ -9057,9 +9044,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -9067,13 +9054,13 @@
       "uniqueConstraints": {
         "UQ_organization_user_daily_usage_org_user_date": {
           "name": "UQ_organization_user_daily_usage_org_user_date",
+          "nullsNotDistinct": false,
           "columns": [
             "organization_id",
             "kilo_user_id",
             "limit_type",
             "usage_date"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -9222,9 +9209,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -9308,9 +9295,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -9318,11 +9305,11 @@
       "uniqueConstraints": {
         "UQ_organization_modes_org_id_slug": {
           "name": "UQ_organization_modes_org_id_slug",
+          "nullsNotDistinct": false,
           "columns": [
             "organization_id",
             "slug"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -9536,9 +9523,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_e1feb919d0ab8a36381d5d5138": {
           "name": "IDX_e1feb919d0ab8a36381d5d5138",
@@ -9551,9 +9538,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_payment_methods_organization_id": {
           "name": "IDX_payment_methods_organization_id",
@@ -9566,9 +9553,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -9576,11 +9563,11 @@
       "uniqueConstraints": {
         "UQ_29df1b0403df5792c96bbbfdbe6": {
           "name": "UQ_29df1b0403df5792c96bbbfdbe6",
+          "nullsNotDistinct": false,
           "columns": [
             "user_id",
             "stripe_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -9765,10 +9752,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"platform_integrations\".\"owned_by_organization_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "UQ_platform_integrations_owned_by_user_platform_inst": {
           "name": "UQ_platform_integrations_owned_by_user_platform_inst",
@@ -9793,10 +9780,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"platform_integrations\".\"owned_by_user_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "IDX_platform_integrations_owned_by_org_id": {
           "name": "IDX_platform_integrations_owned_by_org_id",
@@ -9809,9 +9796,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_platform_integrations_owned_by_user_id": {
           "name": "IDX_platform_integrations_owned_by_user_id",
@@ -9824,9 +9811,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_platform_integrations_platform_inst_id": {
           "name": "IDX_platform_integrations_platform_inst_id",
@@ -9839,9 +9826,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_platform_integrations_platform": {
           "name": "IDX_platform_integrations_platform",
@@ -9854,9 +9841,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_platform_integrations_owned_by_org_platform": {
           "name": "IDX_platform_integrations_owned_by_org_platform",
@@ -9875,9 +9862,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_platform_integrations_owned_by_user_platform": {
           "name": "IDX_platform_integrations_owned_by_user_platform",
@@ -9896,9 +9883,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_platform_integrations_integration_status": {
           "name": "IDX_platform_integrations_integration_status",
@@ -9911,9 +9898,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_platform_integrations_kilo_requester": {
           "name": "IDX_platform_integrations_kilo_requester",
@@ -9938,9 +9925,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_platform_integrations_platform_requester": {
           "name": "IDX_platform_integrations_platform_requester",
@@ -9965,37 +9952,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "platform_integrations_owned_by_organization_id_organizations_id_fk": {
           "name": "platform_integrations_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "platform_integrations",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "platform_integrations_owned_by_user_id_kilocode_users_id_fk": {
           "name": "platform_integrations_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "platform_integrations",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -10077,9 +10064,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -10087,11 +10074,11 @@
       "uniqueConstraints": {
         "UQ_referral_code_usages_redeeming_user_id_code": {
           "name": "UQ_referral_code_usages_redeeming_user_id_code",
+          "nullsNotDistinct": false,
           "columns": [
             "redeeming_kilo_user_id",
             "referring_kilo_user_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -10155,9 +10142,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_referral_codes_code": {
           "name": "IDX_referral_codes_code",
@@ -10170,9 +10157,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -10285,9 +10272,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_security_audit_log_user_created": {
           "name": "IDX_security_audit_log_user_created",
@@ -10306,9 +10293,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_security_audit_log_resource": {
           "name": "IDX_security_audit_log_resource",
@@ -10327,9 +10314,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_security_audit_log_actor": {
           "name": "IDX_security_audit_log_actor",
@@ -10348,9 +10335,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_security_audit_log_action": {
           "name": "IDX_security_audit_log_action",
@@ -10369,37 +10356,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "security_audit_log_owned_by_organization_id_organizations_id_fk": {
           "name": "security_audit_log_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "security_audit_log",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "security_audit_log_owned_by_user_id_kilocode_users_id_fk": {
           "name": "security_audit_log_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "security_audit_log",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -10668,9 +10655,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_security_findings_user_id": {
           "name": "idx_security_findings_user_id",
@@ -10683,9 +10670,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_security_findings_repo": {
           "name": "idx_security_findings_repo",
@@ -10698,9 +10685,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_security_findings_severity": {
           "name": "idx_security_findings_severity",
@@ -10713,9 +10700,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_security_findings_status": {
           "name": "idx_security_findings_status",
@@ -10728,9 +10715,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_security_findings_package": {
           "name": "idx_security_findings_package",
@@ -10743,9 +10730,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_security_findings_sla_due_at": {
           "name": "idx_security_findings_sla_due_at",
@@ -10758,9 +10745,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_security_findings_session_id": {
           "name": "idx_security_findings_session_id",
@@ -10773,9 +10760,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_security_findings_cli_session_id": {
           "name": "idx_security_findings_cli_session_id",
@@ -10788,9 +10775,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_security_findings_analysis_status": {
           "name": "idx_security_findings_analysis_status",
@@ -10803,62 +10790,62 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "security_findings_owned_by_organization_id_organizations_id_fk": {
           "name": "security_findings_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "security_findings",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "security_findings_owned_by_user_id_kilocode_users_id_fk": {
           "name": "security_findings_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "security_findings",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "security_findings_platform_integration_id_platform_integrations_id_fk": {
           "name": "security_findings_platform_integration_id_platform_integrations_id_fk",
           "tableFrom": "security_findings",
+          "tableTo": "platform_integrations",
           "columnsFrom": [
             "platform_integration_id"
           ],
-          "tableTo": "platform_integrations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "uq_security_findings_source": {
           "name": "uq_security_findings_source",
+          "nullsNotDistinct": false,
           "columns": [
             "repo_full_name",
             "source",
             "source_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -10951,9 +10938,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_shared_cli_sessions_created_at": {
           "name": "IDX_shared_cli_sessions_created_at",
@@ -10966,37 +10953,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "shared_cli_sessions_session_id_cli_sessions_session_id_fk": {
           "name": "shared_cli_sessions_session_id_cli_sessions_session_id_fk",
           "tableFrom": "shared_cli_sessions",
+          "tableTo": "cli_sessions",
           "columnsFrom": [
             "session_id"
           ],
-          "tableTo": "cli_sessions",
           "columnsTo": [
             "session_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "shared_cli_sessions_kilo_user_id_kilocode_users_id_fk": {
           "name": "shared_cli_sessions_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "shared_cli_sessions",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -11143,9 +11130,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_slack_bot_requests_slack_team_id": {
           "name": "idx_slack_bot_requests_slack_team_id",
@@ -11158,9 +11145,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_slack_bot_requests_owned_by_org_id": {
           "name": "idx_slack_bot_requests_owned_by_org_id",
@@ -11173,9 +11160,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_slack_bot_requests_owned_by_user_id": {
           "name": "idx_slack_bot_requests_owned_by_user_id",
@@ -11188,9 +11175,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_slack_bot_requests_status": {
           "name": "idx_slack_bot_requests_status",
@@ -11203,9 +11190,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_slack_bot_requests_event_type": {
           "name": "idx_slack_bot_requests_event_type",
@@ -11218,9 +11205,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_slack_bot_requests_team_created": {
           "name": "idx_slack_bot_requests_team_created",
@@ -11239,50 +11226,50 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "slack_bot_requests_owned_by_organization_id_organizations_id_fk": {
           "name": "slack_bot_requests_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "slack_bot_requests",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "slack_bot_requests_owned_by_user_id_kilocode_users_id_fk": {
           "name": "slack_bot_requests_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "slack_bot_requests",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "slack_bot_requests_platform_integration_id_platform_integrations_id_fk": {
           "name": "slack_bot_requests_platform_integration_id_platform_integrations_id_fk",
           "tableFrom": "slack_bot_requests",
+          "tableTo": "platform_integrations",
           "columnsFrom": [
             "platform_integration_id"
           ],
-          "tableTo": "platform_integrations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -11396,9 +11383,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_source_embeddings_kilo_user_id": {
           "name": "IDX_source_embeddings_kilo_user_id",
@@ -11411,9 +11398,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_source_embeddings_project_id": {
           "name": "IDX_source_embeddings_project_id",
@@ -11426,9 +11413,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_source_embeddings_created_at": {
           "name": "IDX_source_embeddings_created_at",
@@ -11441,9 +11428,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_source_embeddings_updated_at": {
           "name": "IDX_source_embeddings_updated_at",
@@ -11456,24 +11443,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_source_embeddings_file_path_lower": {
           "name": "IDX_source_embeddings_file_path_lower",
           "columns": [
             {
               "expression": "LOWER(\"file_path\")",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_source_embeddings_git_branch": {
           "name": "IDX_source_embeddings_git_branch",
@@ -11486,9 +11473,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_source_embeddings_org_project_branch": {
           "name": "IDX_source_embeddings_org_project_branch",
@@ -11513,43 +11500,44 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "source_embeddings_organization_id_organizations_id_fk": {
           "name": "source_embeddings_organization_id_organizations_id_fk",
           "tableFrom": "source_embeddings",
+          "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "source_embeddings_kilo_user_id_kilocode_users_id_fk": {
           "name": "source_embeddings_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "source_embeddings",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_source_embeddings_org_project_branch_file_lines": {
           "name": "UQ_source_embeddings_org_project_branch_file_lines",
+          "nullsNotDistinct": false,
           "columns": [
             "organization_id",
             "project_id",
@@ -11557,8 +11545,7 @@
             "file_path",
             "start_line",
             "end_line"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -11724,9 +11711,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_hardware_fingerprint": {
           "name": "idx_hardware_fingerprint",
@@ -11739,9 +11726,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_kilo_user_id": {
           "name": "idx_kilo_user_id",
@@ -11754,9 +11741,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_reasons": {
           "name": "idx_reasons",
@@ -11769,9 +11756,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_verdict_action": {
           "name": "idx_verdict_action",
@@ -11784,9 +11771,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_visitor_fingerprint": {
           "name": "idx_visitor_fingerprint",
@@ -11799,9 +11786,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -11840,9 +11827,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -11888,9 +11875,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -11949,9 +11936,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_ccbde98c4c14046daa5682ec4f": {
           "name": "IDX_ccbde98c4c14046daa5682ec4f",
@@ -11964,9 +11951,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_d0270eb24ef6442d65a0b7853c": {
           "name": "IDX_d0270eb24ef6442d65a0b7853c",
@@ -11979,9 +11966,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -12051,9 +12038,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_user_auth_provider_hosted_domain": {
           "name": "IDX_user_auth_provider_hosted_domain",
@@ -12066,9 +12053,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -12156,9 +12143,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_user_feedback_kilo_user_id": {
           "name": "IDX_user_feedback_kilo_user_id",
@@ -12171,9 +12158,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_user_feedback_feedback_for": {
           "name": "IDX_user_feedback_feedback_for",
@@ -12186,9 +12173,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_user_feedback_feedback_batch": {
           "name": "IDX_user_feedback_feedback_batch",
@@ -12201,9 +12188,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_user_feedback_source": {
           "name": "IDX_user_feedback_source",
@@ -12216,24 +12203,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "user_feedback_kilo_user_id_kilocode_users_id_fk": {
           "name": "user_feedback_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "user_feedback",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "cascade",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -12322,9 +12309,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "UQ_user_period_cache": {
           "name": "UQ_user_period_cache",
@@ -12355,9 +12342,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_user_period_cache_lookup": {
           "name": "IDX_user_period_cache_lookup",
@@ -12382,9 +12369,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "UQ_user_period_cache_share_token": {
           "name": "UQ_user_period_cache_share_token",
@@ -12397,25 +12384,25 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"user_period_cache\".\"shared_url_token\" IS NOT NULL",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "user_period_cache_kilo_user_id_kilocode_users_id_fk": {
           "name": "user_period_cache_kilo_user_id_kilocode_users_id_fk",
           "tableFrom": "user_period_cache",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "kilo_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -12458,9 +12445,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -12499,9 +12486,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -12616,9 +12603,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_webhook_events_owned_by_user_id": {
           "name": "IDX_webhook_events_owned_by_user_id",
@@ -12631,9 +12618,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_webhook_events_platform": {
           "name": "IDX_webhook_events_platform",
@@ -12646,9 +12633,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_webhook_events_event_type": {
           "name": "IDX_webhook_events_event_type",
@@ -12661,9 +12648,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "IDX_webhook_events_created_at": {
           "name": "IDX_webhook_events_created_at",
@@ -12676,47 +12663,47 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "webhook_events_owned_by_organization_id_organizations_id_fk": {
           "name": "webhook_events_owned_by_organization_id_organizations_id_fk",
           "tableFrom": "webhook_events",
+          "tableTo": "organizations",
           "columnsFrom": [
             "owned_by_organization_id"
           ],
-          "tableTo": "organizations",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "webhook_events_owned_by_user_id_kilocode_users_id_fk": {
           "name": "webhook_events_owned_by_user_id_kilocode_users_id_fk",
           "tableFrom": "webhook_events",
+          "tableTo": "kilocode_users",
           "columnsFrom": [
             "owned_by_user_id"
           ],
-          "tableTo": "kilocode_users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "UQ_webhook_events_signature": {
           "name": "UQ_webhook_events_signature",
+          "nullsNotDistinct": false,
           "columns": [
             "event_signature"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -12731,10 +12718,11 @@
   },
   "enums": {},
   "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
   "views": {
     "public.microdollar_usage_view": {
-      "name": "microdollar_usage_view",
-      "schema": "public",
       "columns": {
         "id": {
           "name": "id",
@@ -13026,13 +13014,12 @@
         }
       },
       "definition": "\n  SELECT\n    mu.id,\n    mu.kilo_user_id,\n    meta.message_id,\n    mu.cost,\n    mu.input_tokens,\n    mu.output_tokens,\n    mu.cache_write_tokens,\n    mu.cache_hit_tokens,\n    mu.created_at,\n    ip.http_ip AS http_x_forwarded_for,\n    city.vercel_ip_city AS http_x_vercel_ip_city,\n    country.vercel_ip_country AS http_x_vercel_ip_country,\n    meta.vercel_ip_latitude AS http_x_vercel_ip_latitude,\n    meta.vercel_ip_longitude AS http_x_vercel_ip_longitude,\n    ja4.ja4_digest AS http_x_vercel_ja4_digest,\n    mu.provider,\n    mu.model,\n    mu.requested_model,\n    meta.user_prompt_prefix,\n    spp.system_prompt_prefix,\n    meta.system_prompt_length,\n    ua.http_user_agent,\n    mu.cache_discount,\n    meta.max_tokens,\n    meta.has_middle_out_transform,\n    mu.has_error,\n    mu.abuse_classification,\n    mu.organization_id,\n    mu.inference_provider,\n    mu.project_id,\n    meta.status_code,\n    meta.upstream_id,\n    frfr.finish_reason,\n    meta.latency,\n    meta.moderation_latency,\n    meta.generation_time,\n    meta.is_byok,\n    meta.is_user_byok,\n    meta.streamed,\n    meta.cancelled,\n    edit.editor_name,\n    meta.has_tools,\n    meta.machine_id,\n    feat.feature,\n    meta.session_id,\n    md.mode,\n    am.auto_model,\n    meta.market_cost\n  FROM \"microdollar_usage\" mu\n  LEFT JOIN \"microdollar_usage_metadata\" meta ON mu.id = meta.id\n  LEFT JOIN \"http_ip\" ip ON meta.http_ip_id = ip.http_ip_id\n  LEFT JOIN \"vercel_ip_city\" city ON meta.vercel_ip_city_id = city.vercel_ip_city_id\n  LEFT JOIN \"vercel_ip_country\" country ON meta.vercel_ip_country_id = country.vercel_ip_country_id\n  LEFT JOIN \"ja4_digest\" ja4 ON meta.ja4_digest_id = ja4.ja4_digest_id\n  LEFT JOIN \"system_prompt_prefix\" spp ON meta.system_prompt_prefix_id = spp.system_prompt_prefix_id\n  LEFT JOIN \"http_user_agent\" ua ON meta.http_user_agent_id = ua.http_user_agent_id\n  LEFT JOIN \"finish_reason\" frfr ON meta.finish_reason_id = frfr.finish_reason_id\n  LEFT JOIN \"editor_name\" edit ON meta.editor_name_id = edit.editor_name_id\n  LEFT JOIN \"feature\" feat ON meta.feature_id = feat.feature_id\n  LEFT JOIN \"mode\" md ON meta.mode_id = md.mode_id\n  LEFT JOIN \"auto_model\" am ON meta.auto_model_id = am.auto_model_id\n",
-      "materialized": false,
-      "isExisting": false
+      "name": "microdollar_usage_view",
+      "schema": "public",
+      "isExisting": false,
+      "materialized": false
     }
   },
-  "sequences": {},
-  "roles": {},
-  "policies": {},
   "_meta": {
     "columns": {},
     "schemas": {},

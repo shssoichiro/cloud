@@ -284,12 +284,6 @@ export function createSessionManagementHandlers() {
 
                 await withDORetry(
                   getStub,
-                  stub => stub.clearInterruptRequest(),
-                  'clearInterruptRequest'
-                );
-
-                await withDORetry(
-                  getStub,
                   stub =>
                     stub.emitExecutionError(
                       activeExecutionId,

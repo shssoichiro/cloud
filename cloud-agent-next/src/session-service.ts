@@ -829,7 +829,10 @@ export class SessionService {
     // Shallow clone (depth: 1) can be enabled for faster checkout and reduced disk usage
     const cloneOptions = shallow ? { shallow: true } : undefined;
     if (gitUrl) {
-      await cloneGitRepo(session, workspacePath, gitUrl, gitToken, undefined, cloneOptions);
+      await cloneGitRepo(session, workspacePath, gitUrl, gitToken, undefined, {
+        ...cloneOptions,
+        platform: context.platform,
+      });
     } else if (githubRepo) {
       await cloneGitHubRepo(
         session,
@@ -1108,7 +1111,9 @@ export class SessionService {
 
     // Clone repository using appropriate method
     if (gitUrl) {
-      await cloneGitRepo(session, workspacePath, gitUrl, gitToken);
+      await cloneGitRepo(session, workspacePath, gitUrl, gitToken, undefined, {
+        platform: context.platform,
+      });
     } else if (githubRepo) {
       await cloneGitHubRepo(
         session,
@@ -1395,6 +1400,7 @@ export class SessionService {
       gitToken: freshGitToken ?? metadata.gitToken,
       gitAuthorEnv: getGitAuthorEnv(env, metadata.githubAppType),
       lastSeenBranch: metadata.upstreamBranch,
+      platform: context.platform,
     });
 
     await this.restoreSessionSnapshot(session, sessionId, metadata.kiloSessionId, env, userId);

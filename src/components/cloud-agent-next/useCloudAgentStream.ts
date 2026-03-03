@@ -37,7 +37,8 @@ import {
   removeChildSessionPartAtom,
   setQuestionRequestIdAtom,
   sessionOrganizationIdAtom,
-  autocommitStatusAtom,
+  autocommitStatusMapAtom,
+  sessionStatusIndicatorAtom,
   standaloneQuestionAtom,
   clearStandaloneQuestionAtom,
   addUserMessageAtom,
@@ -133,8 +134,11 @@ export function useCloudAgentStream({
   // Atom for organization ID (used by QuestionToolCard for tRPC calls)
   const setSessionOrganizationId = useSetAtom(sessionOrganizationIdAtom);
 
-  // Atom for autocommit status
-  const setAutocommitStatus = useSetAtom(autocommitStatusAtom);
+  // Atom for per-message autocommit status
+  const setAutocommitStatusMap = useSetAtom(autocommitStatusMapAtom);
+
+  // Atom for session status indicator (inline chat feed indicators)
+  const setSessionStatusIndicator = useSetAtom(sessionStatusIndicatorAtom);
 
   // Common atoms
   const setCurrentSessionId = useSetAtom(currentSessionIdAtom);
@@ -152,12 +156,16 @@ export function useCloudAgentStream({
   const [connectionState, setConnectionState] = useState<ConnectionState>({
     status: 'disconnected',
   });
+  const connectionStateRef = useRef<ConnectionState>(connectionState);
   const [localError, setLocalError] = useState<string | null>(null);
 
   const wsManagerRef = useRef<ReturnType<typeof createWebSocketManager> | null>(null);
   const notifiedKiloSessionIdsRef = useRef<Set<string>>(new Set());
   const sessionInitiatedFiredRef = useRef<Set<string>>(new Set());
   const optimisticMessageIdRef = useRef<string | null>(null);
+
+  // Timer for auto-clearing info-type indicators
+  const infoClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cloudAgentSessionIdRef = useRef<string | null>(cloudAgentSessionIdProp ?? null);
   const organizationIdRef = useRef<string | undefined>(organizationId);
 
@@ -196,6 +204,37 @@ export function useCloudAgentStream({
     organizationIdRef.current = organizationId;
     setSessionOrganizationId(organizationId ?? null);
   }, [organizationId, setSessionOrganizationId]);
+
+  /**
+   * Set the session status indicator. Auto-clears `info` type indicators after 3 seconds.
+   */
+  const setIndicator = useCallback(
+    (
+      indicator: { type: 'error' | 'warning' | 'info'; message: string; timestamp: number } | null
+    ) => {
+      if (infoClearTimerRef.current) {
+        clearTimeout(infoClearTimerRef.current);
+        infoClearTimerRef.current = null;
+      }
+      setSessionStatusIndicator(indicator);
+      if (indicator?.type === 'info') {
+        infoClearTimerRef.current = setTimeout(() => {
+          setSessionStatusIndicator(null);
+          infoClearTimerRef.current = null;
+        }, 3000);
+      }
+    },
+    [setSessionStatusIndicator]
+  );
+
+  // Clean up info clear timer on unmount
+  useEffect(() => {
+    return () => {
+      if (infoClearTimerRef.current) {
+        clearTimeout(infoClearTimerRef.current);
+      }
+    };
+  }, []);
 
   /**
    * Create the event processor with callbacks wired to Jotai atoms and IndexedDB.
@@ -271,14 +310,21 @@ export function useCloudAgentStream({
       onSessionStatusChanged: status => {
         setSessionStatus(status);
 
-        // Handle streaming state based on status
-        if (status.type === 'idle') {
-          setIsStreaming(false);
-          onCompleteRef.current?.();
-        } else if (status.type === 'busy') {
+        // Streaming is NOT stopped on idle — the wrapper's `complete` event
+        // (handled by onStreamingChanged) is the definitive signal, firing
+        // after autocommit finishes.
+        if (status.type === 'busy') {
           setIsStreaming(true);
+          // Clear any previous indicator when session resumes
+          setIndicator(null);
+        } else if (status.type === 'retry') {
+          // Show retry indicator in chat feed
+          setIndicator({
+            type: 'warning',
+            message: `Retrying... ${status.message}`,
+            timestamp: Date.now(),
+          });
         }
-        // 'retry' status keeps streaming active
       },
 
       onSessionCreated: async sessionInfo => {
@@ -347,6 +393,14 @@ export function useCloudAgentStream({
       onQuestionResolved: requestId => {
         clearStandaloneQuestion(requestId);
       },
+
+      onAutocommitUpdated: (messageId, status) => {
+        setAutocommitStatusMap(prev => {
+          const next = new Map(prev);
+          next.set(messageId, status);
+          return next;
+        });
+      },
     }),
     [
       updateMessage,
@@ -367,6 +421,8 @@ export function useCloudAgentStream({
       setStandaloneQuestion,
       clearStandaloneQuestion,
       removeOptimisticMessage,
+      setIndicator,
+      setAutocommitStatusMap,
     ]
   );
 
@@ -381,30 +437,28 @@ export function useCloudAgentStream({
 
   const handleEvent = useCallback(
     (event: CloudAgentEvent) => {
-      // Intercept autocommit events — update atom directly, don't pass to EventProcessor
-      if (event.streamEventType === 'autocommit_started') {
-        const data = event.data as { message?: string } | undefined;
-        setAutocommitStatus({
-          status: 'in_progress',
-          message: data?.message ?? 'Committing changes...',
-          timestamp: event.timestamp,
+      // Set inline indicator for session-level events (no ErrorBanner).
+      // The event processor handles streaming state and message completion.
+      if (event.streamEventType === 'wrapper_disconnected') {
+        setIndicator({
+          type: 'error',
+          message: 'Agent connection lost',
+          timestamp: Date.now(),
         });
-        return;
-      }
-      if (event.streamEventType === 'autocommit_completed') {
-        const data = event.data as
-          | { success?: boolean; message?: string; skipped?: boolean }
-          | undefined;
-        if (data?.skipped) {
-          setAutocommitStatus(null);
-        } else {
-          setAutocommitStatus({
-            status: data?.success ? 'completed' : 'failed',
-            message: data?.message ?? (data?.success ? 'Changes committed' : 'Commit failed'),
-            timestamp: event.timestamp,
-          });
-        }
-        return;
+      } else if (event.streamEventType === 'error') {
+        const data = event.data as { error?: string } | undefined;
+        setIndicator({
+          type: 'error',
+          message: typeof data?.error === 'string' ? data.error : 'Unknown error',
+          timestamp: Date.now(),
+        });
+      } else if (event.streamEventType === 'interrupted') {
+        const data = event.data as { reason?: string } | undefined;
+        setIndicator({
+          type: 'info',
+          message: data?.reason || 'Session stopped',
+          timestamp: Date.now(),
+        });
       }
 
       if (!processorRef.current) {
@@ -412,7 +466,7 @@ export function useCloudAgentStream({
       }
       processorRef.current?.processEvent(event);
     },
-    [getProcessor, setAutocommitStatus]
+    [getProcessor, setIndicator]
   );
 
   // Cleanup processor on unmount
@@ -446,6 +500,9 @@ export function useCloudAgentStream({
       }
       if (code === 'NOT_FOUND') {
         return 'Cloud Agent service is unavailable right now. Please try again.';
+      }
+      if (code === 'CONFLICT' || httpStatus === 409) {
+        return 'Previous task is still finishing up. Please wait a moment.';
       }
       return 'Cloud Agent encountered an error. Please retry in a moment.';
     }
@@ -548,13 +605,39 @@ export function useCloudAgentStream({
         onEvent: handleEvent,
         onError: handleWsError,
         onStateChange: state => {
+          // Check transition from reconnecting→connected before updating state
+          const prev = connectionStateRef.current;
+          connectionStateRef.current = state;
           setConnectionState(state);
 
-          if (state.status === 'error') {
-            setLocalError(state.error);
-            setError(state.error);
+          if (
+            (prev.status === 'reconnecting' || prev.status === 'refreshing_ticket') &&
+            state.status === 'connected'
+          ) {
+            setIndicator({
+              type: 'info',
+              message: 'Reconnected',
+              timestamp: Date.now(),
+            });
+          } else if (state.status === 'reconnecting') {
+            setIndicator({
+              type: 'warning',
+              message: `Reconnecting... (attempt ${state.attempt})`,
+              timestamp: Date.now(),
+            });
+          } else if (state.status === 'error') {
             if (!state.retryable) {
+              // Non-retryable errors (auth failure, max retries) → ErrorBanner
+              setLocalError(state.error);
+              setError(state.error);
               setIsStreaming(false);
+            } else {
+              // Retryable errors → inline indicator only
+              setIndicator({
+                type: 'warning',
+                message: state.error,
+                timestamp: Date.now(),
+              });
             }
           }
         },
@@ -567,7 +650,7 @@ export function useCloudAgentStream({
       wsManagerRef.current = createWebSocketManager(config);
       wsManagerRef.current.connect();
     },
-    [getTicket, buildWsUrl, handleEvent, handleWsError, setError, setIsStreaming]
+    [getTicket, buildWsUrl, handleEvent, handleWsError, setError, setIsStreaming, setIndicator]
   );
 
   /**
@@ -585,7 +668,8 @@ export function useCloudAgentStream({
 
     setLocalError(null);
     setError(null);
-    setAutocommitStatus(null);
+    setAutocommitStatusMap(new Map());
+    setIndicator(null);
     setIsStreaming(true);
 
     try {
@@ -625,6 +709,8 @@ export function useCloudAgentStream({
     setError,
     setIsStreaming,
     setCurrentSessionId,
+    setAutocommitStatusMap,
+    setIndicator,
   ]);
 
   /**
@@ -658,7 +744,9 @@ export function useCloudAgentStream({
       wsManagerRef.current = null;
     }
     setIsStreaming(false);
-    setConnectionState({ status: 'disconnected' });
+    const disconnected: ConnectionState = { status: 'disconnected' };
+    connectionStateRef.current = disconnected;
+    setConnectionState(disconnected);
   }, [setIsStreaming]);
 
   /**
@@ -696,14 +784,18 @@ export function useCloudAgentStream({
         // Clean up WebSocket connection
         stopStream();
 
-        // Session status will be updated via session.status event
-        // No need to manually add a system message - UI handles interrupted state
+        // Show inline indicator confirming the interrupt
+        setIndicator({
+          type: 'info',
+          message: 'Session stopped',
+          timestamp: Date.now(),
+        });
       } catch (error) {
         console.error('Failed to interrupt session:', error);
         setError('Failed to stop execution');
       }
     },
-    [trpcClient, stopStream, setError]
+    [trpcClient, stopStream, setError, setIndicator]
   );
 
   /**
@@ -715,7 +807,7 @@ export function useCloudAgentStream({
     async (message: string, cloudAgentSessionId: string, mode: string, model: string) => {
       setLocalError(null);
       setError(null);
-      setAutocommitStatus(null);
+      setIndicator(null);
       setIsStreaming(true);
 
       // Use provided cloudAgentSessionId, falling back to ref for backward compatibility
@@ -749,6 +841,7 @@ export function useCloudAgentStream({
               prompt: message,
               mode: mode as 'code' | 'plan' | 'debug' | 'orchestrator' | 'ask',
               model,
+              autoCommit: true,
               organizationId: organizationIdRef.current,
             },
             { context: { skipBatch: true } }
@@ -760,6 +853,7 @@ export function useCloudAgentStream({
               prompt: message,
               mode: mode as 'code' | 'plan' | 'debug' | 'orchestrator' | 'ask',
               model,
+              autoCommit: true,
             },
             { context: { skipBatch: true } }
           );
@@ -797,6 +891,7 @@ export function useCloudAgentStream({
       setIsStreaming,
       addUserMessage,
       removeOptimisticMessage,
+      setIndicator,
     ]
   );
 
