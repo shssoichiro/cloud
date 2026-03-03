@@ -1,25 +1,29 @@
 'use client';
 
-import { useUser } from '@/hooks/useUser';
+import { useTRPC } from '@/lib/trpc/utils';
+import { useMutation } from '@tanstack/react-query';
 import { PageLayout } from '@/components/PageLayout';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-
-const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/00wcN64ot27OaIK0K4dAk00';
-const PROMO_CODE = 'KILOCLAWEARLYBIRD';
-
-function buildStripeUrl(email: string | undefined) {
-  const url = new URL(STRIPE_PAYMENT_LINK);
-  if (email) {
-    url.searchParams.set('prefilled_email', email);
-  }
-  url.searchParams.set('prefilled_promo_code', PROMO_CODE);
-  return url.toString();
-}
+import { toast } from 'sonner';
 
 export default function EarlybirdPage() {
-  const { data: user } = useUser();
-  const stripeUrl = buildStripeUrl(user?.google_user_email);
+  const trpc = useTRPC();
+
+  const checkoutMutation = useMutation(
+    trpc.kiloclaw.createEarlybirdCheckoutSession.mutationOptions({
+      onSuccess: result => {
+        if (!result.url) {
+          toast.error('Failed to create checkout session');
+          return;
+        }
+        window.location.href = result.url;
+      },
+      onError: error => {
+        toast.error(error.message || 'Failed to start checkout');
+      },
+    })
+  );
 
   return (
     <PageLayout title="">
@@ -60,11 +64,10 @@ export default function EarlybirdPage() {
             <Button
               className="bg-brand-primary hover:text-brand-primary hover:ring-brand-primary w-full text-black hover:bg-black hover:ring-2"
               size="lg"
-              asChild
+              disabled={checkoutMutation.isPending}
+              onClick={() => checkoutMutation.mutate()}
             >
-              <a href={stripeUrl} target="_blank" rel="noopener noreferrer">
-                🦞 Get the Early Bird Offer
-              </a>
+              {checkoutMutation.isPending ? 'Redirecting to checkout...' : '🦞 Get the Early Bird Offer'}
             </Button>
           </CardFooter>
         </Card>

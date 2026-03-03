@@ -18,6 +18,9 @@ import {
   markActiveInstanceDestroyed,
   restoreDestroyedInstance,
 } from '@/lib/kiloclaw/instance-registry';
+import { client as stripe } from '@/lib/stripe-client';
+import { APP_URL } from '@/lib/constants';
+import { getEnvVariable } from '@/lib/dotenvx';
 
 const kilocodeDefaultModelSchema = z
   .string()
@@ -370,4 +373,54 @@ export const kiloclawRouter = createTRPCRouter({
     const client = new KiloClawInternalClient();
     return client.restoreConfig(ctx.user.id);
   }),
+
+  createEarlybirdCheckoutSession: baseProcedure
+    .output(z.object({ url: z.url().nullable() }))
+    .mutation(async ({ ctx }) => {
+      const stripeCustomerId = ctx.user.stripe_customer_id;
+      if (!stripeCustomerId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Missing Stripe customer for user.',
+        });
+      }
+
+      const priceId = getEnvVariable('STRIPE_KILOCLAW_EARLYBIRD_PRICE_ID');
+      if (!priceId) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Early bird pricing is not configured.',
+        });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        customer: stripeCustomerId,
+        allow_promotion_codes: true,
+        billing_address_collection: 'required',
+        line_items: [{ price: priceId, quantity: 1 }],
+        customer_update: {
+          name: 'auto',
+          address: 'auto',
+        },
+        tax_id_collection: {
+          enabled: true,
+          required: 'never',
+        },
+        success_url: `${APP_URL}/claw?earlybird_checkout=success`,
+        cancel_url: `${APP_URL}/claw/earlybird?checkout=cancelled`,
+        subscription_data: {
+          metadata: {
+            type: 'kiloclaw-earlybird',
+            kiloUserId: ctx.user.id,
+          },
+        },
+        metadata: {
+          type: 'kiloclaw-earlybird',
+          kiloUserId: ctx.user.id,
+        },
+      });
+
+      return { url: typeof session.url === 'string' ? session.url : null };
+    }),
 });
