@@ -245,14 +245,7 @@ export function ReviewConfigForm({
 
   // Reset thinking effort when the model changes and the current selection is invalid
   useEffect(() => {
-    if (
-      thinkingEffort &&
-      availableVariants.length > 0 &&
-      !availableVariants.includes(thinkingEffort)
-    ) {
-      setThinkingEffort(null);
-    }
-    if (availableVariants.length === 0 && thinkingEffort) {
+    if (thinkingEffort && !availableVariants.includes(thinkingEffort)) {
       setThinkingEffort(null);
     }
   }, [availableVariants, thinkingEffort]);
