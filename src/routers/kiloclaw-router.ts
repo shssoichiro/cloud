@@ -422,36 +422,33 @@ export const kiloclawRouter = createTRPCRouter({
 
       const couponId = getEnvVariable('STRIPE_KILOCLAW_EARLYBIRD_COUPON_ID');
 
-      const session = await stripe.checkout.sessions.create(
-        {
-          mode: 'payment',
-          customer: stripeCustomerId,
-          billing_address_collection: 'required',
-          line_items: [{ price: priceId, quantity: 1 }],
-          ...(couponId ? { discounts: [{ coupon: couponId }] } : { allow_promotion_codes: true }),
-          customer_update: {
-            name: 'auto',
-            address: 'auto',
-          },
-          tax_id_collection: {
-            enabled: true,
-            required: 'never',
-          },
-          payment_intent_data: {
-            metadata: {
-              type: 'kiloclaw-earlybird',
-              kiloUserId: ctx.user.id,
-            },
-          },
-          success_url: `${APP_URL}/claw?earlybird_checkout=success`,
-          cancel_url: `${APP_URL}/claw/earlybird?checkout=cancelled`,
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        customer: stripeCustomerId,
+        billing_address_collection: 'required',
+        line_items: [{ price: priceId, quantity: 1 }],
+        ...(couponId ? { discounts: [{ coupon: couponId }] } : { allow_promotion_codes: true }),
+        customer_update: {
+          name: 'auto',
+          address: 'auto',
+        },
+        tax_id_collection: {
+          enabled: true,
+          required: 'never',
+        },
+        payment_intent_data: {
           metadata: {
             type: 'kiloclaw-earlybird',
             kiloUserId: ctx.user.id,
           },
         },
-        { idempotencyKey: `earlybird-checkout-${ctx.user.id}` }
-      );
+        success_url: `${APP_URL}/claw?earlybird_checkout=success`,
+        cancel_url: `${APP_URL}/claw/earlybird?checkout=cancelled`,
+        metadata: {
+          type: 'kiloclaw-earlybird',
+          kiloUserId: ctx.user.id,
+        },
+      });
 
       return { url: typeof session.url === 'string' ? session.url : null };
     }),
