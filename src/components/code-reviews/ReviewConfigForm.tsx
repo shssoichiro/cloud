@@ -24,6 +24,7 @@ import { useTRPC, useRawTRPCClient } from '@/lib/trpc/utils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useFeatureFlagEnabled } from 'posthog-js/react';
 import { useRefreshRepositories } from '@/hooks/useRefreshRepositories';
 import { useOrganizationModels } from '@/components/cloud-agent/hooks/useOrganizationModels';
 import { ModelCombobox } from '@/components/shared/ModelCombobox';
@@ -212,6 +213,10 @@ export function ReviewConfigForm({
   const [maxReviewTime, setMaxReviewTime] = useState([10]);
   const [selectedModel, setSelectedModel] = useState(PRIMARY_DEFAULT_MODEL);
   const [thinkingEffort, setThinkingEffort] = useState<string | null>(null);
+  const isCloudAgentNextFlagEnabled = useFeatureFlagEnabled('code-review-cloud-agent-next');
+  const isCloudAgentNextEnabled =
+    // Available only for cloud-agent-next runner
+    isCloudAgentNextFlagEnabled || process.env.NODE_ENV === 'development';
   const [repositorySelectionMode, setRepositorySelectionMode] = useState<'all' | 'selected'>('all');
   const [selectedRepositoryIds, setSelectedRepositoryIds] = useState<number[]>([]);
   // Repositories added from search results (for GitLab where pagination limits initial results)
@@ -553,8 +558,8 @@ export function ReviewConfigForm({
               helperText="Choose the AI model to use for code reviews"
             />
 
-            {/* Thinking Effort — only shown when the model supports variants */}
-            {availableVariants.length > 0 && (
+            {/* Thinking Effort — only shown when cloud-agent-next is available and the model supports variants */}
+            {availableVariants.length > 0 && isCloudAgentNextEnabled && (
               <div className="space-y-2">
                 <Label>Thinking Effort</Label>
                 <Select
