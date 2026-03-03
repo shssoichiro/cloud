@@ -110,7 +110,7 @@ export function VersionPinCard() {
                 <div>
                   <span className="text-muted-foreground">Pinned to: </span>
                   <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                    {myPin.openclaw_version} / {myPin.variant}
+                    {myPin.openclaw_version ?? 'Unknown'} / {myPin.variant ?? 'Unknown'}
                   </code>
                 </div>
                 <div>

@@ -13,7 +13,7 @@ import {
   STRIPE_KILOCLAW_EARLYBIRD_COUPON_ID,
 } from '@/lib/config.server';
 import { db } from '@/lib/drizzle';
-import { kiloclaw_version_pins, kiloclaw_image_catalog, kilocode_users } from '@kilocode/db/schema';
+import { kiloclaw_version_pins, kiloclaw_image_catalog, kilocode_users, kiloclaw_earlybird_purchases } from '@kilocode/db/schema';
 import { eq, desc, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { sentryLogger } from '@/lib/utils.server';
@@ -25,9 +25,6 @@ import {
 } from '@/lib/kiloclaw/instance-registry';
 import { client as stripe } from '@/lib/stripe-client';
 import { APP_URL } from '@/lib/constants';
-import { db } from '@/lib/drizzle';
-import { kiloclaw_earlybird_purchases, kiloclaw_version_pins } from '@kilocode/db/schema';
-import { eq } from 'drizzle-orm';
 
 const kilocodeDefaultModelSchema = z
   .string()
@@ -138,15 +135,13 @@ async function provisionInstance(
   });
   const kilocodeApiKeyExpiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 
-  // Check if the user has a version pin within a transaction to prevent race conditions
-  const pinnedImageTag = await db.transaction(async (tx) => {
-    const [pin] = await tx
-      .select({ image_tag: kiloclaw_version_pins.image_tag })
-      .from(kiloclaw_version_pins)
-      .where(eq(kiloclaw_version_pins.user_id, user.id))
-      .limit(1);
-    return pin?.image_tag;
-  });
+  // Check if the user has a version pin
+  const [pin] = await db
+    .select({ image_tag: kiloclaw_version_pins.image_tag })
+    .from(kiloclaw_version_pins)
+    .where(eq(kiloclaw_version_pins.user_id, user.id))
+    .limit(1);
+  const pinnedImageTag = pin?.image_tag;
 
   const client = new KiloClawInternalClient();
   return client.provision(user.id, {
@@ -384,7 +379,6 @@ export const kiloclawRouter = createTRPCRouter({
     return client.restoreConfig(ctx.user.id);
   }),
 
-<<<<<<< HEAD
   getEarlybirdStatus: baseProcedure
     .output(z.object({ purchased: z.boolean() }))
     .query(async ({ ctx }) => {
@@ -536,11 +530,14 @@ export const kiloclawRouter = createTRPCRouter({
     .input(
       z.object({
         imageTag: z.string().min(1),
-        reason: z.string().optional(),
+        reason: z.string().max(500).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
       // Verify the version exists and is available
+      // Note: There is a small TOCTOU window between this check and the insert below.
+      // Worst case: a user pins to a version disabled milliseconds before. The FK constraint
+      // on image_tag ensures referential integrity, and the status check is best-effort.
       const [version] = await db
         .select()
         .from(kiloclaw_image_catalog)

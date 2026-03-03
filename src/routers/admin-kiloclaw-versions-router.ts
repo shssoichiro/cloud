@@ -103,14 +103,22 @@ export const adminKiloclawVersionsRouter = createTRPCRouter({
           const latestTagAfter = (await client.getLatestVersion())?.imageTag;
           if (latestTagAfter === input.imageTag) {
             // Rollback the disable - this version became :latest during the operation
-            await db
-              .update(kiloclaw_image_catalog)
-              .set({
-                status: 'available',
-                updated_by: ctx.user.id,
-                updated_at: new Date().toISOString(),
-              })
-              .where(eq(kiloclaw_image_catalog.image_tag, input.imageTag));
+            try {
+              await db
+                .update(kiloclaw_image_catalog)
+                .set({
+                  status: 'available',
+                  updated_by: ctx.user.id,
+                  updated_at: new Date().toISOString(),
+                })
+                .where(eq(kiloclaw_image_catalog.image_tag, input.imageTag));
+            } catch (rollbackErr) {
+              console.error(
+                `Failed to rollback disable for ${input.imageTag}:`,
+                rollbackErr instanceof Error ? rollbackErr.message : rollbackErr
+              );
+              // Still throw the precondition error so the caller knows the operation failed
+            }
 
             throw new TRPCError({
               code: 'PRECONDITION_FAILED',
