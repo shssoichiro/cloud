@@ -366,6 +366,8 @@ export type StoredSession = {
   cloudAgentSessionId?: string | null;
   /** Platform where session was created: 'cli', 'cloud-agent', 'agent-manager', or extension identifier */
   createdOnPlatform?: string | null;
+  /** Which backend table this session comes from */
+  source?: 'v1' | 'v2';
 };
 
 // ============================================================================
