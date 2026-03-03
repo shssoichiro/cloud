@@ -423,7 +423,7 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
    * Child session idle events still trigger user message completion
    * but do NOT toggle the streaming flag or fire onStreamingChanged.
    */
-  function handleSessionIdle(data: { sessionID: string }): void {
+  function handleSessionIdle(_data: { sessionID: string }): void {
     // Complete user messages for both root and child sessions.
     // Streaming is NOT stopped here — the wrapper's `complete` event handles that.
     completeUserMessages();
