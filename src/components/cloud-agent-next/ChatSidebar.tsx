@@ -15,7 +15,6 @@ type ChatSidebarProps = {
   organizationId?: string;
   onNewSession: () => void;
   onSelectSession?: (sessionId: string) => void;
-  /** Delete handler - receives sessionId (UUID) */
   onDeleteSession?: (sessionId: string) => void;
   isInSheet?: boolean;
 };
