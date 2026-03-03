@@ -500,6 +500,12 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       let pinned = await resolveVersionByTag(this.env.KV_CLAW_CACHE, config.pinnedImageTag);
 
       // Fall back to Postgres catalog (authoritative, has all synced versions)
+      if (!pinned && !this.env.HYPERDRIVE?.connectionString) {
+        console.error(
+          '[DO] HYPERDRIVE not configured — cannot look up pinned tag in Postgres:',
+          config.pinnedImageTag
+        );
+      }
       if (!pinned && this.env.HYPERDRIVE?.connectionString) {
         try {
           const catalogEntry = await lookupCatalogVersion(
