@@ -470,16 +470,25 @@ export async function handleSuccessfulChargeWithPayment(
 }
 
 async function recordKiloclawEarlybirdPurchase(user: User, charge: Stripe.Charge) {
-  await db
+  const result = await db
     .insert(kiloclaw_earlybird_purchases)
     .values({
       user_id: user.id,
       stripe_charge_id: charge.id,
       amount_cents: charge.amount,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: kiloclaw_earlybird_purchases.id });
 
-  logExceptInTest(`Recorded kiloclaw-earlybird purchase for user ${user.id}, charge ${charge.id}`);
+  if (result.length > 0) {
+    logExceptInTest(
+      `Recorded kiloclaw-earlybird purchase for user ${user.id}, charge ${charge.id}`
+    );
+  } else {
+    logExceptInTest(
+      `Duplicate kiloclaw-earlybird charge skipped for user ${user.id}, charge ${charge.id}`
+    );
+  }
 }
 
 export async function getStripeInvoices(
