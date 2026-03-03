@@ -28,7 +28,11 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const SES_PREFIX = 'ses_';
 const AGENT_PREFIX = 'agent_';
 
-function formatModelLabel(providerId: string, modelId: string): string | null {
+function formatModelLabel(providerId: unknown, modelId: unknown): string | null {
+  if (typeof providerId !== 'string' || typeof modelId !== 'string') {
+    return null;
+  }
+
   const provider = providerId.trim();
   const model = modelId.trim();
 
@@ -41,7 +45,12 @@ function formatModelLabel(providerId: string, modelId: string): string | null {
 
 function getV2MessageModelLabel(message: StoredMessage): string | null {
   if (message.info.role === 'user') {
-    return formatModelLabel(message.info.model.providerID, message.info.model.modelID);
+    const model = message.info.model;
+    if (!model) {
+      return null;
+    }
+
+    return formatModelLabel(model.providerID, model.modelID);
   }
 
   return formatModelLabel(message.info.providerID, message.info.modelID);
