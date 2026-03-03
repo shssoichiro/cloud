@@ -1,6 +1,6 @@
 {
-  "id": "ece4ecc6-d4d7-4519-afbe-b2cb136489dc",
-  "prevId": "f223a1da-6fdb-4664-be8f-861924909fa5",
+  "id": "11e3e4ba-5050-4757-bc60-0f808a41e233",
+  "prevId": "ece4ecc6-d4d7-4519-afbe-b2cb136489dc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6867,6 +6867,80 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.kiloclaw_earlybird_purchases": {
+      "name": "kiloclaw_earlybird_purchases",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stripe_charge_id": {
+          "name": "stripe_charge_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_cents": {
+          "name": "amount_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "kiloclaw_earlybird_purchases_user_id_kilocode_users_id_fk": {
+          "name": "kiloclaw_earlybird_purchases_user_id_kilocode_users_id_fk",
+          "tableFrom": "kiloclaw_earlybird_purchases",
+          "tableTo": "kilocode_users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "kiloclaw_earlybird_purchases_user_id_unique": {
+          "name": "kiloclaw_earlybird_purchases_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id"
+          ]
+        },
+        "kiloclaw_earlybird_purchases_stripe_charge_id_unique": {
+          "name": "kiloclaw_earlybird_purchases_stripe_charge_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "stripe_charge_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
