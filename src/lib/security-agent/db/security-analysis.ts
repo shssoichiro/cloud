@@ -583,7 +583,10 @@ export async function transitionAutoAnalysisQueueFromCallback(params: {
     .where(
       and(
         eq(security_analysis_queue.finding_id, params.findingId),
-        eq(security_analysis_queue.queue_status, 'running')
+        or(
+          eq(security_analysis_queue.queue_status, 'running'),
+          eq(security_analysis_queue.queue_status, 'pending')
+        )
       )
     );
 }

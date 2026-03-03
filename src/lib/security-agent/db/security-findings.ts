@@ -202,6 +202,10 @@ export async function upsertSecurityFinding(
           NULL::text AS previous_status,
           ${security_findings.created_at} AS created_at
       ),
+      -- fallback: concurrent insert race — previous_status reflects the current row state
+      -- (written by the concurrent winner), not the true pre-update value. This means
+      -- syncAutoAnalysisQueueForFinding may misidentify a status transition during races.
+      -- Acceptable because the concurrent winner's sync call will have the correct value.
       fallback AS (
         SELECT
           ${security_findings.id} AS id,

@@ -377,16 +377,30 @@ async function handleAnalysisCompleted(
     },
   });
 
-  await finalizeAnalysis(
-    findingId,
-    rawMarkdown,
-    analysisModel,
-    owner,
-    triggeredByUserId,
-    authToken,
-    correlationId,
-    organizationId
-  );
+  try {
+    await finalizeAnalysis(
+      findingId,
+      rawMarkdown,
+      analysisModel,
+      owner,
+      triggeredByUserId,
+      authToken,
+      correlationId,
+      organizationId
+    );
+  } catch (error) {
+    captureException(error, {
+      tags: { source: 'security-analysis-callback-api', operation: 'finalizeAnalysis' },
+      extra: { findingId, correlationId },
+    });
+    await transitionAutoAnalysisQueueFromCallback({
+      findingId,
+      toStatus: 'failed',
+      failureCode: 'START_CALL_AMBIGUOUS',
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
 
   const updatedFinding = await getSecurityFindingById(findingId);
   if (updatedFinding?.analysis_status === 'completed') {
