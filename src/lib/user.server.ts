@@ -452,6 +452,7 @@ const authOptions: NextAuthOptions = {
 
           return redirectUrlForCode(`BLOCKED`, accountInfo.google_user_email);
         }
+
         if (existingUser) {
           const primaryEmailDomain = getLowerDomainFromEmail(existingUser.google_user_email);
           if (primaryEmailDomain) {
