@@ -7,6 +7,7 @@ import { db } from '@/lib/drizzle';
 import { WORKOS_API_KEY } from '@/lib/config.server';
 import { WorkOS } from '@workos-inc/node';
 import type { User } from '@kilocode/db/schema';
+import { reportAuthEvent } from '@/lib/abuse-service';
 import {
   payment_methods,
   kilocode_users,
@@ -155,13 +156,37 @@ export async function findUserByEmail(email: string): Promise<User | undefined> 
   });
 }
 
+function fireAuthEvent(
+  user: Pick<User, 'id' | 'google_user_email' | 'created_at'>,
+  eventType: 'signup' | 'signin',
+  provider: AuthProviderId,
+  requestHeaders?: Headers
+) {
+  if (!requestHeaders) return;
+  void reportAuthEvent({
+    kilo_user_id: user.id,
+    event_type: eventType,
+    email: user.google_user_email,
+    account_created_at: user.created_at,
+    ip_address: requestHeaders.get('x-forwarded-for'),
+    geo_city: requestHeaders.get('x-vercel-ip-city'),
+    geo_country: requestHeaders.get('x-vercel-ip-country'),
+    ja4_digest: requestHeaders.get('x-vercel-ja4-digest'),
+    user_agent: requestHeaders.get('user-agent'),
+    auth_method: provider,
+  });
+}
+
 export async function createOrUpdateUser(
   args: CreateOrUpdateUserArgs,
   turnstile_guid: UUID | undefined,
-  autoLinkToExistingUser: boolean = false
+  autoLinkToExistingUser: boolean = false,
+  requestHeaders?: Headers
 ): Promise<Result<{ user: User; isNew: boolean }, AuthErrorType>> {
   const existingUser = await findAndSyncExistingUser(args);
   if (existingUser) {
+    fireAuthEvent(existingUser, 'signin', args.provider, requestHeaders);
+
     // User signed in or is being updated
     posthogClient.capture({
       distinctId: existingUser.google_user_email,
@@ -207,6 +232,7 @@ export async function createOrUpdateUser(
       if (!linkResult.success) {
         return { success: false, error: linkResult.error };
       }
+      fireAuthEvent(userByEmail, 'signin', args.provider, requestHeaders);
       // Successfully linked account, return the existing user
       posthogClient.capture({
         distinctId: userByEmail.google_user_email,
@@ -283,6 +309,8 @@ export async function createOrUpdateUser(
 
     return savedUser;
   });
+
+  fireAuthEvent(savedUser, 'signup', args.provider, requestHeaders);
 
   // User created event in PostHog
   posthogClient.capture({

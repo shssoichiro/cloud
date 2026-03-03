@@ -470,8 +470,10 @@ const authOptions: NextAuthOptions = {
           }
         }
 
+        const requestHeaders = await headers();
+
         if (accountInfo.provider === 'workos') {
-          return processSSOUserLogin(accountInfo);
+          return processSSOUserLogin(accountInfo, requestHeaders);
         }
 
         // Validate Turnstile JWT for real OAuth logins (not fake logins or email auth)
@@ -499,7 +501,7 @@ const authOptions: NextAuthOptions = {
             return redirectUrlForCode('INVALID_VERIFICATION');
           }
 
-          const currentIP = (await headers()).get('x-forwarded-for');
+          const currentIP = requestHeaders.get('x-forwarded-for');
           if (verifiedToken.ip !== currentIP) {
             sentryLogger('turnstile-auth')(
               `SECURITY: IP mismatch - JWT: ${verifiedToken.ip}, Current: ${currentIP}`,
@@ -521,7 +523,12 @@ const authOptions: NextAuthOptions = {
                 await linkAccountToExistingUser(linkingSession.existingUserId, accountInfo),
                 v => ({ ...v, isNew: false })
               )
-            : await createOrUpdateUser(accountInfo, verifiedToken?.guid, autoLinkToExistingUser);
+            : await createOrUpdateUser(
+                accountInfo,
+                verifiedToken?.guid,
+                autoLinkToExistingUser,
+                requestHeaders
+              );
 
         if (result.success === false) {
           // Expected user errors that shouldn't be logged to Sentry
