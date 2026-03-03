@@ -428,6 +428,9 @@ export async function handleSuccessfulChargeWithPayment(
     // Auto-topup-setup is the initial $15 charge when user enables auto-top-up
     const isAutoTopUpSetup = paymentIntent?.metadata?.type === 'auto-topup-setup';
 
+    // KiloClaw earlybird purchases are handled separately - not a credit top-up
+    const isKiloclawEarlybird = paymentIntent?.metadata?.type === 'kiloclaw-earlybird';
+
     // Invoice-based auto-top-ups are handled by `invoice.payment_succeeded` webhook,
     // which has direct access to invoice metadata. Skip them here to avoid duplicate processing.
     const invoiceId =
@@ -442,6 +445,9 @@ export async function handleSuccessfulChargeWithPayment(
       );
     } else if (isAutoTopUpSetup) {
       await handleAutoTopUpSetup(user, paymentIntent, creditAmountInCents, config);
+    } else if (isKiloclawEarlybird) {
+      // KiloClaw earlybird purchase - handled by separate flow, not a credit top-up
+      logExceptInTest(`Skipping kiloclaw-earlybird charge ${charge.id} - handled separately`);
     } else {
       // Unknown charge type - log warning but don't process
       warnExceptInTest(
