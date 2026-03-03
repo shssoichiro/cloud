@@ -70,9 +70,7 @@ export function VersionsTab() {
     })
   );
 
-  const { data: latestTag } = useQuery(
-    trpc.admin.kiloclawVersions.getLatestTag.queryOptions()
-  );
+  const { data: latestTag } = useQuery(trpc.admin.kiloclawVersions.getLatestTag.queryOptions());
 
   const { mutateAsync: updateStatus } = useMutation(
     trpc.admin.kiloclawVersions.updateVersionStatus.mutationOptions({
@@ -91,7 +89,9 @@ export function VersionsTab() {
   const { mutateAsync: syncCatalog, isPending: isSyncing } = useMutation(
     trpc.admin.kiloclawVersions.syncCatalog.mutationOptions({
       onSuccess: result => {
-        toast.success(`Sync complete: ${result.synced} added, ${result.skipped} already existed`);
+        const parts = [`${result.synced} added`, `${result.alreadyExisted} already existed`];
+        if (result.invalid > 0) parts.push(`${result.invalid} invalid`);
+        toast.success(`Sync complete: ${parts.join(', ')}`);
         void queryClient.invalidateQueries({
           queryKey: trpc.admin.kiloclawVersions.listVersions.queryKey(),
         });
@@ -123,12 +123,7 @@ export function VersionsTab() {
             <SelectItem value="disabled">Disabled</SelectItem>
           </SelectContent>
         </Select>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={isSyncing}
-          onClick={() => void syncCatalog()}
-        >
+        <Button variant="outline" size="sm" disabled={isSyncing} onClick={() => void syncCatalog()}>
           {isSyncing ? 'Syncing...' : 'Sync from KV'}
         </Button>
       </div>
@@ -172,7 +167,7 @@ export function VersionsTab() {
                           : version.image_tag}
                       </code>
                       {latestTag === version.image_tag && (
-                        <Badge className="bg-blue-600 text-white text-[10px] px-1.5 py-0">
+                        <Badge className="bg-blue-600 px-1.5 py-0 text-[10px] text-white">
                           latest
                         </Badge>
                       )}

@@ -201,11 +201,15 @@ export async function resolveVersionByTag(
     console.warn('[image-version] Invalid tag entry in KV:', imageTag, parsed.error.flatten());
   }
 
-  // Fallback: scan versioned keys (for backward compatibility or cache misses)
-  console.log('[image-version] Tag lookup key missing, falling back to scan for:', imageTag);
+  // Fallback: scan versioned keys (for backward compatibility or cache misses).
+  // Capped at 5 pages (5000 keys) to prevent unbounded iteration.
+  console.warn('[image-version] Tag lookup key missing, falling back to scan for:', imageTag);
   let cursor: string | undefined;
+  let pages = 0;
+  const MAX_SCAN_PAGES = 5;
   do {
     const result = await kv.list({ prefix: 'image-version:', cursor });
+    pages++;
     for (const key of result.keys) {
       if (
         key.name.startsWith('image-version:latest:') ||
@@ -218,16 +222,21 @@ export async function resolveVersionByTag(
       const parsed = ImageVersionEntrySchema.safeParse(raw);
       if (parsed.success && parsed.data.imageTag === imageTag) {
         // Backfill the tag lookup key for future requests (fire-and-forget)
-        // This improves performance for subsequent lookups but isn't critical
-        kv.put(imageVersionTagKey(imageTag), JSON.stringify(parsed.data))
-          .catch(err =>
-            console.warn('[image-version] Failed to backfill tag lookup key:', err instanceof Error ? err.message : err)
-          );
+        kv.put(imageVersionTagKey(imageTag), JSON.stringify(parsed.data)).catch(err =>
+          console.warn(
+            '[image-version] Failed to backfill tag lookup key:',
+            err instanceof Error ? err.message : err
+          )
+        );
         return parsed.data;
       }
     }
     cursor = result.list_complete ? undefined : result.cursor;
-  } while (cursor);
+  } while (cursor && pages < MAX_SCAN_PAGES);
+
+  if (cursor) {
+    console.warn('[image-version] Scan aborted after', MAX_SCAN_PAGES, 'pages for tag:', imageTag);
+  }
 
   return null;
 }

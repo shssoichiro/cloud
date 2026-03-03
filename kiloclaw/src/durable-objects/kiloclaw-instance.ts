@@ -494,7 +494,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     // Resolve the image version for this provision.
     // If the user has a pinned image tag, look it up in KV first (fast), then Postgres (authoritative).
     // If not pinned, resolve latest from KV.
-    console.log('[DO] provision: pinnedImageTag from config:', config.pinnedImageTag ?? 'none');
+    console.debug('[DO] provision: pinnedImageTag from config:', config.pinnedImageTag ?? 'none');
     if (config.pinnedImageTag) {
       // Try KV first (fast, but only has versions registered by the current worker)
       let pinned = await resolveVersionByTag(this.env.KV_CLAW_CACHE, config.pinnedImageTag);
@@ -528,11 +528,17 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
                 imageDigest: catalogEntry.imageDigest,
                 publishedAt: catalogEntry.publishedAt,
               };
-              console.log('[DO] Resolved pinned tag from Postgres catalog:', config.pinnedImageTag);
+              console.debug(
+                '[DO] Resolved pinned tag from Postgres catalog:',
+                config.pinnedImageTag
+              );
             }
           }
         } catch (err) {
-          console.warn('[DO] Failed to look up pinned tag in Postgres:', err instanceof Error ? err.message : err);
+          console.warn(
+            '[DO] Failed to look up pinned tag in Postgres:',
+            err instanceof Error ? err.message : err
+          );
         }
       }
 
@@ -541,11 +547,14 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         this.imageVariant = pinned.variant;
         this.trackedImageTag = pinned.imageTag;
         this.trackedImageDigest = pinned.imageDigest;
-        console.log('[DO] Using pinned version:', pinned.openclawVersion, '→', pinned.imageTag);
+        console.debug('[DO] Using pinned version:', pinned.openclawVersion, '→', pinned.imageTag);
       } else {
         // Pinned tag not found in KV or Postgres — use the tag directly but metadata is unknown.
         // Clear version metadata to avoid stale values from a previous provision.
-        console.warn('[DO] Pinned tag not found in KV or Postgres, using tag directly:', config.pinnedImageTag);
+        console.warn(
+          '[DO] Pinned tag not found in KV or Postgres, using tag directly:',
+          config.pinnedImageTag
+        );
         this.openclawVersion = null;
         this.imageVariant = null;
         this.trackedImageTag = config.pinnedImageTag;
@@ -1139,7 +1148,14 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     const { envVars, minSecretsVersion } = await this.buildUserEnvVars();
     const guest = guestFromSize(this.machineSize);
     const imageTag = this.resolveImageTag();
-    console.log('[DO] startGateway: deploying with imageTag:', imageTag, 'trackedImageTag:', this.trackedImageTag, 'openclawVersion:', this.openclawVersion);
+    console.log(
+      '[DO] startGateway: deploying with imageTag:',
+      imageTag,
+      'trackedImageTag:',
+      this.trackedImageTag,
+      'openclawVersion:',
+      this.openclawVersion
+    );
     const identity = {
       userId: this.userId,
       sandboxId: this.sandboxId,

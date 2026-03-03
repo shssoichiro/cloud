@@ -213,7 +213,7 @@ export const adminKiloclawVersionsRouter = createTRPCRouter({
         .returning();
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
-      if (msg.includes('foreign key') || msg.includes('violates')) {
+      if (msg.includes('foreign key')) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: `Image tag '${input.imageTag}' not found in catalog`,
@@ -271,7 +271,7 @@ export const adminKiloclawVersionsRouter = createTRPCRouter({
 
     // Early return if KV has no versions
     if (kvVersions.length === 0) {
-      return { synced: 0, skipped: 0, total: 0 };
+      return { synced: 0, alreadyExisted: 0, invalid: 0, total: 0 };
     }
 
     // Fetch only existing tags that match KV versions (more memory-efficient)
@@ -285,10 +285,11 @@ export const adminKiloclawVersionsRouter = createTRPCRouter({
       ).map(row => row.image_tag)
     );
 
-    // Filter out entries that already exist
+    // Filter out entries that already exist in Postgres
     const newEntries = kvVersions.filter(entry => !existingTags.has(entry.imageTag));
 
-    // Validate entries before inserting — KV data may be malformed
+    // Validate entries before inserting — KV data may be malformed.
+    // Uses the same rules as validateEntry() in catalog-registration.ts.
     const IMAGE_TAG_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
     const VERSION_RE = /^\d{4}\.\d{1,2}\.\d{1,2}$/;
     const VARIANT_RE = /^[a-z0-9-]{1,64}$/;
@@ -300,23 +301,32 @@ export const adminKiloclawVersionsRouter = createTRPCRouter({
       if (isNaN(ts)) return false;
       return true;
     });
-    const skipped = kvVersions.length - validEntries.length;
+    const invalidCount = newEntries.length - validEntries.length;
 
-    // Bulk insert validated new entries
+    // Bulk insert validated new entries. onConflictDoNothing guards against
+    // concurrent syncs inserting the same tag between our check and insert.
     if (validEntries.length > 0) {
-      await db.insert(kiloclaw_image_catalog).values(
-        validEntries.map(entry => ({
-          openclaw_version: entry.openclawVersion,
-          variant: entry.variant,
-          image_tag: entry.imageTag,
-          image_digest: entry.imageDigest,
-          status: 'available' as const,
-          published_at: entry.publishedAt,
-        }))
-      );
+      await db
+        .insert(kiloclaw_image_catalog)
+        .values(
+          validEntries.map(entry => ({
+            openclaw_version: entry.openclawVersion,
+            variant: entry.variant,
+            image_tag: entry.imageTag,
+            image_digest: entry.imageDigest,
+            status: 'available' as const,
+            published_at: entry.publishedAt,
+          }))
+        )
+        .onConflictDoNothing();
     }
 
-    return { synced: validEntries.length, skipped, total: kvVersions.length };
+    return {
+      synced: validEntries.length,
+      alreadyExisted: existingTags.size,
+      invalid: invalidCount,
+      total: kvVersions.length,
+    };
   }),
 
   searchUsers: adminProcedure

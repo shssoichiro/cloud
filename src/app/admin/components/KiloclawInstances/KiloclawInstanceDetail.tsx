@@ -200,13 +200,9 @@ function VersionPinCard({ userId }: { userId: string }) {
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-4">
               <DetailField label="Pinned Image Tag">
-                <Badge className="bg-blue-600 font-mono text-xs">
-                  {pinData.image_tag}
-                </Badge>
+                <Badge className="bg-blue-600 font-mono text-xs">{pinData.image_tag}</Badge>
               </DetailField>
-              <DetailField label="OpenClaw Version">
-                {pinData.openclaw_version ?? '—'}
-              </DetailField>
+              <DetailField label="OpenClaw Version">{pinData.openclaw_version ?? '—'}</DetailField>
               <DetailField label="Variant">{pinData.variant ?? 'default'}</DetailField>
               <DetailField label="Pinned By">
                 {pinData.pinned_by_email ?? pinData.pinned_by}
