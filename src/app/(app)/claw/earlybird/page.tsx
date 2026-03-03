@@ -51,6 +51,9 @@ export default function EarlybirdPage() {
               The discount applies to compute only, not inference. At $25/month for a hosted AI
               agent, that&apos;s hard to beat. 🦀
             </p>
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              All early bird purchases are final. No refunds will be issued.
+            </p>
           </CardContent>
 
           <CardFooter className="relative pt-2">
