@@ -839,6 +839,7 @@ export function useCloudAgentStream({
               prompt: message,
               mode: mode as 'code' | 'plan' | 'debug' | 'orchestrator' | 'ask',
               model,
+              autoCommit: true,
               organizationId: organizationIdRef.current,
             },
             { context: { skipBatch: true } }
@@ -850,6 +851,7 @@ export function useCloudAgentStream({
               prompt: message,
               mode: mode as 'code' | 'plan' | 'debug' | 'orchestrator' | 'ask',
               model,
+              autoCommit: true,
             },
             { context: { skipBatch: true } }
           );
