@@ -10,6 +10,8 @@ import type { SessionConfig, StoredMessage, Part } from '../types';
 import { isMessageStreaming, isAssistantMessage } from '../types';
 import type { QuestionInfo } from '@/types/opencode.gen';
 import { splitByContiguousPrefix } from '@/lib/utils/splitByContiguousPrefix';
+import type { AutocommitStatus } from '@/lib/cloud-agent-next/processor/types';
+export type { AutocommitStatus };
 
 // ============================================================================
 // Primary State - StoredMessage format
@@ -84,16 +86,24 @@ export const sessionStatusAtom = atom<
 >({ type: 'idle' });
 
 /**
- * Autocommit status — one per execution, transitions in-place.
- * Reset to null when a new execution starts.
+ * Per-message autocommit status map.
+ * Key is the assistant message ID; value is the status for that turn's autocommit.
+ * Replaces the old single-value `autocommitStatusAtom` to survive multi-turn replays.
  */
-export type AutocommitStatus = {
-  status: 'in_progress' | 'completed' | 'failed';
+export const autocommitStatusMapAtom = atom<Map<string, AutocommitStatus>>(new Map());
+
+/**
+ * Inline session status indicator — shown in the chat feed for recoverable
+ * session errors, reconnection states, and interrupts.
+ * Non-recoverable errors still go through `errorAtom` → `ErrorBanner`.
+ */
+export type SessionStatusIndicator = {
+  type: 'error' | 'warning' | 'info';
   message: string;
-  timestamp: string;
+  timestamp: number;
 };
 
-export const autocommitStatusAtom = atom<AutocommitStatus | null>(null);
+export const sessionStatusIndicatorAtom = atom<SessionStatusIndicator | null>(null);
 
 // ============================================================================
 // Common State
@@ -161,7 +171,8 @@ export const clearMessagesAtom = atom(null, (_get, set) => {
   set(messagesMapAtom, new Map());
   set(partsMapAtom, new Map());
   set(questionRequestIdsAtom, new Map());
-  set(autocommitStatusAtom, null);
+  set(autocommitStatusMapAtom, new Map());
+  set(sessionStatusIndicatorAtom, null);
   set(standaloneQuestionAtom, null);
 });
 

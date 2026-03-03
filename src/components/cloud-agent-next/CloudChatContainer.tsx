@@ -24,7 +24,8 @@ import {
   getChildSessionMessagesAtom,
   questionRequestIdsAtom,
   sessionOrganizationIdAtom,
-  autocommitStatusAtom,
+  autocommitStatusMapAtom,
+  sessionStatusIndicatorAtom,
   standaloneQuestionAtom,
 } from './store/atoms';
 import { buildSessionConfig, needsResumeConfiguration } from './session-config';
@@ -85,7 +86,8 @@ export function CloudChatContainer({ organizationId }: CloudChatContainerProps) 
   const currentSessionId = useAtomValue(currentSessionIdAtom);
   const sessionConfig = useAtomValue(sessionConfigAtom);
   const totalCost = useAtomValue(totalCostAtom);
-  const autocommitStatus = useAtomValue(autocommitStatusAtom);
+  const autocommitStatusMap = useAtomValue(autocommitStatusMapAtom);
+  const sessionStatusIndicator = useAtomValue(sessionStatusIndicatorAtom);
   const questionRequestIds = useAtomValue(questionRequestIdsAtom);
   const questionOrganizationId = useAtomValue(sessionOrganizationIdAtom);
   const standaloneQuestion = useAtomValue(standaloneQuestionAtom);
@@ -218,9 +220,13 @@ export function CloudChatContainer({ organizationId }: CloudChatContainerProps) 
   const [inputMode, setInputMode] = useState<AgentMode>('code');
   const [inputModel, setInputModel] = useState<string>('');
 
-  // Auto-scroll behavior
+  // Auto-scroll behavior — also scroll when autocommit/status/question content changes
   const { messagesEndRef, scrollContainerRef, showScrollButton, handleScroll, scrollToBottom } =
-    useAutoScroll(dynamicMessages);
+    useAutoScroll(dynamicMessages, [
+      autocommitStatusMap,
+      sessionStatusIndicator,
+      standaloneQuestion,
+    ]);
 
   // Slash commands
   const { availableCommands } = useSlashCommandSets();
@@ -988,7 +994,7 @@ export function CloudChatContainer({ organizationId }: CloudChatContainerProps) 
         onInputModeChange={handleInputModeChange}
         onInputModelChange={handleInputModelChange}
         isOldSession={isOldSession}
-        autocommitStatus={autocommitStatus}
+        sessionStatusIndicator={sessionStatusIndicator}
         getChildMessages={getChildSessionMessages}
         standaloneQuestion={standaloneQuestion}
         chatInputInitialValue={failedMessageText ?? undefined}

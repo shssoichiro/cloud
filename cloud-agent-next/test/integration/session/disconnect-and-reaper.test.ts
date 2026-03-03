@@ -12,8 +12,8 @@
  */
 
 import { env, runInDurableObject, listDurableObjectIds } from 'cloudflare:test';
-import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { describe, it, expect, beforeEach } from 'vitest';
+import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { createEventQueries } from '../../../src/session/queries/events.js';
 import type { ExecutionId } from '../../../src/types/ids.js';
 
