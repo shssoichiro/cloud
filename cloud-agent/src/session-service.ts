@@ -768,8 +768,6 @@ export class SessionService {
             ...options,
             isFirstExecution: currentIsFirst,
             kiloSessionId,
-            images: options?.images,
-            variant: options?.variant,
           },
           env
         )) {
