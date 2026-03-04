@@ -1212,12 +1212,8 @@ describe('gateway process control via controller', () => {
 // selectRecoveryCandidate (pure function, no mocks needed)
 // ============================================================================
 
-import {
-  selectRecoveryCandidate,
-  parseRegions,
-  deprioritizeRegion,
-  shuffleRegions,
-} from './kiloclaw-instance';
+import { selectRecoveryCandidate } from './machine-recovery';
+import { parseRegions, deprioritizeRegion, shuffleRegions } from './regions';
 import type { FlyMachine } from '../fly/types';
 
 function fakeMachine(overrides: Partial<FlyMachine>): FlyMachine {

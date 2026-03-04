@@ -35,9 +35,7 @@ import {
   type MachineSize,
 } from '../schemas/instance-config';
 import {
-  OPENCLAW_PORT,
   STARTUP_TIMEOUT_SECONDS,
-  DEFAULT_MACHINE_GUEST,
   DEFAULT_VOLUME_SIZE_GB,
   ALARM_INTERVAL_RUNNING_MS,
   ALARM_INTERVAL_DESTROYING_MS,
@@ -52,19 +50,41 @@ import {
   OPENCLAW_BUILTIN_DEFAULT_MODEL,
 } from '../config';
 import type { FlyClientConfig } from '../fly/client';
-import type {
-  FlyMachineConfig,
-  FlyMachine,
-  FlyMachineState,
-  FlyVolumeSnapshot,
-} from '../fly/types';
+import type { FlyMachineConfig, FlyVolumeSnapshot } from '../fly/types';
 import * as fly from '../fly/client';
 import { appNameFromUserId } from '../fly/apps';
 import { ENCRYPTED_ENV_PREFIX, encryptEnvValue } from '../utils/env-encryption';
-import { z, type ZodType } from 'zod';
+import type { ZodType } from 'zod';
 import { resolveLatestVersion, resolveVersionByTag } from '../lib/image-version';
 import { lookupCatalogVersion } from '../lib/catalog-registration';
 import { ImageVariantSchema } from '../schemas/image-version';
+import {
+  type GatewayProcessStatus,
+  GatewayProcessStatusSchema,
+  GatewayCommandResponseSchema,
+  ConfigRestoreResponseSchema,
+  ControllerVersionResponseSchema,
+  GatewayControllerError,
+} from './gateway-controller-types';
+import { parseRegions, shuffleRegions, deprioritizeRegion } from './regions';
+import {
+  METADATA_RECOVERY_COOLDOWN_MS,
+  BOUND_MACHINE_RECOVERY_COOLDOWN_MS,
+  TERMINAL_STOPPED_STATES,
+  selectRecoveryCandidate,
+  volumeIdFromMachine,
+} from './machine-recovery';
+import {
+  METADATA_KEY_USER_ID,
+  buildMachineConfig,
+  guestFromSize,
+  volumeNameFromSandboxId,
+} from './machine-config';
+
+// Re-export extracted helpers so existing consumers don't break.
+export { parseRegions, shuffleRegions, deprioritizeRegion } from './regions';
+export { selectRecoveryCandidate } from './machine-recovery';
+export { METADATA_KEY_USER_ID } from './machine-config';
 
 type InstanceStatus = PersistedState['status'];
 
@@ -73,58 +93,6 @@ type DestroyResult = {
   destroyedUserId: string | null;
   destroyedSandboxId: string | null;
 };
-
-type GatewayProcessStatus = {
-  state: 'stopped' | 'starting' | 'running' | 'stopping' | 'crashed' | 'shutting_down';
-  pid: number | null;
-  uptime: number;
-  restarts: number;
-  lastExit: {
-    code: number | null;
-    signal: NodeJS.Signals | null;
-    at: string;
-  } | null;
-};
-
-const GatewayProcessStatusSchema: ZodType<GatewayProcessStatus> = z.object({
-  state: z.enum(['stopped', 'starting', 'running', 'stopping', 'crashed', 'shutting_down']),
-  pid: z.number().int().nullable(),
-  uptime: z.number(),
-  restarts: z.number().int(),
-  lastExit: z
-    .object({
-      code: z.number().int().nullable(),
-      signal: z
-        .custom<NodeJS.Signals>((value): value is NodeJS.Signals => typeof value === 'string')
-        .nullable(),
-      at: z.string(),
-    })
-    .nullable(),
-});
-
-const GatewayCommandResponseSchema = z.object({
-  ok: z.boolean(),
-});
-
-const ConfigRestoreResponseSchema = z.object({
-  ok: z.boolean(),
-  signaled: z.boolean(),
-});
-
-const ControllerVersionResponseSchema = z.object({
-  version: z.string(),
-  commit: z.string(),
-});
-
-class GatewayControllerError extends Error {
-  readonly status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = 'GatewayControllerError';
-    this.status = status;
-  }
-}
 
 // Derived from PersistedStateSchema -- single source of truth for DO KV keys.
 const STORAGE_KEYS = Object.keys(PersistedStateSchema.shape);
@@ -167,191 +135,6 @@ function alarmIntervalForStatus(status: InstanceStatus): number {
 
 function nextAlarmTime(status: InstanceStatus): number {
   return Date.now() + alarmIntervalForStatus(status) + Math.random() * ALARM_JITTER_MS;
-}
-
-// ============================================================================
-// Metadata keys set on every Fly Machine for recovery/orphan detection.
-// Avoid fly_* keys — those are reserved by Fly.
-// ============================================================================
-
-export const METADATA_KEY_USER_ID = 'kiloclaw_user_id';
-export const METADATA_KEY_SANDBOX_ID = 'kiloclaw_sandbox_id';
-export const METADATA_KEY_OPENCLAW_VERSION = 'kiloclaw_openclaw_version';
-export const METADATA_KEY_IMAGE_VARIANT = 'kiloclaw_image_variant';
-
-// ============================================================================
-// Machine config builder
-// ============================================================================
-
-type MachineIdentity = {
-  userId: string;
-  sandboxId: string;
-  openclawVersion: string | null;
-  imageVariant: string | null;
-};
-
-function buildMachineConfig(
-  registryApp: string,
-  imageTag: string,
-  envVars: Record<string, string>,
-  guest: FlyMachineConfig['guest'],
-  flyVolumeId: string | null,
-  identity: MachineIdentity
-): FlyMachineConfig {
-  return {
-    image: `registry.fly.io/${registryApp}:${imageTag}`,
-    env: envVars,
-    guest,
-    services: [
-      {
-        ports: [{ port: 443, handlers: ['tls', 'http'] }],
-        internal_port: OPENCLAW_PORT,
-        protocol: 'tcp' as const,
-        autostart: false,
-        autostop: 'off',
-      },
-    ],
-    checks: {
-      controller: {
-        type: 'http',
-        port: OPENCLAW_PORT,
-        method: 'GET',
-        path: '/_kilo/health',
-        interval: '30s',
-        timeout: '5s',
-        grace_period: '120s',
-      },
-    },
-    mounts: flyVolumeId ? [{ volume: flyVolumeId, path: '/root' }] : [],
-    metadata: {
-      [METADATA_KEY_USER_ID]: identity.userId,
-      [METADATA_KEY_SANDBOX_ID]: identity.sandboxId,
-      ...(identity.openclawVersion && {
-        [METADATA_KEY_OPENCLAW_VERSION]: identity.openclawVersion,
-      }),
-      ...(identity.imageVariant && { [METADATA_KEY_IMAGE_VARIANT]: identity.imageVariant }),
-    },
-  };
-}
-
-function guestFromSize(machineSize: MachineSize | null): FlyMachineConfig['guest'] {
-  if (!machineSize) return DEFAULT_MACHINE_GUEST;
-  return {
-    cpus: machineSize.cpus,
-    memory_mb: machineSize.memory_mb,
-    cpu_kind: machineSize.cpu_kind ?? 'shared',
-  };
-}
-
-// ============================================================================
-// Volume name helper
-// ============================================================================
-
-function volumeNameFromSandboxId(sandboxId: string): string {
-  return `kiloclaw_${sandboxId}`
-    .toLowerCase()
-    .replace(/[^a-z0-9_]/g, '_')
-    .slice(0, 30);
-}
-
-// ============================================================================
-// Region helpers
-// ============================================================================
-
-/** Split a comma-separated region string into an array. */
-export function parseRegions(regionList: string): string[] {
-  return regionList
-    .split(',')
-    .map(r => r.trim())
-    .filter(Boolean);
-}
-
-/** Fisher-Yates shuffle (in-place). Returns the same array for chaining. */
-export function shuffleRegions(regions: string[]): string[] {
-  for (let i = regions.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = regions[i];
-    regions[i] = regions[j];
-    regions[j] = tmp;
-  }
-  return regions;
-}
-
-/**
- * Move a failed region to the end of the list so we try other regions first.
- * E.g. deprioritizeRegion(['dfw', 'yyz', 'cdg'], 'dfw') → ['yyz', 'cdg', 'dfw']
- */
-export function deprioritizeRegion(regions: string[], failedRegion: string | null): string[] {
-  if (!failedRegion) return regions;
-  const without = regions.filter(r => r !== failedRegion);
-  return without.length < regions.length ? [...without, failedRegion] : regions;
-}
-
-// ============================================================================
-// Machine recovery: deterministic selection from metadata query results
-// ============================================================================
-
-/** Cooldown between metadata recovery attempts (1 alarm cycle at idle cadence). */
-const METADATA_RECOVERY_COOLDOWN_MS = ALARM_INTERVAL_IDLE_MS;
-
-/** Cooldown after getVolume finds no attached machine during destroy recovery. */
-const BOUND_MACHINE_RECOVERY_COOLDOWN_MS = 5 * 60 * 1000;
-
-/** States that indicate the machine is dead and should be ignored for recovery. */
-const DEAD_STATES: ReadonlySet<FlyMachineState> = new Set(['destroyed', 'destroying']);
-
-/** Terminal non-running states for live check. Transitional states (starting, stopping, replacing)
- *  are intentionally excluded to avoid UI flicker during normal operations. */
-const TERMINAL_STOPPED_STATES: ReadonlySet<FlyMachineState> = new Set([
-  'stopped',
-  'created',
-  'destroyed',
-  'suspended',
-]);
-
-/**
- * Priority order for picking a machine to recover.
- * Lower index = higher preference. `started` is best, then `starting`, etc.
- */
-const STATE_PRIORITY: ReadonlyMap<FlyMachineState, number> = new Map([
-  ['started', 0],
-  ['starting', 1],
-  ['stopped', 2],
-  ['created', 3],
-  ['stopping', 4],
-  ['replacing', 5],
-]);
-
-/**
- * Given a list of machines from Fly's metadata query, pick the best candidate
- * for recovery. Returns null if no live machines found.
- *
- * Selection rules:
- * 1. Ignore destroyed/destroying machines.
- * 2. Prefer started > starting > stopped > created > others.
- * 3. Tie-break by newest updated_at.
- */
-export function selectRecoveryCandidate(machines: FlyMachine[]): FlyMachine | null {
-  const live = machines.filter(m => !DEAD_STATES.has(m.state));
-  if (live.length === 0) return null;
-
-  live.sort((a, b) => {
-    const pa = STATE_PRIORITY.get(a.state) ?? 99;
-    const pb = STATE_PRIORITY.get(b.state) ?? 99;
-    if (pa !== pb) return pa - pb;
-    // Tie-break: newest updated_at first
-    return b.updated_at.localeCompare(a.updated_at);
-  });
-
-  return live[0];
-}
-
-/**
- * Extract the volume ID from a machine's mount config at /root, if present.
- */
-function volumeIdFromMachine(machine: FlyMachine): string | null {
-  const rootMount = (machine.config?.mounts ?? []).find(m => m.path === '/root');
-  return rootMount?.volume ?? null;
 }
 
 // ============================================================================
