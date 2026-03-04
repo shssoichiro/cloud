@@ -31,6 +31,7 @@ import {
 } from '@/lib/integrations/platforms/gitlab/webhook-sync';
 import { getValidGitLabToken } from '@/lib/integrations/gitlab-service';
 import { logExceptInTest } from '@/lib/utils.server';
+import { isFeatureFlagEnabled } from '@/lib/posthog-feature-flags';
 
 const PlatformSchema = z.enum(['github', 'gitlab']).default('github');
 
@@ -162,9 +163,12 @@ export const organizationReviewAgentRouter = createTRPCRouter({
    */
   getReviewConfig: organizationMemberProcedure
     .input(OrganizationIdInputSchema.extend({ platform: PlatformSchema }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const platform = input.platform ?? 'github';
-      const config = await getAgentConfig(input.organizationId, 'code_review', platform);
+      const [config, isCloudAgentNextEnabled] = await Promise.all([
+        getAgentConfig(input.organizationId, 'code_review', platform),
+        isFeatureFlagEnabled('code-review-cloud-agent-next', ctx.user.id),
+      ]);
 
       if (!config) {
         // Return default configuration
@@ -179,6 +183,7 @@ export const organizationReviewAgentRouter = createTRPCRouter({
           repositorySelectionMode: 'all' as const,
           selectedRepositoryIds: [],
           manuallyAddedRepositories: [],
+          isCloudAgentNextEnabled,
         };
       }
 
@@ -194,6 +199,7 @@ export const organizationReviewAgentRouter = createTRPCRouter({
         repositorySelectionMode: cfg.repository_selection_mode || 'all',
         selectedRepositoryIds: cfg.selected_repository_ids || [],
         manuallyAddedRepositories: cfg.manually_added_repositories || [],
+        isCloudAgentNextEnabled,
       };
     }),
 
