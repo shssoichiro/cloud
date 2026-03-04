@@ -44,9 +44,12 @@ type CandidateConfig = {
 
 type DbOrTx = typeof db | DrizzleTransaction;
 
-async function findCandidateConfigs(): Promise<CandidateConfig[]> {
-  const candidates: CandidateConfig[] = [];
+type CandidatesByOwnerType = {
+  users: CandidateConfig[];
+  orgs: CandidateConfig[];
+};
 
+async function findCandidateConfigs(): Promise<CandidatesByOwnerType> {
   const userRows = await db
     .select({
       configId: agent_configs.id,
@@ -72,10 +75,11 @@ async function findCandidateConfigs(): Promise<CandidateConfig[]> {
       )
     );
 
+  const users: CandidateConfig[] = [];
   for (const row of userRows) {
     const currentConfig = configAsRecord(row.config);
     if (!currentConfig) continue;
-    candidates.push({
+    users.push({
       configId: row.configId,
       platform: row.platform,
       ownerType: 'user',
@@ -111,10 +115,11 @@ async function findCandidateConfigs(): Promise<CandidateConfig[]> {
       )
     );
 
+  const orgs: CandidateConfig[] = [];
   for (const row of orgRows) {
     const currentConfig = configAsRecord(row.config);
     if (!currentConfig) continue;
-    candidates.push({
+    orgs.push({
       configId: row.configId,
       platform: row.platform,
       ownerType: 'org',
@@ -125,7 +130,7 @@ async function findCandidateConfigs(): Promise<CandidateConfig[]> {
     });
   }
 
-  return candidates;
+  return { users, orgs };
 }
 
 // ── Phase 2: Update agent_configs ──────────────────────────────────────────
@@ -241,26 +246,25 @@ async function run() {
 
   // Phase 1
   console.log('Phase 1: Finding candidate configs...');
-  const candidates = await findCandidateConfigs();
-  const users = candidates.filter(c => c.ownerType === 'user');
-  const orgs = candidates.filter(c => c.ownerType === 'org');
+  const { users, orgs } = await findCandidateConfigs();
+  const allCandidates = [...users, ...orgs];
   console.log(
-    `Found ${candidates.length} candidates (${users.length} users, ${orgs.length} orgs)\n`
+    `Found ${allCandidates.length} candidates (${users.length} users, ${orgs.length} orgs)\n`
   );
 
-  if (candidates.length === 0) {
+  if (allCandidates.length === 0) {
     console.log('Nothing to do.');
     return;
   }
 
-  for (const c of candidates) {
+  for (const c of allCandidates) {
     console.log(`  ${c.ownerType}: ${c.ownerLabel} (${c.platform}) — $${c.balanceUsd.toFixed(2)}`);
   }
   console.log('');
 
   // Phase 2
   console.log('Phase 2: Updating agent_configs...');
-  const result = await migrateReviewModels(candidates);
+  const result = await migrateReviewModels(allCandidates);
   for (const line of result.details) {
     console.log(line);
   }
