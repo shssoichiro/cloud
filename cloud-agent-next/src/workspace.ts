@@ -1,6 +1,6 @@
 import type { SandboxInstance, ExecutionSession, SystemSandboxUsageEvent } from './types.js';
 import { logger } from './logger.js';
-import { findWrapperForSession } from './kilo/wrapper-manager.js';
+import { findWrapperForSessionInProcesses } from './kilo/wrapper-manager.js';
 import { withTimeout } from '@kilocode/worker-utils';
 
 /**
@@ -196,6 +196,17 @@ export async function cleanupStaleWorkspaces(
 
   logger.withFields({ found: sessionDirs.length }).info('Found session directories');
 
+  // Fetch the process list once so we don't call listProcesses() per session
+  let processes: Awaited<ReturnType<SandboxInstance['listProcesses']>>;
+  try {
+    processes = await sandbox.listProcesses();
+  } catch (error) {
+    logger
+      .withFields({ error: error instanceof Error ? error.message : String(error) })
+      .warn('Failed to list processes, skipping cleanup');
+    return;
+  }
+
   let cleaned = 0;
   let skipped = 0;
 
@@ -206,7 +217,7 @@ export async function cleanupStaleWorkspaces(
     }
 
     try {
-      const wrapperInfo = await findWrapperForSession(sandbox, candidateSessionId);
+      const wrapperInfo = findWrapperForSessionInProcesses(processes, candidateSessionId);
       if (wrapperInfo !== null) {
         logger.withFields({ candidateSessionId }).info('Skipping session: wrapper is running');
         skipped++;

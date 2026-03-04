@@ -598,6 +598,9 @@ describe('disk space checking', () => {
         'agent_current-aaaa'
       );
 
+      // listProcesses is called exactly once (not per session)
+      expect(mockListProcesses).toHaveBeenCalledTimes(1);
+
       const execCalls = mockExec.mock.calls.map(c => c[0] as string);
       expect(execCalls[1]).toContain("rm -rf '/workspace/org/user/sessions/agent_stale-1111'");
       expect(execCalls[2]).toContain("rm -rf '/home/agent_stale-1111'");
@@ -704,6 +707,9 @@ describe('disk space checking', () => {
         )
       ).resolves.toBeUndefined();
 
+      // listProcesses is called exactly once (not per session)
+      expect(mockListProcesses).toHaveBeenCalledTimes(1);
+
       // second session was still attempted despite first throwing
       const execCalls = mockExec.mock.calls.map(c => c[0] as string);
       expect(execCalls.some(c => c.includes('agent_stale-bbbb'))).toBe(true);
@@ -713,7 +719,7 @@ describe('disk space checking', () => {
       mockExec.mockResolvedValueOnce({ exitCode: 0, stdout: 'agent_stale-1111\n', stderr: '' });
       mockListProcesses.mockRejectedValue(new Error('sandbox unavailable'));
 
-      // Should not throw
+      // Should not throw — returns early without cleaning any sessions
       await expect(
         cleanupStaleWorkspaces(
           fakeSession,
@@ -722,6 +728,9 @@ describe('disk space checking', () => {
           'agent_current-aaaa'
         )
       ).resolves.toBeUndefined();
+
+      // Only the ls call — no rm calls since listProcesses failed
+      expect(mockExec).toHaveBeenCalledTimes(1);
     });
 
     it('does not throw when ls throws', async () => {
