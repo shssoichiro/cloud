@@ -1,8 +1,25 @@
+import { execFileSync } from 'node:child_process';
 import type { Context, Hono } from 'hono';
 import { timingSafeTokenEqual } from '../auth';
 import type { Supervisor } from '../supervisor';
 import { CONTROLLER_COMMIT, CONTROLLER_VERSION } from '../version';
 import { getBearerToken } from './gateway';
+
+/** Resolve the installed openclaw version once and cache it for the process lifetime. */
+let cachedOpenclawVersion: string | null | undefined;
+function getOpenclawVersion(): string | null {
+  if (cachedOpenclawVersion !== undefined) return cachedOpenclawVersion;
+  try {
+    cachedOpenclawVersion = execFileSync('/usr/bin/env', ['HOME=/root', 'openclaw', '--version'], {
+      timeout: 5000,
+    })
+      .toString()
+      .trim();
+  } catch {
+    cachedOpenclawVersion = null;
+  }
+  return cachedOpenclawVersion;
+}
 
 export function registerHealthRoute(
   app: Hono,
@@ -28,6 +45,7 @@ export function registerHealthRoute(
     return c.json({
       version: CONTROLLER_VERSION,
       commit: CONTROLLER_COMMIT,
+      openclawVersion: getOpenclawVersion(),
       gateway: supervisor.getStats(),
     });
   });

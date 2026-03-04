@@ -76,7 +76,7 @@ export function useControllerVersion(enabled: boolean) {
   return useQuery(
     trpc.kiloclaw.controllerVersion.queryOptions(undefined, {
       enabled,
-      staleTime: 5 * 60_000, // version doesn't change without a redeploy
+      staleTime: 5 * 60_000, // version changes infrequently; acceptable staleness window
     })
   );
 }

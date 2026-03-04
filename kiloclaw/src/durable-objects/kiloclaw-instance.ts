@@ -114,6 +114,7 @@ const ConfigRestoreResponseSchema = z.object({
 const ControllerVersionResponseSchema = z.object({
   version: z.string(),
   commit: z.string(),
+  openclawVersion: z.string().nullable().optional(),
 });
 
 class GatewayControllerError extends Error {
@@ -1601,7 +1602,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   }
 
   /** Returns null if the controller is too old to have the /_kilo/version endpoint. */
-  async getControllerVersion(): Promise<{ version: string; commit: string } | null> {
+  async getControllerVersion(): Promise<{ version: string; commit: string; openclawVersion?: string | null } | null> {
     await this.loadState();
     try {
       return await this.callGatewayController(

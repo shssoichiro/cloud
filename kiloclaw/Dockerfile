@@ -57,6 +57,7 @@ RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
 ENV PATH="/root/.bun/bin:$PATH"
 
 ARG CONTROLLER_COMMIT=unknown
+ARG CONTROLLER_CACHE_BUST=1
 COPY controller/ /tmp/controller-build/
 RUN cd /tmp/controller-build \
     && bun install --frozen-lockfile \
