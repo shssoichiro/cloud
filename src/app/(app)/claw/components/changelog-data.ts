@@ -12,6 +12,12 @@ export type ChangelogEntry = {
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-03-04',
+    description: 'Updated OpenClaw to 2026.3.2.',
+    category: 'feature',
+    deployHint: 'redeploy_suggested',
+  },
+  {
+    date: '2026-03-04',
     description:
       'Added version pinning: you can now pin your KiloClaw instance to a specific OpenClaw version from the Settings tab. Choose your preferred version and variant to control when you upgrade.',
     category: 'feature',
