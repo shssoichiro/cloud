@@ -271,8 +271,36 @@
     {
       "idx": 38,
       "version": "7",
+      "when": 1772540011976,
+      "tag": "0038_late_shaman",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1772547493233,
+      "tag": "0039_naive_yellow_claw",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1772570847749,
+      "tag": "0040_chief_vampiro",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1772575808628,
+      "tag": "0041_earlybird_manual_payment",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
       "when": 1771865766649,
-      "tag": "0038_yielding_puma",
+      "tag": "0042_yielding_puma",
       "breakpoints": true
     }
   ]
