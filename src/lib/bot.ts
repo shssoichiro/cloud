@@ -2,18 +2,10 @@ import { Chat, emoji, type ActionEvent, type Message, type Thread } from 'chat';
 import { createSlackAdapter } from '@chat-adapter/slack';
 import { createRedisState } from '@chat-adapter/state-redis';
 import { resolveKiloUserId } from '@/lib/bot-identity';
-import type { PlatformIntegration } from '@kilocode/db';
 import { getPlatformIdentity, getPlatformIntegration } from '@/lib/bot/platform-helpers';
 import { LINK_ACCOUNT_ACTION_PREFIX, promptLinkAccount } from '@/lib/bot/link-account';
-
-async function processMessage(
-  thread: Thread,
-  _message: Message,
-  _platformIntegration: PlatformIntegration,
-  _kiloUserId: string
-) {
-  await thread.post('TODO');
-}
+import { findUserById } from '@/lib/user';
+import { processMessage } from '@/lib/bot/run';
 
 const slackAdapter = createSlackAdapter({
   clientId: process.env.SLACK_CLIENT_ID,
@@ -47,11 +39,17 @@ bot.onNewMention(async function handleIncomingMessage(
     return;
   }
 
+  const user = await findUserById(kiloUserId);
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
   const received = thread.createSentMessageFromMessage(message);
   await received.addReaction(emoji.eyes);
 
   try {
-    await processMessage(thread, message, platformIntegration, kiloUserId);
+    await processMessage({ thread, message, platformIntegration, user });
   } catch (error) {
     console.error('[Bot] Unhandled error in message handler:', error);
     await thread.post({ markdown: 'Sorry, something went wrong while processing your message.' });
