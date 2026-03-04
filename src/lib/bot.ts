@@ -1,4 +1,4 @@
-import { Chat } from 'chat';
+import { Chat, emoji } from 'chat';
 import { createSlackAdapter } from '@chat-adapter/slack';
 import { createRedisState } from '@chat-adapter/state-redis';
 
@@ -16,6 +16,9 @@ export const bot = new Chat({
 });
 
 // Respond when someone @mentions the bot, or talks in a DM
-bot.onNewMention(async thread => {
+bot.onNewMention(async (thread, message) => {
+  const received = thread.createSentMessageFromMessage(message);
+  await received.addReaction(emoji.eyes);
   await thread.post('Hello!');
+  await Promise.all([received.removeReaction(emoji.eyes), received.addReaction(emoji.check)]);
 });
