@@ -18,7 +18,7 @@ import { getIntegrationById } from '@/lib/integrations/db/platform-integrations'
 import { z } from 'zod';
 
 export const CommentReplyPayloadSchema = z.object({
-  ticketId: z.string(),
+  ticketId: z.string().min(1),
   sessionId: z.string().optional(),
   outcome: z.enum(['success', 'failed']),
   errorMessage: z.string().optional(),
@@ -124,10 +124,6 @@ export async function handleCommentReply(
   payload: CommentReplyPayload
 ): Promise<CommentReplyResult> {
   const { ticketId, sessionId, outcome } = payload;
-
-  if (!ticketId) {
-    return { ok: false, error: 'Missing required field: ticketId', status: 400 };
-  }
 
   logExceptInTest('[auto-fix-comment-reply] Processing comment reply', {
     ticketId,
