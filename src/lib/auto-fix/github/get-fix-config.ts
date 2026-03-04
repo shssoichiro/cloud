@@ -11,7 +11,8 @@ import { logExceptInTest, errorExceptInTest } from '@/lib/utils.server';
 import { captureException } from '@sentry/nextjs';
 import { generateGitHubInstallationToken } from '@/lib/integrations/platforms/github/adapter';
 import { getIntegrationById } from '@/lib/integrations/db/platform-integrations';
-import type { Owner, AutoFixAgentConfig } from '@/lib/auto-fix/core/schemas';
+import { AutoFixAgentConfigSchema } from '@/lib/auto-fix/core/schemas';
+import type { Owner } from '@/lib/auto-fix/core/schemas';
 
 type GetFixConfigResult =
   | {
@@ -67,6 +68,13 @@ export async function getFixConfig(ticketId: string): Promise<GetFixConfigResult
     }
   }
 
+  if (!ticket.owned_by_organization_id && !ticket.owned_by_user_id) {
+    errorExceptInTest('[auto-fix-config] Ticket has no owner', { ticketId });
+    return { ok: false, error: 'Ticket has no owner (neither user nor org)', status: 400 };
+  }
+
+  const ownerId = ticket.owned_by_organization_id ?? ticket.owned_by_user_id;
+  // ownerId is guaranteed non-null by the guard above, but TS can't narrow across two fields.
   const owner: Owner = ticket.owned_by_organization_id
     ? {
         type: 'org',
@@ -75,8 +83,8 @@ export async function getFixConfig(ticketId: string): Promise<GetFixConfigResult
       }
     : {
         type: 'user',
-        id: ticket.owned_by_user_id || '',
-        userId: ticket.owned_by_user_id || '',
+        id: ownerId ?? '',
+        userId: ownerId ?? '',
       };
 
   const agentConfig = await getAgentConfigForOwner(owner, 'auto_fix', 'github');
@@ -85,7 +93,17 @@ export async function getFixConfig(ticketId: string): Promise<GetFixConfigResult
     return { ok: false, error: 'Agent config not found', status: 404 };
   }
 
-  const config = agentConfig.config as AutoFixAgentConfig;
+  const configResult = AutoFixAgentConfigSchema.safeParse(agentConfig.config);
+
+  if (!configResult.success) {
+    errorExceptInTest('[auto-fix-config] Invalid agent config shape', {
+      ticketId,
+      errors: configResult.error.flatten(),
+    });
+    return { ok: false, error: 'Invalid agent config', status: 500 };
+  }
+
+  const config = configResult.data;
 
   logExceptInTest('[auto-fix-config] Returning config', {
     ticketId,
