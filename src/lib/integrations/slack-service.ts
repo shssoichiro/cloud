@@ -44,7 +44,7 @@ const SLACK_SCOPES = [
   'users:read.email',
 ];
 
-const SLACK_REDIRECT_URI = `${APP_URL}/api/integrations/slack/callback`;
+export const SLACK_REDIRECT_URI = `${APP_URL}/api/chat/slack/install/callback`;
 
 function getOwnershipConditions(owner: Owner) {
   return owner.type === 'user'
