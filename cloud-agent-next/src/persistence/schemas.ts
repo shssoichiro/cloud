@@ -59,6 +59,15 @@ export const branchNameSchema = z
     'Branch name can only contain alphanumeric characters, dots, dashes, underscores, and slashes'
   );
 
+export const modelIdSchema = z
+  .string()
+  .min(1, 'Model ID cannot be empty')
+  .max(255, 'Model ID too long')
+  .regex(
+    /^[a-zA-Z0-9._\-/:]+$/,
+    'Model ID can only contain alphanumeric characters, dots, dashes, underscores, slashes, and colons'
+  );
+
 /**
  * Local MCP server configuration schema (runs a command).
  */
@@ -137,6 +146,11 @@ export const MetadataSchema = z.object({
   prompt: z.string().max(Limits.MAX_PROMPT_LENGTH).optional(),
   mode: AgentModeSchema.optional(),
   model: z.string().optional(),
+  variant: z
+    .string()
+    .max(50)
+    .regex(/^[a-zA-Z]+$/)
+    .optional(),
   autoCommit: z.boolean().optional(),
   condenseOnComplete: z.boolean().optional(),
   appendSystemPrompt: z.string().max(10000).optional(),

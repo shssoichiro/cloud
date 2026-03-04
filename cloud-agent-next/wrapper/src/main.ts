@@ -141,7 +141,7 @@ async function main() {
   // Create connection manager
   const connectionManager = createConnectionManager(
     state,
-    { kiloServerPort },
+    { kiloServerPort, kiloClient },
     {
       onMessageComplete: (messageId: string) => {
         getLifecycleManager().onMessageComplete(messageId);
@@ -169,7 +169,7 @@ async function main() {
           // Send interrupted event before aborting
           state.sendToIngest({
             streamEventType: 'interrupted',
-            data: { reason: 'User killed execution' },
+            data: { reason: 'Session stopped' },
             timestamp: new Date().toISOString(),
           });
           // Abort the kilo session
@@ -240,6 +240,7 @@ async function main() {
       openConnection: () => connectionManager.open(),
       getMaxRuntimeMs: () => getLifecycleManager().getMaxRuntimeMs(),
       setAborted: () => getLifecycleManager().setAborted(),
+      resetLifecycle: () => getLifecycleManager().reset(),
     },
     () => getLifecycleManager().triggerDrainAndClose()
   );
@@ -253,7 +254,7 @@ async function main() {
   // Graceful shutdown handler
   let isShuttingDown = false;
 
-  function handleShutdown(signal: string): void {
+  async function handleShutdown(signal: string): Promise<void> {
     if (isShuttingDown) return;
     isShuttingDown = true;
 
@@ -270,6 +271,20 @@ async function main() {
     // Stop lifecycle timers
     getLifecycleManager().stop();
 
+    // Force exit after timeout
+    setTimeout(() => {
+      logToFile('force exit after timeout');
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS);
+
+    // Best-effort final log upload (with short timeout to avoid blocking shutdown)
+    const uploader = state.logUploader;
+    if (uploader) {
+      const uploadTimeout = new Promise<void>(resolve => setTimeout(resolve, 5_000));
+      await Promise.race([uploader.uploadNow().catch(() => {}), uploadTimeout]);
+      uploader.stop();
+    }
+
     // Abort kilo session if running
     const job = state.currentJob;
     if (job) {
@@ -282,12 +297,6 @@ async function main() {
     // Stop HTTP server
     server.stop();
 
-    // Force exit after timeout
-    setTimeout(() => {
-      logToFile('force exit after timeout');
-      process.exit(1);
-    }, SHUTDOWN_TIMEOUT_MS);
-
     // Try graceful exit
     setTimeout(() => {
       logToFile('graceful exit');
@@ -295,8 +304,8 @@ async function main() {
     }, 1000);
   }
 
-  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
-  process.on('SIGINT', () => handleShutdown('SIGINT'));
+  process.on('SIGTERM', () => void handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => void handleShutdown('SIGINT'));
 }
 
 main().catch(err => {

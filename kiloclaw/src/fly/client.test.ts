@@ -72,6 +72,39 @@ describe('isFlyInsufficientResources', () => {
     expect(isFlyInsufficientResources(err)).toBe(true);
   });
 
+  // -- Confirmed production 400 payload: no capacity on createVolume --
+
+  it('matches production 400 payload: no capacity on createVolume', () => {
+    const body = '{"error":"no capacity"}';
+    const err = new FlyApiError(`Fly API createVolume failed (400): ${body}`, 400, body);
+    expect(isFlyInsufficientResources(err)).toBe(true);
+  });
+
+  // -- Non-capacity 400s: must NOT trigger recovery --
+
+  it('returns false for non-capacity 400 errors', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const body = '{"error":"invalid machine config"}';
+    const err = new FlyApiError(`Fly API failed (400): ${body}`, 400, body);
+    expect(isFlyInsufficientResources(err)).toBe(false);
+
+    warnSpy.mockRestore();
+  });
+
+  it('returns false and logs warning for unclassified 400', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const body = '{"error":"some unknown 400 reason"}';
+    const err = new FlyApiError(`Fly API failed (400): ${body}`, 400, body);
+
+    expect(isFlyInsufficientResources(err)).toBe(false);
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[fly] Unclassified 400 error (not treated as capacity):',
+      body
+    );
+    warnSpy.mockRestore();
+  });
+
   // -- Non-capacity 403s: must NOT trigger recovery --
 
   it('returns false for auth 403 errors', () => {
@@ -326,12 +359,18 @@ describe('createVolumeWithFallback', () => {
     await createVolumeWithFallback(fakeConfig, request, ['dfw', 'yyz']);
 
     // Both calls should have the full request body including compute and source_volume_id
-    const firstBody = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string);
+    const firstBody = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string) as Record<
+      string,
+      unknown
+    >;
     expect(firstBody.region).toBe('dfw');
     expect(firstBody.compute).toEqual({ cpus: 2, memory_mb: 4096 });
     expect(firstBody.source_volume_id).toBe('vol-old');
 
-    const secondBody = JSON.parse(fetchSpy.mock.calls[1][1]?.body as string);
+    const secondBody = JSON.parse(fetchSpy.mock.calls[1][1]?.body as string) as Record<
+      string,
+      unknown
+    >;
     expect(secondBody.region).toBe('yyz');
     expect(secondBody.compute).toEqual({ cpus: 2, memory_mb: 4096 });
     expect(secondBody.source_volume_id).toBe('vol-old');

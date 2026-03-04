@@ -11,6 +11,8 @@
  */
 
 import type { IngestEvent } from '../../src/shared/protocol.js';
+import type { LogUploader } from './log-uploader.js';
+export type { LogUploader } from './log-uploader.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,8 +75,14 @@ export class WrapperState {
   // Message counter for ID generation
   private messageCounter = 0;
 
+  // Last root-session assistant message ID (tracked from message.updated kilocode events)
+  private _lastAssistantMessageId: string | null = null;
+
   // Callbacks for sending events to ingest
   private _sendToIngestFn: ((event: IngestEvent) => void) | null = null;
+
+  // Log uploader (set per-job, cleared on job end)
+  private _logUploader: LogUploader | null = null;
 
   // ---------------------------------------------------------------------------
   // State Queries
@@ -128,6 +136,7 @@ export class WrapperState {
     this.job = context;
     this._lastError = null;
     this.messageCounter = 0;
+    this.lastSseEventAt = 0;
     this.updateActivity();
   }
 
@@ -135,9 +144,12 @@ export class WrapperState {
    * Clear job context. Called on idle timeout or explicit reset.
    */
   clearJob(): void {
+    this._logUploader?.stop();
+    this._logUploader = null;
     this.job = null;
     this.inflight.clear();
     this.messageCounter = 0;
+    this._lastAssistantMessageId = null;
   }
 
   // ---------------------------------------------------------------------------
@@ -257,6 +269,19 @@ export class WrapperState {
   }
 
   // ---------------------------------------------------------------------------
+  // Log Uploader
+  // ---------------------------------------------------------------------------
+
+  get logUploader(): LogUploader | null {
+    return this._logUploader;
+  }
+
+  setLogUploader(uploader: LogUploader | null): void {
+    this._logUploader?.stop();
+    this._logUploader = uploader;
+  }
+
+  // ---------------------------------------------------------------------------
   // Activity Tracking
   // ---------------------------------------------------------------------------
 
@@ -324,6 +349,26 @@ export class WrapperState {
    */
   clearLastError(): void {
     this._lastError = null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Assistant Message ID Tracking
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Get the last root-session assistant message ID.
+   * Tracked from message.updated kilocode events for autocommit association.
+   */
+  get lastAssistantMessageId(): string | null {
+    return this._lastAssistantMessageId;
+  }
+
+  /**
+   * Update the last assistant message ID.
+   * Called by connection.ts when a message.updated event with role=assistant is seen.
+   */
+  setLastAssistantMessageId(messageId: string): void {
+    this._lastAssistantMessageId = messageId;
   }
 
   // ---------------------------------------------------------------------------
