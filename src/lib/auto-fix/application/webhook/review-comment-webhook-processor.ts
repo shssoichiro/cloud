@@ -50,6 +50,14 @@ export class ReviewCommentWebhookProcessor {
     const installationId = installation.id.toString();
     const [repoOwner, repoName] = repository.full_name.split('/');
 
+    if (!repoOwner || !repoName) {
+      errorExceptInTest(
+        '[ReviewCommentWebhookProcessor] Malformed repository.full_name, cannot proceed',
+        { fullName: repository.full_name }
+      );
+      return;
+    }
+
     logExceptInTest('[ReviewCommentWebhookProcessor] Processing review comment', {
       repoFullName: repository.full_name,
       prNumber: pull_request.number,
