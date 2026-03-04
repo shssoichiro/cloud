@@ -58,7 +58,7 @@ function buildSuccessReplyBody(params: {
 const PUBLIC_ERROR_MAX_LENGTH = 500;
 
 /** Strip URLs, file paths, and stack traces that may leak infra details. */
-function sanitizePublicErrorMessage(raw: string): string {
+export function sanitizePublicErrorMessage(raw: string): string {
   return (
     raw
       // collapse multi-line stack traces to a single "(stack trace omitted)" note

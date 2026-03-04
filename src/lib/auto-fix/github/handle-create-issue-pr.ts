@@ -12,6 +12,7 @@ import { captureException } from '@sentry/nextjs';
 import { createPullRequest } from '@/lib/auto-fix/github/create-pull-request';
 import { postIssueComment } from '@/lib/auto-fix/github/post-comment';
 import { getFixConfig } from '@/lib/auto-fix/github/get-fix-config';
+import { sanitizePublicErrorMessage } from '@/lib/auto-fix/github/handle-comment-reply';
 
 type HandleCreateIssuePRParams = {
   ticketId: string;
@@ -144,7 +145,7 @@ The changes implement the fix as described in the original issue.
       await postIssueComment({
         repoFullName: ticket.repo_full_name,
         issueNumber: ticket.issue_number,
-        body: `🤖 **Auto-Fix Update**\n\nI successfully implemented changes to fix this issue, but encountered an error while creating the pull request:\n\n\`\`\`\n${prError instanceof Error ? prError.message : String(prError)}\n\`\`\`\n\nThe changes are available on branch \`${branchName}\`.`,
+        body: `🤖 **Auto-Fix Update**\n\nI successfully implemented changes to fix this issue, but encountered an error while creating the pull request:\n\n\`\`\`\n${sanitizePublicErrorMessage(prError instanceof Error ? prError.message : String(prError))}\n\`\`\`\n\nThe changes are available on branch \`${branchName}\`.`,
         githubToken,
       });
     } catch (commentError) {
