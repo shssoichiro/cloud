@@ -12,6 +12,13 @@ export type ChangelogEntry = {
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-03-04',
+    description:
+      'Added gog (gogcli) to the default image. gog is a CLI tool for interacting with Google services from the terminal.',
+    category: 'feature',
+    deployHint: 'redeploy_suggested',
+  },
+  {
+    date: '2026-03-04',
     description: 'Updated OpenClaw to 2026.3.2.',
     category: 'feature',
     deployHint: 'redeploy_suggested',
