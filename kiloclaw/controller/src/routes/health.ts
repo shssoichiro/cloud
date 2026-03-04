@@ -1,24 +1,31 @@
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import type { Context, Hono } from 'hono';
 import { timingSafeTokenEqual } from '../auth';
 import type { Supervisor } from '../supervisor';
 import { CONTROLLER_COMMIT, CONTROLLER_VERSION } from '../version';
 import { getBearerToken } from './gateway';
 
-/** Resolve the installed openclaw version once and cache it for the process lifetime. */
+/**
+ * Resolve the installed openclaw version once and cache it for the process lifetime.
+ * If the user upgrades openclaw while the controller is running, the cached value
+ * becomes stale until the next redeploy (which restarts the controller process).
+ * This is acceptable: the UI shows a "Modified" badge by comparing image vs running
+ * version, and spawning a subprocess on every request is not worth the cost.
+ */
 let cachedOpenclawVersion: string | null | undefined;
-function getOpenclawVersion(): string | null {
-  if (cachedOpenclawVersion !== undefined) return cachedOpenclawVersion;
-  try {
-    cachedOpenclawVersion = execFileSync('/usr/bin/env', ['HOME=/root', 'openclaw', '--version'], {
-      timeout: 5000,
-    })
-      .toString()
-      .trim();
-  } catch {
-    cachedOpenclawVersion = null;
-  }
-  return cachedOpenclawVersion;
+function getOpenclawVersion(): Promise<string | null> {
+  if (cachedOpenclawVersion !== undefined) return Promise.resolve(cachedOpenclawVersion);
+  return new Promise(resolve => {
+    execFile(
+      '/usr/bin/env',
+      ['HOME=/root', 'openclaw', '--version'],
+      { timeout: 5000 },
+      (err, stdout) => {
+        cachedOpenclawVersion = err ? null : stdout.toString().trim();
+        resolve(cachedOpenclawVersion);
+      }
+    );
+  });
 }
 
 export function registerHealthRoute(
@@ -34,7 +41,7 @@ export function registerHealthRoute(
   app.get('/health', handler);
 
   // Authenticated version/diagnostics endpoint.
-  app.get('/_kilo/version', c => {
+  app.get('/_kilo/version', async c => {
     if (expectedToken) {
       const token = getBearerToken(c.req.header('authorization'));
       if (!timingSafeTokenEqual(token, expectedToken)) {
@@ -45,7 +52,7 @@ export function registerHealthRoute(
     return c.json({
       version: CONTROLLER_VERSION,
       commit: CONTROLLER_COMMIT,
-      openclawVersion: getOpenclawVersion(),
+      openclawVersion: await getOpenclawVersion(),
       gateway: supervisor.getStats(),
     });
   });

@@ -51,7 +51,7 @@ export const KILOCODE_CATALOG_IDS = new Set([
   'moonshotai/kimi-k2.5',
 ]);
 
-/** Strip surrounding quotes if the API returns them in version strings. */
+/** Strip surrounding quotes — bun build --define wraps values in extra quotes. */
 function cleanVersion(v: string | null | undefined): string | null {
   return v?.replace(/^["']|["']$/g, '') || null;
 }
@@ -285,7 +285,8 @@ export function SettingsTab({
   // Determine if running version differs from tracked version
   const trackedVersion = cleanVersion(status.openclawVersion);
   const runningVersion = cleanVersion(controllerVersion?.openclawVersion);
-  // Old image: controller has no /_kilo/version endpoint → returns { version: null }
+  // Old image: the DO returns null when the controller lacks /_kilo/version,
+  // and the platform route converts that to { version: null, commit: null }.
   const needsImageUpgrade = isRunning && controllerVersion && !controllerVersion.version;
   const versionMismatch = trackedVersion && runningVersion && trackedVersion !== runningVersion;
   const isPinned = !!myPin;

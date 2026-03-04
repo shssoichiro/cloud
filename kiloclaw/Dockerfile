@@ -57,6 +57,8 @@ RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
 ENV PATH="/root/.bun/bin:$PATH"
 
 ARG CONTROLLER_COMMIT=unknown
+# Changing this ARG value invalidates the COPY + RUN layers below it,
+# forcing a controller rebuild even when Docker thinks the source is unchanged.
 ARG CONTROLLER_CACHE_BUST=1
 COPY controller/ /tmp/controller-build/
 RUN cd /tmp/controller-build \
