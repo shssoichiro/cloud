@@ -165,10 +165,12 @@ export const organizationReviewAgentRouter = createTRPCRouter({
     .input(OrganizationIdInputSchema.extend({ platform: PlatformSchema }))
     .query(async ({ input, ctx }) => {
       const platform = input.platform ?? 'github';
-      const [config, isCloudAgentNextEnabled] = await Promise.all([
+      const [config, isCloudAgentNextFlagEnabled] = await Promise.all([
         getAgentConfig(input.organizationId, 'code_review', platform),
         isFeatureFlagEnabled('code-review-cloud-agent-next', ctx.user.id),
       ]);
+      const isCloudAgentNextEnabled =
+        isCloudAgentNextFlagEnabled || process.env.NODE_ENV === 'development';
 
       if (!config) {
         // Return default configuration
