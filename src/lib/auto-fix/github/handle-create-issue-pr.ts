@@ -6,7 +6,7 @@
  * and `/api/internal/auto-fix/create-pr`.
  */
 
-import { getFixTicketById, updateFixTicketStatus } from '@/lib/auto-fix/db/fix-tickets';
+import { updateFixTicketStatus } from '@/lib/auto-fix/db/fix-tickets';
 import { logExceptInTest, errorExceptInTest } from '@/lib/utils.server';
 import { captureException } from '@sentry/nextjs';
 import { createPullRequest } from '@/lib/auto-fix/github/create-pull-request';
@@ -38,18 +38,12 @@ export async function handleCreateIssuePR(
     return { ok: false, error: message };
   }
 
-  const { githubToken, config } = configResult;
+  const { ticket, githubToken, config } = configResult;
 
   if (!githubToken) {
     const message = 'Cannot create PR: missing GitHub installation token from auto-fix config';
     await markIssueTicketFailed(ticketId, message);
     return { ok: false, error: message };
-  }
-
-  // 2. Load ticket
-  const ticket = await getFixTicketById(ticketId);
-  if (!ticket) {
-    return { ok: false, error: 'Ticket not found' };
   }
 
   const branchName = providedBranchName || `session/${sessionId}`;

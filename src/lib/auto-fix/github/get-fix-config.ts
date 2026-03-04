@@ -6,6 +6,7 @@
  */
 
 import { getFixTicketById } from '@/lib/auto-fix/db/fix-tickets';
+import type { AutoFixTicket } from '@kilocode/db/schema';
 import { getAgentConfigForOwner } from '@/lib/agent-config/db/agent-configs';
 import { logExceptInTest, errorExceptInTest } from '@/lib/utils.server';
 import { captureException } from '@sentry/nextjs';
@@ -17,6 +18,7 @@ import type { Owner } from '@/lib/auto-fix/core/schemas';
 type GetFixConfigResult =
   | {
       ok: true;
+      ticket: AutoFixTicket;
       githubToken: string | undefined;
       config: {
         model_slug: string;
@@ -113,6 +115,7 @@ export async function getFixConfig(ticketId: string): Promise<GetFixConfigResult
 
   return {
     ok: true,
+    ticket,
     githubToken,
     config: {
       model_slug: config.model_slug,
