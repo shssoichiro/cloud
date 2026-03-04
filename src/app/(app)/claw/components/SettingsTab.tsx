@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertCircle, AlertTriangle, Hash, RotateCcw, Save, Square, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Hash, Package, RotateCcw, Save, Square, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import type { useKiloClawMutations } from '@/hooks/useKiloClaw';
 import { useControllerVersion, useKiloClawConfig } from '@/hooks/useKiloClaw';
 import { useDefaultModelSelection } from '../hooks/useDefaultModelSelection';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -266,12 +267,66 @@ export function SettingsTab({
     );
   }
 
+  // Determine if running version differs from tracked version
+  const trackedVersion = status.openclawVersion;
+  const runningVersion = controllerVersion?.version;
+  const versionMismatch = trackedVersion && runningVersion && trackedVersion !== runningVersion;
+
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <DetailTile label="Env Vars" value={String(status.envVarCount)} icon={Hash} />
         <DetailTile label="Secrets" value={String(status.secretCount)} icon={Hash} />
         <DetailTile label="Channels" value={String(status.channelCount)} icon={Hash} />
+      </div>
+
+      <Separator />
+
+      {/* OpenClaw Version Information */}
+      <div>
+        <h3 className="text-foreground mb-3 flex items-center gap-2 text-sm font-medium">
+          <Package className="h-4 w-4" />
+          OpenClaw Version
+        </h3>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3">
+          <div>
+            <p className="text-muted-foreground mb-1.5 text-xs">Running Version</p>
+            <div className="flex items-center gap-2">
+              <code className="bg-muted text-foreground rounded px-2 py-1 text-sm font-medium">
+                {runningVersion || '—'}
+              </code>
+              {versionMismatch && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="border-amber-500/30 bg-amber-500/15 text-amber-400">
+                      Upgraded
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Running version differs from image version</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="text-muted-foreground mb-1.5 text-xs">Image Version</p>
+            <code className="bg-muted text-foreground rounded px-2 py-1 text-sm font-medium">
+              {trackedVersion || '—'}
+            </code>
+          </div>
+          <div>
+            <p className="text-muted-foreground mb-1.5 text-xs">Variant</p>
+            <code className="bg-muted text-foreground rounded px-2 py-1 text-sm font-medium">
+              {status.imageVariant || '—'}
+            </code>
+          </div>
+        </div>
+        {versionMismatch && (
+          <p className="text-muted-foreground mt-2 text-xs">
+            The running version has been upgraded independently. Redeploy to sync with the image version.
+          </p>
+        )}
       </div>
 
       <Separator />
