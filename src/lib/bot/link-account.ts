@@ -5,7 +5,6 @@ import { isChannelLevelMessage } from '@/lib/bot/helpers';
 
 const LINK_ACCOUNT_PATH = '/api/chat/link-account';
 
-/** Prefix that the Slack adapter auto-generates for LinkButton action_ids. */
 export const LINK_ACCOUNT_ACTION_PREFIX = `link-${APP_URL}${LINK_ACCOUNT_PATH}`;
 
 function buildLinkAccountUrl(identity: PlatformIdentity): string {

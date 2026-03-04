@@ -24,6 +24,7 @@ node_modules/chat/dist/           # Built types (.d.ts files)
 ```
 
 Key docs to read based on task:
+
 - `docs/getting-started.mdx` — setup guides
 - `docs/usage.mdx` — event handlers, threads, messages, channels
 - `docs/streaming.mdx` — AI streaming with AI SDK
@@ -38,12 +39,12 @@ Also read the TypeScript types from `node_modules/chat/dist/` to understand the 
 ## Quick start
 
 ```typescript
-import { Chat } from "chat";
-import { createSlackAdapter } from "@chat-adapter/slack";
-import { createRedisState } from "@chat-adapter/state-redis";
+import { Chat } from 'chat';
+import { createSlackAdapter } from '@chat-adapter/slack';
+import { createRedisState } from '@chat-adapter/state-redis';
 
 const bot = new Chat({
-  userName: "mybot",
+  userName: 'mybot',
   adapters: {
     slack: createSlackAdapter({
       botToken: process.env.SLACK_BOT_TOKEN!,
@@ -53,7 +54,7 @@ const bot = new Chat({
   state: createRedisState({ url: process.env.REDIS_URL! }),
 });
 
-bot.onNewMention(async (thread) => {
+bot.onNewMention(async thread => {
   await thread.subscribe();
   await thread.post("Hello! I'm listening to this thread.");
 });
@@ -74,24 +75,24 @@ bot.onSubscribedMessage(async (thread, message) => {
 
 ## Event handlers
 
-| Handler | Trigger |
-|---------|---------|
-| `onNewMention` | Bot @-mentioned in unsubscribed thread |
-| `onSubscribedMessage` | Any message in subscribed thread |
-| `onNewMessage(regex)` | Messages matching pattern in unsubscribed threads |
-| `onSlashCommand("/cmd")` | Slash command invocations |
-| `onReaction(emojis)` | Emoji reactions added/removed |
-| `onAction(actionId)` | Button clicks and dropdown selections |
-| `onAssistantThreadStarted` | Slack Assistants API thread opened |
-| `onAppHomeOpened` | Slack App Home tab opened |
+| Handler                    | Trigger                                           |
+| -------------------------- | ------------------------------------------------- |
+| `onNewMention`             | Bot @-mentioned in unsubscribed thread            |
+| `onSubscribedMessage`      | Any message in subscribed thread                  |
+| `onNewMessage(regex)`      | Messages matching pattern in unsubscribed threads |
+| `onSlashCommand("/cmd")`   | Slash command invocations                         |
+| `onReaction(emojis)`       | Emoji reactions added/removed                     |
+| `onAction(actionId)`       | Button clicks and dropdown selections             |
+| `onAssistantThreadStarted` | Slack Assistants API thread opened                |
+| `onAppHomeOpened`          | Slack App Home tab opened                         |
 
 ## Streaming
 
 Pass any `AsyncIterable<string>` to `thread.post()`. Works with AI SDK's `textStream`:
 
 ```typescript
-import { ToolLoopAgent } from "ai";
-const agent = new ToolLoopAgent({ model: "anthropic/claude-4.5-sonnet" });
+import { ToolLoopAgent } from 'ai';
+const agent = new ToolLoopAgent({ model: 'anthropic/claude-4.5-sonnet' });
 
 bot.onNewMention(async (thread, message) => {
   const result = await agent.stream({ prompt: message.text });
@@ -108,8 +109,12 @@ await thread.post(
   <Card title="Order #1234">
     <CardText>Your order has been received!</CardText>
     <Actions>
-      <Button id="approve" style="primary">Approve</Button>
-      <Button id="reject" style="danger">Reject</Button>
+      <Button id="approve" style="primary">
+        Approve
+      </Button>
+      <Button id="reject" style="danger">
+        Reject
+      </Button>
     </Actions>
   </Card>
 );
@@ -117,18 +122,18 @@ await thread.post(
 
 ## Packages
 
-| Package | Purpose |
-|---------|---------|
-| `chat` | Core SDK |
-| `@chat-adapter/slack` | Slack |
-| `@chat-adapter/teams` | Microsoft Teams |
-| `@chat-adapter/gchat` | Google Chat |
-| `@chat-adapter/discord` | Discord |
-| `@chat-adapter/github` | GitHub Issues |
-| `@chat-adapter/linear` | Linear Issues |
-| `@chat-adapter/state-redis` | Redis state (production) |
-| `@chat-adapter/state-ioredis` | ioredis state (alternative) |
-| `@chat-adapter/state-memory` | In-memory state (development) |
+| Package                       | Purpose                       |
+| ----------------------------- | ----------------------------- |
+| `chat`                        | Core SDK                      |
+| `@chat-adapter/slack`         | Slack                         |
+| `@chat-adapter/teams`         | Microsoft Teams               |
+| `@chat-adapter/gchat`         | Google Chat                   |
+| `@chat-adapter/discord`       | Discord                       |
+| `@chat-adapter/github`        | GitHub Issues                 |
+| `@chat-adapter/linear`        | Linear Issues                 |
+| `@chat-adapter/state-redis`   | Redis state (production)      |
+| `@chat-adapter/state-ioredis` | ioredis state (alternative)   |
+| `@chat-adapter/state-memory`  | In-memory state (development) |
 
 ## Changesets (Release Flow)
 
