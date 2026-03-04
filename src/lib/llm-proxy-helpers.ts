@@ -20,7 +20,6 @@ import type {
   OrganizationPlan,
 } from '@/lib/organizations/organization-types';
 import type { OpenRouterProviderConfig } from '@/lib/providers/openrouter/types';
-import { extraRequiredProviders } from '@/lib/models';
 import { getFraudDetectionHeaders } from '@/lib/utils';
 import { normalizeProjectId } from '@/lib/normalizeProjectId';
 import { getXKiloCodeVersionNumber } from '@/lib/userAgent';
@@ -315,26 +314,13 @@ export function checkOrganizationModelRestrictions(params: {
     }
   }
 
-  const providerAllowList = params.settings.provider_allow_list || [];
+  const providerDenyList = params.settings.provider_deny_list;
   const dataCollection = params.settings.data_collection;
 
   const providerConfig: OpenRouterProviderConfig = {};
 
-  if (params.organizationPlan === 'enterprise' && providerAllowList.length > 0) {
-    // Check if the model requires specific providers that aren't in the allow list
-    const requiredProviders = extraRequiredProviders(normalizedModelId);
-    if (
-      requiredProviders.length > 0 &&
-      !requiredProviders.every(p => providerAllowList.includes(p))
-    ) {
-      console.error(
-        `This FREE model requires ALL of these providers to be allowed: ${requiredProviders.join(', ')}`
-      );
-      // This is overly strict, but checking for just one of them is not enough,
-      // because this list overrides the org allow list
-      return { error: modelNotAllowedResponse() };
-    }
-    providerConfig.only = providerAllowList;
+  if (params.organizationPlan === 'enterprise') {
+    providerConfig.ignore = providerDenyList;
   }
 
   // Setting this only if it's set as an override on the organization settings

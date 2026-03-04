@@ -80,10 +80,6 @@ function isOpenRouterStealthModel(model: string): boolean {
   return model.startsWith('openrouter/') && (model.endsWith('-alpha') || model.endsWith('-beta'));
 }
 
-export function extraRequiredProviders(model: string) {
-  return kiloFreeModels.find(m => m.public_id === model)?.inference_providers ?? [];
-}
-
 export function isDeadFreeModel(model: string): boolean {
   return !!kiloFreeModels.find(m => m.public_id === model && !m.is_enabled);
 }
