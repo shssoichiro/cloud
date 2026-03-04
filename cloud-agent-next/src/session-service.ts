@@ -556,39 +556,43 @@ export class SessionService {
       createdOnPlatform === 'app-builder';
     const commandGuardPolicy = getCommandGuardPolicy(createdOnPlatform);
 
-    const configContent: Record<string, unknown> = {
-      permission: {
-        external_directory: {
-          [`/tmp/attachments/${sessionId}/**`]: 'allow',
-          [`${workspacePath}/**`]: 'allow',
-        },
-        ...(!isInteractive && { question: 'deny' }),
+    const permission: Record<string, unknown> = {
+      external_directory: {
+        [`/tmp/attachments/${sessionId}/**`]: 'allow',
+        [`${workspacePath}/**`]: 'allow',
       },
-      provider: {
-        kilo: {
-          options: providerOptions,
-        },
-      },
+      ...(!isInteractive && { question: 'deny' }),
     };
 
     if (commandGuardPolicy) {
-      configContent.autoApproval = {
-        enabled: true,
-        read: { enabled: true, outside: false },
-        write: { enabled: false, outside: false, protected: true },
-        browser: { enabled: false },
-        retry: { enabled: false, delay: 10 },
-        mcp: { enabled: true },
-        mode: { enabled: true },
-        subtasks: { enabled: true },
-        execute: {
-          enabled: true,
-          allowed: commandGuardPolicy.allowed,
-          denied: commandGuardPolicy.denied,
-        },
-        question: { enabled: false, timeout: 60 },
-        todo: { enabled: true },
-      };
+      // Build bash permission rules from guard policy.
+      // Denied patterns (e.g. "git add *") are more specific than allowed patterns
+      // (e.g. "git *"); the CLI resolves overlapping globs most-specific-first,
+      // so denied sub-commands correctly override broader allows.
+      const bashPermissions: Record<string, string> = {};
+      for (const cmd of commandGuardPolicy.denied) {
+        bashPermissions[`${cmd} *`] = 'deny';
+      }
+      for (const cmd of commandGuardPolicy.allowed) {
+        bashPermissions[`${cmd} *`] = 'allow';
+      }
+
+      // Parity with old autoApproval config:
+      //   read: allow  (was read.enabled: true)
+      //   edit: deny   (was write.enabled: false)
+      //   webfetch/websearch/codesearch: deny  (was browser.enabled: false)
+      //   MCP: allowed by default (was mcp.enabled: true)
+      //   question: handled above (line 564) for non-interactive sessions
+      Object.assign(permission, {
+        read: 'allow',
+        edit: 'deny',
+        bash: bashPermissions,
+        webfetch: 'deny',
+        websearch: 'deny',
+        codesearch: 'deny',
+        todowrite: 'allow',
+        todoread: 'allow',
+      });
 
       logger
         .withFields({
@@ -598,6 +602,15 @@ export class SessionService {
         })
         .info('Enabled read-only command guard policy');
     }
+
+    const configContent: Record<string, unknown> = {
+      permission,
+      provider: {
+        kilo: {
+          options: providerOptions,
+        },
+      },
+    };
     // MCP configs are already in CLI-native format — pass through directly
     if (mcpServers && Object.keys(mcpServers).length > 0) {
       configContent.mcp = mcpServers;

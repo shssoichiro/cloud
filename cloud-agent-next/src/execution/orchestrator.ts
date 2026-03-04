@@ -189,8 +189,8 @@ export class ExecutionOrchestrator {
       const result = await wrapperClient.prompt({
         prompt,
         model: wrapper.model,
-        agent: normalizedMode,
         variant: wrapper.variant,
+        agent: normalizedMode,
       });
       logger.withFields({ inflightId: result.messageId }).info('Prompt sent to wrapper');
     } catch (error) {

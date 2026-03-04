@@ -6,7 +6,7 @@
  * ReviewCommentWebhookProcessor to trigger a scoped auto-fix.
  */
 
-import type { PlatformIntegration } from '@/db/schema';
+import type { PlatformIntegration } from '@kilocode/db/schema';
 import type { PullRequestReviewCommentPayload } from '@/lib/integrations/platforms/github/webhook-schemas';
 import { ReviewCommentWebhookProcessor } from '@/lib/auto-fix/application/webhook/review-comment-webhook-processor';
 

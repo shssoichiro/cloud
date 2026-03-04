@@ -1,6 +1,6 @@
 {
-  "id": "a841e527-6f25-41e1-8395-88bd7c5c60ac",
-  "prevId": "5b3a5f3e-08b7-4869-b6c7-4d6ebc12206c",
+  "id": "b92cc72f-cd8a-4e2a-8afc-b7ed5ae67527",
+  "prevId": "a841e527-6f25-41e1-8395-88bd7c5c60ac",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1320,6 +1320,49 @@
           "notNull": false,
           "default": "'{}'"
         },
+        "trigger_source": {
+          "name": "trigger_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'label'"
+        },
+        "review_comment_id": {
+          "name": "review_comment_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_comment_body": {
+          "name": "review_comment_body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "file_path": {
+          "name": "file_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "line_number": {
+          "name": "line_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "diff_hunk": {
+          "name": "diff_hunk",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pr_head_ref": {
+          "name": "pr_head_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "classification": {
           "name": "classification",
           "type": "text",
@@ -1432,6 +1475,29 @@
             }
           ],
           "isUnique": true,
+          "where": "\"auto_fix_tickets\".\"trigger_source\" = 'label'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "UQ_auto_fix_tickets_repo_review_comment": {
+          "name": "UQ_auto_fix_tickets_repo_review_comment",
+          "columns": [
+            {
+              "expression": "repo_full_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "review_comment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"auto_fix_tickets\".\"review_comment_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1613,6 +1679,10 @@
         "auto_fix_tickets_confidence_check": {
           "name": "auto_fix_tickets_confidence_check",
           "value": "\"auto_fix_tickets\".\"confidence\" >= 0 AND \"auto_fix_tickets\".\"confidence\" <= 1"
+        },
+        "auto_fix_tickets_trigger_source_check": {
+          "name": "auto_fix_tickets_trigger_source_check",
+          "value": "\"auto_fix_tickets\".\"trigger_source\" IN ('label', 'review_comment')"
         }
       },
       "isRLSEnabled": false

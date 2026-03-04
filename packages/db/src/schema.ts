@@ -2035,7 +2035,7 @@ export const cloud_agent_code_reviews = pgTable(
 
     // Cloud agent session
     session_id: text(), // Cloud agent session ID (agent_xxx)
-    cli_session_id: uuid().references(() => cliSessions.session_id, { onDelete: 'set null' }), // CLI session UUID (from session_created event)
+    cli_session_id: text(), // Kilo CLI session ID (ses_xxx from cli_sessions_v2, or legacy UUID from cli_sessions v1)
 
     // Review status
     status: text().notNull().default('pending'), // 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'

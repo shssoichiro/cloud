@@ -1185,21 +1185,18 @@ describe('SessionService', () => {
 
       const callArgs = sandboxCreateSession.mock.calls[0][0] as { env: Record<string, string> };
       const configContent = JSON.parse(callArgs.env.KILO_CONFIG_CONTENT) as {
-        autoApproval?: {
-          execute?: {
-            denied?: string[];
-          };
-          write?: {
-            enabled?: boolean;
-            protected?: boolean;
-          };
+        permission?: {
+          bash?: Record<string, string>;
+          edit?: string;
+          read?: string;
         };
       };
 
-      expect(configContent.autoApproval?.execute?.denied).toContain('git commit');
-      expect(configContent.autoApproval?.execute?.denied).toContain('gh pr merge');
-      expect(configContent.autoApproval?.write?.enabled).toBe(false);
-      expect(configContent.autoApproval?.write?.protected).toBe(true);
+      // Denied commands use "cmd *" glob pattern format
+      expect(configContent.permission?.bash?.['git commit *']).toBe('deny');
+      expect(configContent.permission?.bash?.['gh pr merge *']).toBe('deny');
+      expect(configContent.permission?.edit).toBe('deny');
+      expect(configContent.permission?.read).toBe('allow');
     });
   });
 
