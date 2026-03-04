@@ -102,7 +102,7 @@ describe('computeProviderSelectionsForSummaryCard', () => {
     ]);
   });
 
-  test('returns null when all providers are denied', () => {
+  test('returns empty array when all providers are denied (distinct from null which means no restrictions)', () => {
     const openRouterProviders = [
       {
         slug: 'openai',
@@ -116,7 +116,7 @@ describe('computeProviderSelectionsForSummaryCard', () => {
       modelDenyList: [],
     });
 
-    expect(selections).toBeNull();
+    expect(selections).toEqual([]);
   });
 
   test('models without endpoint are excluded', () => {
@@ -136,7 +136,7 @@ describe('computeProviderSelectionsForSummaryCard', () => {
       modelDenyList: ['anthropic/claude-3-opus'],
     });
 
-    // Both models are excluded (one by deny list, one by no endpoint)
-    expect(selections).toBeNull();
+    // Both models are excluded (one by deny list, one by no endpoint); deny list is non-empty so [] not null
+    expect(selections).toEqual([]);
   });
 });

@@ -297,7 +297,10 @@ export function checkOrganizationModelRestrictions(params: {
   // Teams plans should allow all models by default
   if (params.organizationPlan === 'enterprise') {
     const modelDenyList = params.settings.model_deny_list;
-    if (modelDenyList && modelDenyList.includes(normalizedModelId)) {
+    if (
+      modelDenyList &&
+      modelDenyList.some(entry => normalizeModelId(entry) === normalizedModelId)
+    ) {
       return { error: modelNotAllowedResponse() };
     }
   }

@@ -92,7 +92,7 @@ function createDefaultModelDiffMessage(
   return 'Updated default model';
 }
 
-const UpdateAllowListsInputSchema = OrganizationIdInputSchema.extend({
+const UpdateDenyListsInputSchema = OrganizationIdInputSchema.extend({
   model_deny_list: z.array(z.string()).optional(),
   provider_deny_list: z.array(z.string()).optional(),
 });
@@ -182,7 +182,7 @@ export const organizationsSettingsRouter = createTRPCRouter({
     }),
 
   updateAllowLists: organizationOwnerProcedure
-    .input(UpdateAllowListsInputSchema)
+    .input(UpdateDenyListsInputSchema)
     .output(SettingsResponseSchema)
     .mutation(async ({ input, ctx }) => {
       const { organizationId, model_deny_list, provider_deny_list } = input;

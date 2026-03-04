@@ -267,10 +267,8 @@ describe('organizations settings trpc router', () => {
         organizationId: orgWithDenyList.id,
       });
 
-      expect(result.data.map(model => model.id)).toEqual([
-        'openai/gpt-4o:free',
-        'anthropic/claude-3-opus',
-      ]);
+      // openai/gpt-4o:free normalizes to openai/gpt-4o, which is on the deny list, so it's also blocked
+      expect(result.data.map(model => model.id)).toEqual(['anthropic/claude-3-opus']);
     });
 
     it('should return all models for a non-enterprise org even if model_deny_list is set', async () => {
