@@ -1,10 +1,11 @@
 import { adminProcedure, createTRPCRouter } from '@/lib/trpc/init';
 import { NEXTAUTH_URL } from '@/lib/config.server';
 import { sendViaCustomerIo } from '@/lib/email-customerio';
+import { templates, subjects, type TemplateName } from '@/lib/email';
 import * as z from 'zod';
 import { TRPCError } from '@trpc/server';
 
-const templateNames = [
+const templateNames: [TemplateName, ...TemplateName[]] = [
   'orgSubscription',
   'orgRenewed',
   'orgCancelled',
@@ -17,9 +18,7 @@ const templateNames = [
   'ossInviteExistingUser',
   'ossExistingOrgProvisioned',
   'deployFailed',
-] as const;
-
-type TemplateName = (typeof templateNames)[number];
+];
 
 const TemplateNameSchema = z.enum(templateNames);
 
@@ -29,38 +28,7 @@ type ProviderName = (typeof providerNames)[number];
 
 const ProviderNameSchema = z.enum(providerNames);
 
-// Customer.io template IDs (same as in email.ts)
-const templates: Record<TemplateName, string> = {
-  orgSubscription: '10',
-  orgRenewed: '11',
-  orgCancelled: '12',
-  orgSSOUserJoined: '13',
-  orgInvitation: '6',
-  magicLink: '14',
-  balanceAlert: '16',
-  autoTopUpFailed: '17',
-  ossInviteNewUser: '18',
-  ossInviteExistingUser: '19',
-  ossExistingOrgProvisioned: '20',
-  deployFailed: '21',
-};
-
-const subjects: Record<TemplateName, string> = {
-  orgSubscription: 'Welcome to Kilo for Teams!',
-  orgRenewed: 'Kilo: Your Teams Subscription Renewal',
-  orgCancelled: 'Kilo: Your Teams Subscription is Cancelled',
-  orgSSOUserJoined: 'Kilo: New SSO User Joined Your Organization',
-  orgInvitation: 'Kilo: Teams Invitation',
-  magicLink: 'Sign in to Kilo Code',
-  balanceAlert: 'Kilo: Low Balance Alert',
-  autoTopUpFailed: 'Kilo: Auto Top-Up Failed',
-  ossInviteNewUser: 'Kilo: OSS Sponsorship Offer',
-  ossInviteExistingUser: 'Kilo: OSS Sponsorship Offer',
-  ossExistingOrgProvisioned: 'Kilo: OSS Sponsorship Offer',
-  deployFailed: 'Kilo: Your Deployment Failed',
-};
-
-function fixtureMessageData(template: TemplateName): Record<string, unknown> {
+function fixtureTemplateVars(template: TemplateName): Record<string, unknown> {
   const orgId = 'fixture-org-id';
   const organization_url = `${NEXTAUTH_URL}/organizations/${orgId}`;
   const invoices_url = `${NEXTAUTH_URL}/organizations/${orgId}/payment-details`;
@@ -69,19 +37,13 @@ function fixtureMessageData(template: TemplateName): Record<string, unknown> {
 
   switch (template) {
     case 'orgSubscription':
-      return {
-        seats: '5 seats',
-        organization_url,
-        invoices_url,
-        seatCount: 5,
-        organizationId: orgId,
-      };
+      return { seats: '5 seats', organization_url, invoices_url };
     case 'orgRenewed':
-      return { seats: '5 seats', invoices_url, seatCount: 5, organizationId: orgId };
+      return { seats: '5 seats', invoices_url };
     case 'orgCancelled':
-      return { invoices_url, organizationId: orgId };
+      return { invoices_url };
     case 'orgSSOUserJoined':
-      return { new_user_email: 'newuser@example.com', organization_url, organizationId: orgId };
+      return { new_user_email: 'newuser@example.com', organization_url };
     case 'orgInvitation':
       return {
         organization_name: 'Acme Corp',
@@ -97,12 +59,9 @@ function fixtureMessageData(template: TemplateName): Record<string, unknown> {
         app_url: NEXTAUTH_URL,
       };
     case 'balanceAlert':
-      return { organizationId: orgId, minimum_balance: 10, organization_url, invoices_url };
+      return { minimum_balance: 10, organization_url, invoices_url };
     case 'autoTopUpFailed':
-      return {
-        reason: 'Card declined',
-        credits_url: `${NEXTAUTH_URL}/credits?show-auto-top-up`,
-      };
+      return { reason: 'Card declined', credits_url: `${NEXTAUTH_URL}/credits?show-auto-top-up` };
     case 'ossInviteNewUser':
       return {
         organization_name: 'Acme OSS',
@@ -160,12 +119,12 @@ export const emailTestingRouter = createTRPCRouter({
   getPreview: adminProcedure
     .input(z.object({ template: TemplateNameSchema, provider: ProviderNameSchema }))
     .query(({ input }) => {
-      const messageData = fixtureMessageData(input.template);
+      const vars = fixtureTemplateVars(input.template);
       return {
         type: 'customerio' as const,
         transactional_message_id: templates[input.template],
         subject: subjects[input.template],
-        message_data: messageData,
+        message_data: vars,
       };
     }),
 
@@ -178,14 +137,13 @@ export const emailTestingRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ input }) => {
-      const messageData = fixtureMessageData(input.template);
-      const templateId = templates[input.template];
+      const vars = fixtureTemplateVars(input.template);
 
       if (input.provider === 'customerio') {
         await sendViaCustomerIo({
-          transactional_message_id: templateId,
+          transactional_message_id: templates[input.template],
           to: input.recipient,
-          message_data: messageData,
+          message_data: vars,
           identifiers: { email: input.recipient },
           reply_to: 'hi@kilocode.ai',
         });

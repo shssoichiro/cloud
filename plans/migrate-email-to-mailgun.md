@@ -30,15 +30,29 @@ PostHog feature flags are **not** suitable for this toggle because some emails t
 import { sendViaCustomerIo } from './email-customerio';
 import { sendViaMailgun } from './email-mailgun';
 
-type EmailParams = { to: string; subject: string; html: string };
+type SendParams = {
+  to: string;
+  templateName: TemplateName;
+  templateVars: Record<string, unknown>; // tightened to Record<string, string> in PR 2
+  customerioIdentifiers?: Identifiers; // override for invite flows; defaults to { email: to }
+};
 
-async function send(params: EmailParams) {
+function send(params: SendParams) {
   if (EMAIL_PROVIDER === 'mailgun') {
-    return sendViaMailgun(params);
+    // PR 2: looks up subjects[templateName], calls renderTemplate, then sendViaMailgun
+    return sendViaMailgun();
   }
-  return sendViaCustomerIo(params);
+  return sendViaCustomerIo({
+    transactional_message_id: templates[params.templateName],
+    to: params.to,
+    message_data: params.templateVars,
+    identifiers: params.customerioIdentifiers ?? { email: params.to },
+    reply_to: 'hi@kilocode.ai',
+  });
 }
 ```
+
+Each `send*Email` function builds `templateVars` and calls `send()` once. Customer.io receives its native `transactional_message_id` + `message_data` interface. Mailgun (PR 2) renders HTML locally and looks up the subject from `subjects[templateName]` — no subject arg needed at call sites.
 
 ### Template Rendering
 
@@ -151,11 +165,12 @@ Pre-requisite template changes:
 
 Implementation:
 
-- Implement `sendViaMailgun()` in `src/lib/email-mailgun.ts`
-- Add `renderTemplate()` and `buildCreditsSection()` to `email.ts`
-- Update all `send*Email` functions to call `renderTemplate()` and provide explicit subjects
 - Install `mailgun.js` + `form-data`
-- The admin page now shows `mailgun` in the provider dropdown
+- Implement `sendViaMailgun({ to, subject, html })` in `src/lib/email-mailgun.ts`
+- Add `renderTemplate()` and `buildCreditsSection()` to `email.ts`
+- Update `send()` in `email.ts`: mailgun branch looks up `subjects[templateName]`, calls `renderTemplate(templateName, templateVars)`, then `sendViaMailgun()`. Tighten `templateVars` to `Record<string, string>` — update all `send*Email` call sites (OSS functions replace `has_credits: boolean` + `monthly_credits_usd: number` with `credits_section: buildCreditsSection(...)`)
+- Add `mailgun` to the providers list in `email-testing-router.ts`; update `getPreview` to return rendered HTML for mailgun; update `sendTest` to call `sendViaMailgun` directly
+- The admin page now shows `mailgun` in the provider dropdown with a full HTML iframe preview
 - Deploy with `EMAIL_PROVIDER=customerio` — still no production change
 
 **QA** (no PR): Use the admin testing page to send each template via Mailgun to real inboxes. Compare rendered output against the Customer.io versions. Verify all variable substitution, styling, links.
