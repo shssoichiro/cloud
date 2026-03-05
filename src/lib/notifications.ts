@@ -298,7 +298,6 @@ async function generateKimiFreeEndingNotification(user: User): Promise<KiloNotif
           and ev.properties.model = 'moonshotai/kimi-k2.5:free'
           and ev.timestamp >= now() - interval 30 day
         group by u.id
-        having count(ev.distinct_id) >= 1
         order by max(ev.timestamp) desc
         limit 1e5
       `
