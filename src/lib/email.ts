@@ -61,7 +61,7 @@ type SendParams = {
   templateVars: Record<string, string>;
 };
 
-function send(params: SendParams) {
+async function send(params: SendParams) {
   if (EMAIL_PROVIDER === 'mailgun') {
     const subject = subjects[params.templateName];
     const html = renderTemplate(params.templateName, {
