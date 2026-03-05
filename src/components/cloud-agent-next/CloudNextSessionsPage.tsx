@@ -40,7 +40,6 @@ import { InsufficientBalanceBanner } from '@/components/shared/InsufficientBalan
 import { AdvancedConfig } from '@/components/shared/AdvancedConfig';
 import { cn } from '@/lib/utils';
 import type { AgentMode } from './types';
-import { applyCloudAgentPromoLabel } from '@/lib/promotions/cloud-agent-promo';
 
 type CloudNextSessionsPageProps = {
   organizationId?: string;
@@ -89,8 +88,6 @@ export function CloudNextSessionsPage({ organizationId }: CloudNextSessionsPageP
     () => allModels.map(model => ({ id: model.id, name: model.name })),
     [allModels]
   );
-
-  const promoModelOptions = useMemo(() => applyCloudAgentPromoLabel(modelOptions), [modelOptions]);
 
   // Form state
   const [prompt, setPrompt] = useState('');
@@ -541,7 +538,7 @@ export function CloudNextSessionsPage({ organizationId }: CloudNextSessionsPageP
               setModel(newModel);
               setIsModelUserSelected(true);
             }}
-            modelOptions={promoModelOptions}
+            modelOptions={modelOptions}
             isLoadingModels={!modelsData}
           />
 

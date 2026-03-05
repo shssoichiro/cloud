@@ -38,6 +38,7 @@ docker buildx build \
   --platform linux/amd64 \
   -f "$KILOCLAW_DIR/Dockerfile" \
   --build-arg "CONTROLLER_COMMIT=$GIT_SHA" \
+  --build-arg "CONTROLLER_CACHE_BUST=$(date +%s)" \
   -t "$IMAGE" \
   --push \
   --metadata-file "$METADATA_FILE" \

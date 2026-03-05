@@ -30,7 +30,6 @@ import { appendKiloPassAuditLog } from '@/lib/kilo-pass/issuance';
 import { KiloPassAuditLogAction, KiloPassAuditLogResult } from '@/lib/kilo-pass/enums';
 import { reportAbuseCost } from '@/lib/abuse-service';
 import { isActiveReviewPromo } from '@/lib/code-reviews/core/constants';
-import { isActiveCloudAgentPromo } from '@/lib/promotions/cloud-agent-promo';
 
 const posthogClient = PostHogClient();
 
@@ -974,8 +973,7 @@ async function processTokenData(
   if (
     isFreeModel(usageContext.requested_model) ||
     usageContext.user_byok ||
-    isActiveReviewPromo(usageContext.botId, usageContext.requested_model) ||
-    isActiveCloudAgentPromo(usageContext.tokenSource, usageContext.requested_model)
+    isActiveReviewPromo(usageContext.botId, usageContext.requested_model)
   ) {
     usageStats.cost_mUsd = 0;
     usageStats.cacheDiscount_mUsd = 0;

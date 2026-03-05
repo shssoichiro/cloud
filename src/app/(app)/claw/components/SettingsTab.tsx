@@ -1,6 +1,15 @@
 'use client';
 
-import { AlertCircle, AlertTriangle, Hash, RotateCcw, Save, Square, X } from 'lucide-react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  Hash,
+  Package,
+  RotateCcw,
+  Save,
+  Square,
+  X,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
@@ -8,9 +17,10 @@ import { useOpenRouterModels } from '@/app/api/openrouter/hooks';
 import { ModelCombobox, type ModelOption } from '@/components/shared/ModelCombobox';
 import type { KiloClawDashboardStatus } from '@/lib/kiloclaw/types';
 import type { useKiloClawMutations } from '@/hooks/useKiloClaw';
-import { useControllerVersion, useKiloClawConfig } from '@/hooks/useKiloClaw';
+import { useControllerVersion, useKiloClawConfig, useKiloClawMyPin } from '@/hooks/useKiloClaw';
 import { useDefaultModelSelection } from '../hooks/useDefaultModelSelection';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -40,6 +50,11 @@ export const KILOCODE_CATALOG_IDS = new Set([
   'x-ai/grok-code-fast-1',
   'moonshotai/kimi-k2.5',
 ]);
+
+/** Strip surrounding quotes — bun build --define wraps values in extra quotes. */
+function cleanVersion(v: string | null | undefined): string | null {
+  return v?.replace(/^["']|["']$/g, '') || null;
+}
 
 /** Returns true if calver `version` is >= `minVersion` (e.g. "2026.2.26"). Fails closed on malformed input. */
 function calverAtLeast(version: string | null | undefined, minVersion: string): boolean {
@@ -235,6 +250,7 @@ export function SettingsTab({
   const isDestroying = status.status === 'destroying';
   const isRunning = status.status === 'running';
   const { data: controllerVersion } = useControllerVersion(isRunning);
+  const { data: myPin } = useKiloClawMyPin();
   const supportsConfigRestore = calverAtLeast(controllerVersion?.version, '2026.2.26');
 
   const channelStatus = config?.channels ?? {
@@ -266,6 +282,18 @@ export function SettingsTab({
     );
   }
 
+  // Determine if running version differs from tracked version
+  const trackedVersion = cleanVersion(status.openclawVersion);
+  const runningVersion = cleanVersion(controllerVersion?.openclawVersion);
+  // Old image: the DO returns null when the controller lacks /_kilo/version,
+  // and the platform route converts that to { version: null, commit: null }.
+  const needsImageUpgrade = isRunning && controllerVersion && !controllerVersion.version;
+  const versionMismatch = trackedVersion && runningVersion && trackedVersion !== runningVersion;
+  const isPinned = !!myPin;
+
+  // Show version section when running with a tracked version — even if running version is unknown yet
+  const hasVersionInfo = isRunning && trackedVersion && trackedVersion !== ':latest';
+
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -275,6 +303,82 @@ export function SettingsTab({
       </div>
 
       <Separator />
+
+      {/* OpenClaw Version Information - only show when instance is running with real version data */}
+      {hasVersionInfo && (
+        <>
+          <div>
+            <h3 className="text-foreground mb-3 flex items-center gap-2 text-sm font-medium">
+              <Package className="h-4 w-4" />
+              OpenClaw Version
+            </h3>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3">
+              <div>
+                <p className="text-muted-foreground mb-1.5 text-xs">Running Version</p>
+                <div className="flex items-center gap-2">
+                  <code className="bg-muted text-foreground rounded px-2 py-1 text-sm font-medium">
+                    {runningVersion ?? '—'}
+                  </code>
+                  {needsImageUpgrade && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge
+                          variant="outline"
+                          className="border-blue-500/30 bg-blue-500/15 text-blue-400"
+                        >
+                          Upgrade required
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Upgrade your image to report the running OpenClaw version</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {versionMismatch && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge
+                          variant="outline"
+                          className="border-amber-500/30 bg-amber-500/15 text-amber-400"
+                        >
+                          Modified
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          OpenClaw was updated on this machine independently of the image —
+                          redeploying will revert to the image version ({trackedVersion})
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              </div>
+              <div>
+                <p className="text-muted-foreground mb-1.5 text-xs">Image Version</p>
+                <code className="bg-muted text-foreground rounded px-2 py-1 text-sm font-medium">
+                  {trackedVersion}
+                </code>
+              </div>
+              <div>
+                <p className="text-muted-foreground mb-1.5 text-xs">Variant</p>
+                <code className="bg-muted text-foreground rounded px-2 py-1 text-sm font-medium">
+                  {status.imageVariant || '—'}
+                </code>
+              </div>
+            </div>
+            {versionMismatch && (
+              <p className="text-muted-foreground mt-2 text-xs">
+                {isPinned
+                  ? `Redeploying will replace the running version with your pinned image version (${trackedVersion}).`
+                  : `Redeploying will replace the running version with the image version (${trackedVersion}).`}
+              </p>
+            )}
+          </div>
+
+          <Separator />
+        </>
+      )}
 
       <div>
         <h2 className="text-foreground mb-4 text-lg font-semibold">KiloCode Configuration</h2>

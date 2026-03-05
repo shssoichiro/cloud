@@ -211,6 +211,7 @@ export type ConfigRestoreResponse = {
 export type ControllerVersionResponse = {
   version: string | null;
   commit: string | null;
+  openclawVersion?: string | null;
 };
 
 /** Combined status + gateway token returned by tRPC getStatus */
