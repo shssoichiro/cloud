@@ -254,14 +254,16 @@ const buildReviewCommentContext = (info: ReviewCommentInfo): string => {
   const lineInfo = info.lineNumber ? `**Line:** ${info.lineNumber}` : '**Line:** (not specified)';
   const reviewCommentBody = sanitizeReviewContextInput(info.reviewCommentBody);
   const diffHunk = sanitizeReviewContextInput(info.diffHunk);
+  const prTitle = sanitizeInputPatterns(info.prTitle);
+  const filePath = sanitizeInputPatterns(info.filePath);
 
   return `# PR Review Comment Fix Task
 
 ## Context
 
 **Repository:** ${info.repoFullName}
-**Pull Request:** #${info.prNumber} - ${info.prTitle}
-**File:** \`${info.filePath}\`
+**Pull Request:** #${info.prNumber} - ${prTitle}
+**File:** \`${filePath}\`
 ${lineInfo}
 
 ## Review Comment
