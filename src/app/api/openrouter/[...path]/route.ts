@@ -22,7 +22,7 @@ import {
   captureProxyError,
   checkOrganizationModelRestrictions,
   dataCollectionRequiredResponse,
-  estimateChatTokens,
+  estimateChatTokens_ignoringToolDefinitions,
   extractFraudAndProjectHeaders,
   invalidPathResponse,
   invalidRequestResponse,
@@ -265,8 +265,9 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   }
 
   // Extract properties for usage context
-  const tokenEstimates = estimateChatTokens(requestBodyParsed);
+  const tokenEstimates = estimateChatTokens_ignoringToolDefinitions(requestBodyParsed);
   const promptInfo = extractPromptInfo(requestBodyParsed);
+  const isLegacyOpenRouterPath = url.pathname.includes('/openrouter');
 
   const usageContext: MicrodollarUsageContext = {
     kiloUserId: user.id,
@@ -290,7 +291,9 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     has_tools: (requestBodyParsed.tools?.length ?? 0) > 0,
     botId,
     tokenSource,
-    feature: validateFeatureHeader(request.headers.get(FEATURE_HEADER)),
+    feature: validateFeatureHeader(
+      request.headers.get(FEATURE_HEADER) || (isLegacyOpenRouterPath ? '' : 'direct-gateway')
+    ),
     session_id: taskId ?? null,
     mode: modeHeader,
     auto_model: autoModel,
