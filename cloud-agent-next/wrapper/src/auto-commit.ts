@@ -1,6 +1,6 @@
 import type { IngestEvent } from '../../src/shared/protocol.js';
 import type { KiloClient } from './kilo-client.js';
-import { git, getCurrentBranch, logToFile } from './utils.js';
+import { git, getCurrentBranch, hasGitUpstream, logToFile } from './utils.js';
 
 /** Timeout for local git operations (status, add, commit) */
 const GIT_LOCAL_TIMEOUT_MS = 30_000;
@@ -17,7 +17,6 @@ export type AutoCommitResult = {
 
 export type AutoCommitOptions = {
   workspacePath: string;
-  upstreamBranch?: string;
   onEvent: (event: IngestEvent) => void;
   kiloClient: KiloClient;
   /** The assistant message ID this autocommit is associated with (for per-message UI rendering) */
@@ -55,14 +54,12 @@ function emitCompleted(
 }
 
 export async function runAutoCommit(opts: AutoCommitOptions): Promise<AutoCommitResult> {
-  const { workspacePath, upstreamBranch, onEvent, kiloClient, messageId } = opts;
+  const { workspacePath, onEvent, kiloClient, messageId } = opts;
 
-  logToFile(
-    `auto-commit: starting workspacePath=${workspacePath} upstreamBranch=${upstreamBranch ?? '(none)'}`
-  );
+  logToFile(`auto-commit: starting workspacePath=${workspacePath}`);
 
   try {
-    // Check current branch
+    // Check current branch (agent may have switched branches during execution)
     const branch = await getCurrentBranch(workspacePath);
     logToFile(`auto-commit: branch=${branch || '(detached HEAD)'}`);
     if (!branch) {
@@ -79,10 +76,9 @@ export async function runAutoCommit(opts: AutoCommitOptions): Promise<AutoCommit
       return { success: true, skipped: true };
     }
 
-    // Branch protection: don't commit to main/master without an explicit upstream
-    const hasUpstream = upstreamBranch !== undefined && upstreamBranch !== '';
-    if (!hasUpstream && (branch === 'main' || branch === 'master')) {
-      logToFile(`auto-commit: skipping - protected branch ${branch} with no upstream`);
+    // Branch protection: never auto-commit to main/master
+    if (branch === 'main' || branch === 'master') {
+      logToFile(`auto-commit: skipping - protected branch ${branch}`);
       emitCompleted(
         onEvent,
         {
@@ -94,6 +90,10 @@ export async function runAutoCommit(opts: AutoCommitOptions): Promise<AutoCommit
       );
       return { success: true, skipped: true };
     }
+
+    // Check actual git upstream (not stale config) to decide push strategy
+    const trackingUpstream = await hasGitUpstream(workspacePath);
+    logToFile(`auto-commit: hasGitUpstream=${trackingUpstream}`);
 
     // Check for uncommitted changes
     const status = await git(['status', '--porcelain'], {
@@ -191,7 +191,7 @@ export async function runAutoCommit(opts: AutoCommitOptions): Promise<AutoCommit
     }
 
     // Push
-    const pushArgs = hasUpstream ? ['push'] : ['push', '-u', 'origin', branch];
+    const pushArgs = trackingUpstream ? ['push'] : ['push', '-u', 'origin', branch];
     logToFile(`auto-commit: pushing with args: git ${pushArgs.join(' ')}`);
 
     const pushResult = await git(pushArgs, { cwd: workspacePath, timeoutMs: GIT_PUSH_TIMEOUT_MS });

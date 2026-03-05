@@ -68,3 +68,44 @@ export function buildPrepareSessionRepoParams(options: {
 
   return { githubRepo: repo };
 }
+
+export function buildRepoBrowseUrl(gitUrl: string | null | undefined): string | undefined {
+  if (!gitUrl) return undefined;
+
+  // SSH format: git@host:path.git
+  const sshMatch = gitUrl.match(/^git@([^:]+):(.+?)(?:\.git)?$/);
+  if (sshMatch) {
+    return `https://${sshMatch[1]}/${sshMatch[2]}`;
+  }
+
+  // HTTPS format
+  try {
+    const url = new URL(gitUrl);
+    const pathname = url.pathname.replace(/\.git$/, '');
+    return url.origin + pathname;
+  } catch {
+    return undefined;
+  }
+}
+
+export function detectGitPlatform(gitUrl: string | null | undefined): GitPlatform | undefined {
+  if (!gitUrl) return undefined;
+
+  let hostname: string | undefined;
+
+  // SSH format: git@host:...
+  const sshMatch = gitUrl.match(/^git@([^:]+):/);
+  if (sshMatch) {
+    hostname = sshMatch[1];
+  } else {
+    try {
+      hostname = new URL(gitUrl).hostname;
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (hostname === 'github.com') return 'github';
+  if (hostname === 'gitlab.com') return 'gitlab';
+  return undefined;
+}

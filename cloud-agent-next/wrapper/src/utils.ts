@@ -60,6 +60,16 @@ export async function getCurrentBranch(workspacePath: string): Promise<string> {
   }
 }
 
+/** Check if the current branch has a remote tracking branch configured in git. */
+export async function hasGitUpstream(workspacePath: string): Promise<boolean> {
+  try {
+    const result = await git(['rev-parse', '--abbrev-ref', '@{upstream}'], { cwd: workspacePath });
+    return result.exitCode === 0 && result.stdout.trim() !== '';
+  } catch {
+    return false;
+  }
+}
+
 export function logToFile(message: string): void {
   const logPath = process.env.WRAPPER_LOG_PATH || '/tmp/kilocode-wrapper.log';
   try {

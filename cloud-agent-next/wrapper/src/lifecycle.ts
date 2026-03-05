@@ -13,7 +13,7 @@ import type { KiloClient } from './kilo-client.js';
 import type { ConnectionManager } from './connection.js';
 import { runAutoCommit } from './auto-commit.js';
 import { runCondenseOnComplete } from './condense-on-complete.js';
-import { logToFile } from './utils.js';
+import { getCurrentBranch, logToFile } from './utils.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -47,8 +47,6 @@ export type LifecycleConfig = {
   condenseOnComplete: boolean;
   /** Workspace path for auto-commit/condense */
   workspacePath: string;
-  /** Upstream branch for auto-commit */
-  upstreamBranch?: string;
   /** Model for auto-commit/condense */
   model?: string;
 };
@@ -254,7 +252,6 @@ export function createLifecycleManager(
       try {
         const autoCommitPromise = runAutoCommit({
           workspacePath: config.workspacePath,
-          upstreamBranch: config.upstreamBranch,
           onEvent: event => state.sendToIngest(event),
           kiloClient,
           messageId: state.lastAssistantMessageId ?? undefined,
@@ -361,23 +358,32 @@ export function createLifecycleManager(
           uploader.stop();
         }
       })
-      .finally(() => {
-        // Send complete event to ingest so DO can update execution status and trigger callbacks
-        // BUT only if not aborted - fatal errors already sent their own terminal event
-        const job = state.currentJob;
-        if (job && !isAborted) {
-          logToFile(`sending complete event for executionId=${job.executionId}`);
-          state.sendToIngest({
-            streamEventType: 'complete',
-            data: {
-              exitCode: 0,
-              executionId: job.executionId,
-              kiloSessionId: job.kiloSessionId,
-            },
-            timestamp: new Date().toISOString(),
-          });
-        } else if (job && isAborted) {
-          logToFile(`skipping complete event - execution was aborted`);
+      .finally(async () => {
+        try {
+          // Send complete event to ingest so DO can update execution status and trigger callbacks
+          // BUT only if not aborted - fatal errors already sent their own terminal event
+          const job = state.currentJob;
+          if (job && !isAborted) {
+            // Capture current branch so the DO can persist it for future warm starts
+            const currentBranch = await getCurrentBranch(config.workspacePath).catch(() => '');
+            logToFile(
+              `sending complete event for executionId=${job.executionId} branch=${currentBranch || '(none)'}`
+            );
+            state.sendToIngest({
+              streamEventType: 'complete',
+              data: {
+                exitCode: 0,
+                executionId: job.executionId,
+                kiloSessionId: job.kiloSessionId,
+                ...(currentBranch ? { currentBranch } : {}),
+              },
+              timestamp: new Date().toISOString(),
+            });
+          } else if (job && isAborted) {
+            logToFile(`skipping complete event - execution was aborted`);
+          }
+        } catch (err) {
+          logToFile(`drain finally error: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         drainTimeout = setTimeout(() => {
