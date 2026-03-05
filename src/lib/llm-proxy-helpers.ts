@@ -353,7 +353,7 @@ export function extractFimPromptInfo(body: { prompt: string; suffix?: string | n
   };
 }
 
-export function estimateChatTokens(body: OpenRouterChatCompletionRequest): {
+export function estimateChatTokens_ignoringToolDefinitions(body: OpenRouterChatCompletionRequest): {
   estimatedInputTokens: number;
   estimatedOutputTokens: number;
 } {
@@ -368,7 +368,7 @@ export function estimateChatTokens(body: OpenRouterChatCompletionRequest): {
         : Array.isArray(m.content)
           ? m.content
               .filter(c => c.type === 'text')
-              .map(c => c.text.length)
+              .map(c => (c.text ?? '').length)
               .reduce((l, str) => str + 1 + l, 0)
           : 0),
     0
