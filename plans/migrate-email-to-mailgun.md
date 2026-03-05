@@ -33,8 +33,9 @@ import { sendViaMailgun } from './email-mailgun';
 type SendParams = {
   to: string;
   templateName: TemplateName;
-  templateVars: Record<string, unknown>; // tightened to Record<string, string> in PR 2
-  customerioIdentifiers?: Identifiers; // override for invite flows; defaults to { email: to }
+  // Record<string, unknown> in PR 1 to support customerio's native types (numbers, booleans).
+  // Tightened to Record<string, string> in PR 2 once renderTemplate is added.
+  templateVars: Record<string, unknown>;
 };
 
 function send(params: SendParams) {
@@ -46,13 +47,13 @@ function send(params: SendParams) {
     transactional_message_id: templates[params.templateName],
     to: params.to,
     message_data: params.templateVars,
-    identifiers: params.customerioIdentifiers ?? { email: params.to },
+    identifiers: { email: params.to },
     reply_to: 'hi@kilocode.ai',
   });
 }
 ```
 
-Each `send*Email` function builds `templateVars` and calls `send()` once. Customer.io receives its native `transactional_message_id` + `message_data` interface. Mailgun (PR 2) renders HTML locally and looks up the subject from `subjects[templateName]` — no subject arg needed at call sites.
+Each `send*Email` function builds `templateVars` and calls `send()` once. Customer.io receives its native `transactional_message_id` + `message_data` interface. Mailgun (PR 2) renders HTML locally and looks up the subject from `subjects[templateName]` — no subject arg needed at call sites. All emails use `{ email: to }` as the Customer.io identifier.
 
 ### Template Rendering
 
@@ -82,22 +83,22 @@ function buildCreditsSection(monthlyCreditsUsd: number): string {
 
 ### Subject Lines
 
-Customer.io stored subjects in the template; Mailgun needs them passed explicitly. Each `send*Email` function provides its own subject:
+Customer.io stores subjects in the remote template. Mailgun needs them passed explicitly. Rather than adding a subject argument to every `send*Email` call site, subjects are stored in a `subjects` map in `email.ts` keyed by `TemplateName`. The Mailgun branch of `send()` looks up `subjects[templateName]` internally — call sites are unchanged.
 
-| Function                             | Subject                                       |
-| ------------------------------------ | --------------------------------------------- |
-| `sendOrgSubscriptionEmail`           | "Welcome to Kilo for Teams!"                  |
-| `sendOrgRenewedEmail`                | "Kilo: Your Teams Subscription Renewal"       |
-| `sendOrgCancelledEmail`              | "Kilo: Your Teams Subscription is Cancelled"  |
-| `sendOrgSSOUserJoinedEmail`          | "Kilo: New SSO User Joined Your Organization" |
-| `sendOrganizationInviteEmail`        | "Kilo: Teams Invitation"                      |
-| `sendMagicLinkEmail`                 | "Sign in to Kilo Code"                        |
-| `sendBalanceAlertEmail`              | "Kilo: Low Balance Alert"                     |
-| `sendAutoTopUpFailedEmail`           | "Kilo: Auto Top-Up Failed"                    |
-| `sendOssInviteNewUserEmail`          | "Kilo: OSS Sponsorship Offer"                 |
-| `sendOssInviteExistingUserEmail`     | "Kilo: OSS Sponsorship Offer"                 |
-| `sendOssExistingOrgProvisionedEmail` | "Kilo: OSS Sponsorship Offer"                 |
-| `sendDeploymentFailedEmail`          | "Kilo: Your Deployment Failed"                |
+| Template name               | Subject                                       |
+| --------------------------- | --------------------------------------------- |
+| `orgSubscription`           | "Welcome to Kilo for Teams!"                  |
+| `orgRenewed`                | "Kilo: Your Teams Subscription Renewal"       |
+| `orgCancelled`              | "Kilo: Your Teams Subscription is Cancelled"  |
+| `orgSSOUserJoined`          | "Kilo: New SSO User Joined Your Organization" |
+| `orgInvitation`             | "Kilo: Teams Invitation"                      |
+| `magicLink`                 | "Sign in to Kilo Code"                        |
+| `balanceAlert`              | "Kilo: Low Balance Alert"                     |
+| `autoTopUpFailed`           | "Kilo: Auto Top-Up Failed"                    |
+| `ossInviteNewUser`          | "Kilo: OSS Sponsorship Offer"                 |
+| `ossInviteExistingUser`     | "Kilo: OSS Sponsorship Offer"                 |
+| `ossExistingOrgProvisioned` | "Kilo: OSS Sponsorship Offer"                 |
+| `deployFailed`              | "Kilo: Your Deployment Failed"                |
 
 ### Template Variables
 
