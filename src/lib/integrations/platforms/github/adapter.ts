@@ -291,6 +291,35 @@ export async function addReactionToPRReviewComment(
 }
 
 /**
+ * Checks the collaborator permission level for a user on a repository.
+ * Returns the permission string ('admin' | 'write' | 'read' | 'none') or null
+ * if the lookup fails (e.g. the App lacks permission to query collaborators).
+ * @param appType - The type of GitHub App to use (defaults to 'standard')
+ */
+export async function getCollaboratorPermissionLevel(
+  installationId: string,
+  owner: string,
+  repo: string,
+  username: string,
+  appType: GitHubAppType = 'standard'
+): Promise<'admin' | 'write' | 'read' | 'none' | null> {
+  try {
+    const tokenData = await generateGitHubInstallationToken(installationId, appType);
+    const octokit = new Octokit({ auth: tokenData.token });
+
+    const { data } = await octokit.repos.getCollaboratorPermissionLevel({
+      owner,
+      repo,
+      username,
+    });
+
+    return data.permission as 'admin' | 'write' | 'read' | 'none';
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Replies to a PR review comment thread
  * Used by auto-fix to post completion/failure replies on review threads
  * @param appType - The type of GitHub App to use (defaults to 'standard')

@@ -20,7 +20,10 @@ import {
 } from '../../db/fix-tickets';
 import { tryDispatchPendingFixes } from '../../dispatch/dispatch-pending-fixes';
 import { getBotUserId } from '@/lib/bot-users/bot-user-service';
-import { addReactionToPRReviewComment } from '@/lib/integrations/platforms/github/adapter';
+import {
+  addReactionToPRReviewComment,
+  getCollaboratorPermissionLevel,
+} from '@/lib/integrations/platforms/github/adapter';
 import { AutoFixAgentConfigSchema } from '../../core/schemas';
 import type { Owner } from '../../core/schemas';
 import type {
@@ -33,13 +36,17 @@ const FIX_KEYWORD_PATTERN = /\b(fix|patch)\b/i;
 
 /**
  * author_association values that imply write access.
- * CONTRIBUTOR is intentionally excluded — they have merged PRs but no push access.
+ * GitHub's author_association field is unreliable — org members sometimes appear
+ * as CONTRIBUTOR in webhook payloads. When the value is not in this set we fall
+ * back to an API check.
  */
 const WRITE_ACCESS_ASSOCIATIONS = new Set<GitHubAuthorAssociation>([
   'OWNER',
   'MEMBER',
   'COLLABORATOR',
 ]);
+
+const WRITE_PERMISSION_LEVELS = new Set(['admin', 'write']);
 
 export class ReviewCommentWebhookProcessor {
   async process(
@@ -72,20 +79,43 @@ export class ReviewCommentWebhookProcessor {
       return;
     }
 
-    // 2. Check author_association for write access
+    // 2. Check author permissions for write access
+    //    author_association from the webhook payload is checked first, but it is
+    //    unreliable (e.g. org members may appear as CONTRIBUTOR). When the fast
+    //    check fails we fall back to the collaborator permission API.
     if (!WRITE_ACCESS_ASSOCIATIONS.has(comment.author_association)) {
-      logExceptInTest('[ReviewCommentWebhookProcessor] Author lacks write access', {
-        commentId: comment.id,
-        authorAssociation: comment.author_association,
-        author: comment.user.login,
-      });
-      // Add thumbs-down reaction to indicate permission denied
-      try {
-        await addReactionToPRReviewComment(installationId, repoOwner, repoName, comment.id, '-1');
-      } catch {
-        // Best-effort reaction
+      const permission = await getCollaboratorPermissionLevel(
+        installationId,
+        repoOwner,
+        repoName,
+        comment.user.login
+      );
+
+      if (!permission || !WRITE_PERMISSION_LEVELS.has(permission)) {
+        logExceptInTest('[ReviewCommentWebhookProcessor] Author lacks write access', {
+          commentId: comment.id,
+          authorAssociation: comment.author_association,
+          apiPermission: permission,
+          author: comment.user.login,
+        });
+        // Add thumbs-down reaction to indicate permission denied
+        try {
+          await addReactionToPRReviewComment(installationId, repoOwner, repoName, comment.id, '-1');
+        } catch {
+          // Best-effort reaction
+        }
+        return;
       }
-      return;
+
+      logExceptInTest(
+        '[ReviewCommentWebhookProcessor] author_association was insufficient but API confirms write access',
+        {
+          commentId: comment.id,
+          authorAssociation: comment.author_association,
+          apiPermission: permission,
+          author: comment.user.login,
+        }
+      );
     }
 
     // 3. Build owner object
