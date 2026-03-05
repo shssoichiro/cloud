@@ -59,7 +59,6 @@ import { customLlmRequest } from '@/lib/custom-llm/customLlmRequest';
 import { normalizeModelId } from '@/lib/model-utils';
 import { isRateLimitedToDeath } from '@/lib/rate-limited-models';
 import { isActiveReviewPromo } from '@/lib/code-reviews/core/constants';
-import { isActiveCloudAgentPromo } from '@/lib/promotions/cloud-agent-promo';
 import { isKiloAutoModel, resolveAutoModel } from '@/lib/kilo-auto-model';
 import { fixOpenCodeDuplicateReasoning } from '@/lib/providers/fixOpenCodeDuplicateReasoning';
 
@@ -312,8 +311,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
       balance <= 0 &&
       !isFreeModel(originalModelIdLowerCased) &&
       !userByok &&
-      !isActiveReviewPromo(botId, originalModelIdLowerCased) &&
-      !isActiveCloudAgentPromo(tokenSource, originalModelIdLowerCased)
+      !isActiveReviewPromo(botId, originalModelIdLowerCased)
     ) {
       return await usageLimitExceededResponse(user, balance);
     }
@@ -378,13 +376,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   );
 
   const response = customLlm
-    ? await customLlmRequest(
-        customLlm,
-        requestBodyParsed,
-        user.id,
-        taskId,
-        isRooCodeBasedClient(fraudHeaders)
-      )
+    ? await customLlmRequest(customLlm, requestBodyParsed, isRooCodeBasedClient(fraudHeaders))
     : await openRouterRequest({
         path,
         search: url.search,
@@ -496,8 +488,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   if (
     provider.id !== 'custom' &&
     (isKiloFreeModel(originalModelIdLowerCased) ||
-      isActiveReviewPromo(botId, originalModelIdLowerCased) ||
-      isActiveCloudAgentPromo(tokenSource, originalModelIdLowerCased))
+      isActiveReviewPromo(botId, originalModelIdLowerCased))
   ) {
     return rewriteFreeModelResponse(response, originalModelIdLowerCased);
   }

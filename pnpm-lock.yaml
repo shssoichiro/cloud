@@ -96,6 +96,15 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.980.0
         version: 3.980.0
+      '@chat-adapter/slack':
+        specifier: ^4.15.0
+        version: 4.15.0
+      '@chat-adapter/state-memory':
+        specifier: ^4.15.0
+        version: 4.15.0
+      '@chat-adapter/state-redis':
+        specifier: ^4.15.0
+        version: 4.15.0
       '@kilocode/db':
         specifier: workspace:*
         version: link:packages/db
@@ -252,6 +261,9 @@ importers:
       ai:
         specifier: ^6.0.105
         version: 6.0.105(zod@4.3.6)
+      chat:
+        specifier: ^4.15.0
+        version: 4.15.0
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -998,18 +1010,36 @@ importers:
       '@cloudflare/containers':
         specifier: ^0.1.0
         version: 0.1.0
+      '@hono/trpc-server':
+        specifier: ^0.4.2
+        version: 0.4.2(@trpc/server@11.9.0(typescript@5.9.3))(hono@4.12.2)
+      '@kilocode/db':
+        specifier: workspace:*
+        version: link:../packages/db
       '@kilocode/worker-utils':
         specifier: workspace:*
         version: link:../packages/worker-utils
+      '@trpc/server':
+        specifier: ^11.0.0
+        version: 11.9.0(typescript@5.9.3)
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.1(@cloudflare/workers-types@4.20260130.0)(@opentelemetry/api@1.9.0)(@types/pg@8.16.0)(bun-types@1.3.9)(pg@8.18.0)
       hono:
         specifier: 'catalog:'
         version: 4.12.2
       itty-time:
         specifier: ^1.0.6
         version: 1.0.6
+      jose:
+        specifier: 'catalog:'
+        version: 6.1.3
       jsonwebtoken:
         specifier: 'catalog:'
         version: 9.0.3
+      pg:
+        specifier: ^8.16.3
+        version: 8.18.0
       zod:
         specifier: 'catalog:'
         version: 4.3.6
@@ -1045,11 +1075,11 @@ importers:
   cloudflare-gastown/container:
     dependencies:
       '@kilocode/plugin':
-        specifier: 1.0.23
-        version: 1.0.23
+        specifier: 7.0.37
+        version: 7.0.37
       '@kilocode/sdk':
-        specifier: 1.0.23
-        version: 1.0.23
+        specifier: 7.0.37
+        version: 7.0.37
       hono:
         specifier: 'catalog:'
         version: 4.12.2
@@ -2471,6 +2501,18 @@ packages:
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
 
+  '@chat-adapter/shared@4.15.0':
+    resolution: {integrity: sha512-otIS9zf0wY3DMc5WGK1sOJiASSeMHcdEqmuxDWW/6tK7gdRE7FOVE+dfo/74ykj9QZwv+a9cByh1cimaeHbiAw==}
+
+  '@chat-adapter/slack@4.15.0':
+    resolution: {integrity: sha512-DE2puxMXitt2AVLBvMAldZ4KKUKpKWxSd62nWLDX6xXtOo6z9uXAggZD3FnMOGITqw+oQypdFopvm/Wu6OxeFg==}
+
+  '@chat-adapter/state-memory@4.15.0':
+    resolution: {integrity: sha512-I/p6dA8fl8peZH9utKOsO8raFttUSyIQwyhB/uP6cR9d07hZVcG/SF30t4RjKDgegnq8+euqPFj3lCssIaYhoA==}
+
+  '@chat-adapter/state-redis@4.15.0':
+    resolution: {integrity: sha512-156CGZCkMXzsnMC20nIpNkAGScbasOHxR9YcPMuLm2IwSC1L/Kyea7o9TEv2ldvk63q/e+AaU+98T7T5/2+mvg==}
+
   '@chromatic-com/playwright@0.12.8':
     resolution: {integrity: sha512-2oi8ghd+2N+hDI0Y65Ac/aYfsvDTyDHvEZMNS4Ln7VzyZ6SdGLoQLOvP80IGJlekTI68K8gQpzXewRV2chUaZQ==}
     hasBin: true
@@ -3432,11 +3474,11 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
-  '@kilocode/plugin@1.0.23':
-    resolution: {integrity: sha512-iP273WjkN1veQF0ygpVEVGZviIl/bynxH7RXwmkyODKtlgHbs3QzxeUoLbd5r4ZDYDIcA5+4NITCTjcE3YlPEQ==}
+  '@kilocode/plugin@7.0.37':
+    resolution: {integrity: sha512-bDeLo2FLqFdQZmjezfiJ+Oyk5rb3Tzh9+nKAVp+2kHOhKDkwgOD71OFN+Ii0t3RvyChkLYnghw179FqHByNILQ==}
 
-  '@kilocode/sdk@1.0.23':
-    resolution: {integrity: sha512-4z7xdfHyoRm+iUwQtu0k+BMy1ovNhA3yCy+94Hwz0jH5329ZVmaTjoPq4QleWihMthzsxaJCVFx7bonphsr1PA==}
+  '@kilocode/sdk@7.0.37':
+    resolution: {integrity: sha512-t7HEjYpAuW3IdbEp+2VYQPFLhidYFSmWK3nl6vWri0QBNh+spQcotdMYENNmv/HQOAXr84pXgOFtc8YCEOz5wQ==}
 
   '@lottiefiles/dotlottie-react@0.17.7':
     resolution: {integrity: sha512-A6wO3zqkDx/t0ULfctcr1Bmb1f1hc4zUV3NcbKQOsBGAOIx1vABV/fRabFYElvbJl9lmOR24yMh//Z0fvvJV+Q==}
@@ -4541,6 +4583,35 @@ packages:
 
   '@radix-ui/rect@1.1.1':
     resolution: {integrity: sha512-HPwpGIzkl28mWyZqG52jiqDJ12waP11Pa1lGoiyUkIEuMLBP0oeK/C89esbXrxsky5we7dfd8U58nm0SgAWpVw==}
+
+  '@redis/bloom@1.2.0':
+    resolution: {integrity: sha512-HG2DFjYKbpNmVXsa0keLHp/3leGJz1mjh09f2RLGGLQZzSHpkmZWuwJbAvo3QcRY8p80m5+ZdXZdYOSBLlp7Cg==}
+    peerDependencies:
+      '@redis/client': ^1.0.0
+
+  '@redis/client@1.6.1':
+    resolution: {integrity: sha512-/KCsg3xSlR+nCK8/8ZYSknYxvXHwubJrU82F3Lm1Fp6789VQ0/3RJKfsmRXjqfaTA++23CvC3hqmqe/2GEt6Kw==}
+    engines: {node: '>=14'}
+
+  '@redis/graph@1.1.1':
+    resolution: {integrity: sha512-FEMTcTHZozZciLRl6GiiIB4zGm5z5F3F6a6FZCyrfxdKOhFlGkiAqlexWMBzCi4DcRoyiOsuLfW+cjlGWyExOw==}
+    peerDependencies:
+      '@redis/client': ^1.0.0
+
+  '@redis/json@1.0.7':
+    resolution: {integrity: sha512-6UyXfjVaTBTJtKNG4/9Z8PSpKE6XgSyEb8iwaqDcy+uKrd/DGYHTWkUdnQDyzm727V7p21WUMhsqz5oy65kPcQ==}
+    peerDependencies:
+      '@redis/client': ^1.0.0
+
+  '@redis/search@1.2.0':
+    resolution: {integrity: sha512-tYoDBbtqOVigEDMAcTGsRlMycIIjwMCgD8eR2t0NANeQmgK/lvxNAvYyb6bZDD4frHRhIHkJu2TBRvB0ERkOmw==}
+    peerDependencies:
+      '@redis/client': ^1.0.0
+
+  '@redis/time-series@1.1.0':
+    resolution: {integrity: sha512-c1Q99M5ljsIuc4YdaCwfUEXsofakb9c8+Zse2qxTadu8TalLXuAESzLvFAvNVbkmSlvlzIQOLpBCmWI9wTOt+g==}
+    peerDependencies:
+      '@redis/client': ^1.0.0
 
   '@reduxjs/toolkit@2.9.1':
     resolution: {integrity: sha512-sETJ3qO72y7L7WiR5K54UFLT3jRzAtqeBPVO15xC3bGA6kDqCH8m/v7BKCPH4czydXzz/1lPEGLvew7GjOO3Qw==}
@@ -6247,6 +6318,9 @@ packages:
   '@webassemblyjs/wast-printer@1.14.1':
     resolution: {integrity: sha512-kPSSXE6De1XOR820C90RIo2ogvZG+c3KiHzqUoO/F34Y2shGzesfqv7o57xrxovZJH/MetF5UjroJ/R/3isoiw==}
 
+  '@workflow/serde@4.1.0-beta.2':
+    resolution: {integrity: sha512-8kkeoQKLDaKXefjV5dbhBj2aErfKp1Mc4pb6tj8144cF+Em5SPbyMbyLCHp+BVrFfFVCBluCtMx+jjvaFVZGww==}
+
   '@workos-inc/node@8.2.0':
     resolution: {integrity: sha512-aAY2k7X09lQ4TaVe7Kjm3gjb+EsGRoncbwJCOou9mCmunQoEYO1lsNrJTRIMM+jKCPBQDcmMF1O3Bv8IQwQKtg==}
     engines: {node: '>=20.15.0'}
@@ -6768,6 +6842,9 @@ packages:
   character-reference-invalid@2.0.1:
     resolution: {integrity: sha512-iBZ4F4wRbyORVsu0jPV7gXkOsGYjGHPmAyv+HiHG8gi5PtC9KI2j1+v8/tlibRvjoWX027ypmG/n0HtO5t7unw==}
 
+  chat@4.15.0:
+    resolution: {integrity: sha512-fE1m3UEiKQoiYkhXWT0rpH1+ZhKqJGZYkS+1gNCZWNkLv0QWTZhzdzBM5qYWe5A/Y0wJ8yLVjaqvGO4zZFxZqg==}
+
   check-error@2.1.1:
     resolution: {integrity: sha512-OAlb+T7V4Op9OwdkjmguYRqncdlx5JiofwOAUkmTF+jNdHwzTaTs4sRAGpzLF3oOz5xAyDGrPgeIDFQmDOTiJw==}
     engines: {node: '>= 16'}
@@ -6849,6 +6926,10 @@ packages:
   clsx@2.1.1:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
+
+  cluster-key-slot@1.1.2:
+    resolution: {integrity: sha512-RMr0FhtfXemyinomL4hrWcYJxmX6deFdCxpJzhDttxgO1+bcCnkk+9drydLVDmAMG7NE6aN/fl4F7ucU/90gAA==}
+    engines: {node: '>=0.10.0'}
 
   cmdk@1.1.1:
     resolution: {integrity: sha512-Vsv7kFaXm+ptHDMZ7izaRsP70GgrW9NBNGswt9OZaVBLlE0SNpDq8eu/VGXyF9r7M0azK3Wy7OlYXsuyYLFzHg==}
@@ -8021,6 +8102,10 @@ packages:
   generator-function@2.0.1:
     resolution: {integrity: sha512-SFdFmIJi+ybC0vjlHN0ZGVGHc3lgE0DxPAT0djjVg+kjOnSqclqmj0KQ7ykTOLP6YxoqOvuAODGdcHJn+43q3g==}
     engines: {node: '>= 0.4'}
+
+  generic-pool@3.9.0:
+    resolution: {integrity: sha512-hymDOu5B53XvN4QT9dBmZxPX4CWhBPPLguTZ9MMFeFa/Kg0xWVfylOVNlJji/E7yTZWFd/q9GO5TxDLq156D7g==}
+    engines: {node: '>= 4'}
 
   gensync@1.0.0-beta.2:
     resolution: {integrity: sha512-3hN7NaskYvMDLQY55gnW3NQ+mesEAepTqlg+VEbj7zzqEMBVNhzcGYYeqFo/TlYz6eQiFcp1HcsCZO+nGgS8zg==}
@@ -9861,9 +9946,6 @@ packages:
     peerDependencies:
       pg: '>=8.0'
 
-  pg-protocol@1.10.3:
-    resolution: {integrity: sha512-6DIBgBQaTKDJyxnXaLiLR8wBpQQcGWuAESkRBX/t6OwA8YsqP+iVSiond2EDy6Y/dsGk8rh/jtax3js5NeV7JQ==}
-
   pg-protocol@1.11.0:
     resolution: {integrity: sha512-pfsxk2M9M3BuGgDOfuy37VNRRX3jmKgMjcvAcWqNDpZSf4cUmv8HSOl5ViRQFsfARFn0KuUQTgLxVMbNq5NW3g==}
 
@@ -10363,6 +10445,9 @@ packages:
   redent@3.0.0:
     resolution: {integrity: sha512-6tDA8g98We0zd0GvVeMT9arEOnTw9qM03L9cJXaCjrip1OO764RDBLBfrB4cwzNGDj5OA5ioymC9GkizgWJDUg==}
     engines: {node: '>=8'}
+
+  redis@4.7.1:
+    resolution: {integrity: sha512-S1bJDnqLftzHXHP8JsT5II/CtHWQrASX5K96REjWjlmWKrviSOLWmM7QnRLstAWsu1VBBV1ffV6DzCvxNP0UJQ==}
 
   redux-thunk@3.1.0:
     resolution: {integrity: sha512-NW2r5T6ksUKXCabzhL9z+h206HQw/NJkcLm1GPImRQ8IzfXwRGqjVhKJGauHirT0DAuyy6hjdnMZaRoAcy0Klw==}
@@ -13233,6 +13318,34 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
+  '@chat-adapter/shared@4.15.0':
+    dependencies:
+      chat: 4.15.0
+    transitivePeerDependencies:
+      - supports-color
+
+  '@chat-adapter/slack@4.15.0':
+    dependencies:
+      '@chat-adapter/shared': 4.15.0
+      '@slack/web-api': 7.14.1
+      chat: 4.15.0
+    transitivePeerDependencies:
+      - debug
+      - supports-color
+
+  '@chat-adapter/state-memory@4.15.0':
+    dependencies:
+      chat: 4.15.0
+    transitivePeerDependencies:
+      - supports-color
+
+  '@chat-adapter/state-redis@4.15.0':
+    dependencies:
+      chat: 4.15.0
+      redis: 4.7.1
+    transitivePeerDependencies:
+      - supports-color
+
   '@chromatic-com/playwright@0.12.8(@playwright/test@1.57.0)(@swc/core@1.12.5)(@types/react@19.2.2)(esbuild@0.27.0)(prettier@3.8.1)(typescript@5.9.3)':
     dependencies:
       '@chromaui/rrweb-snapshot': 2.0.0-alpha.18-noAbsolute
@@ -14234,12 +14347,12 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@kilocode/plugin@1.0.23':
+  '@kilocode/plugin@7.0.37':
     dependencies:
-      '@kilocode/sdk': 1.0.23
+      '@kilocode/sdk': 7.0.37
       zod: 4.1.8
 
-  '@kilocode/sdk@1.0.23': {}
+  '@kilocode/sdk@7.0.37': {}
 
   '@lottiefiles/dotlottie-react@0.17.7(react@19.2.0)':
     dependencies:
@@ -15384,6 +15497,32 @@ snapshots:
       '@types/react-dom': 19.2.2(@types/react@19.2.2)
 
   '@radix-ui/rect@1.1.1': {}
+
+  '@redis/bloom@1.2.0(@redis/client@1.6.1)':
+    dependencies:
+      '@redis/client': 1.6.1
+
+  '@redis/client@1.6.1':
+    dependencies:
+      cluster-key-slot: 1.1.2
+      generic-pool: 3.9.0
+      yallist: 4.0.0
+
+  '@redis/graph@1.1.1(@redis/client@1.6.1)':
+    dependencies:
+      '@redis/client': 1.6.1
+
+  '@redis/json@1.0.7(@redis/client@1.6.1)':
+    dependencies:
+      '@redis/client': 1.6.1
+
+  '@redis/search@1.2.0(@redis/client@1.6.1)':
+    dependencies:
+      '@redis/client': 1.6.1
+
+  '@redis/time-series@1.1.0(@redis/client@1.6.1)':
+    dependencies:
+      '@redis/client': 1.6.1
 
   '@reduxjs/toolkit@2.9.1(react-redux@9.2.0(@types/react@19.2.2)(react@19.2.0)(redux@5.0.1))(react@19.2.0)':
     dependencies:
@@ -17146,7 +17285,7 @@ snapshots:
   '@types/pg@8.15.6':
     dependencies:
       '@types/node': 22.19.1
-      pg-protocol: 1.10.3
+      pg-protocol: 1.11.0
       pg-types: 2.2.0
 
   '@types/pg@8.16.0':
@@ -17690,6 +17829,8 @@ snapshots:
     dependencies:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
+
+  '@workflow/serde@4.1.0-beta.2': {}
 
   '@workos-inc/node@8.2.0':
     dependencies:
@@ -18266,6 +18407,17 @@ snapshots:
 
   character-reference-invalid@2.0.1: {}
 
+  chat@4.15.0:
+    dependencies:
+      '@workflow/serde': 4.1.0-beta.2
+      mdast-util-to-string: 4.0.0
+      remark-gfm: 4.0.1
+      remark-parse: 11.0.0
+      remark-stringify: 11.0.0
+      unified: 11.0.5
+    transitivePeerDependencies:
+      - supports-color
+
   check-error@2.1.1: {}
 
   chokidar@3.6.0:
@@ -18335,6 +18487,8 @@ snapshots:
   clone@1.0.4: {}
 
   clsx@2.1.1: {}
+
+  cluster-key-slot@1.1.2: {}
 
   cmdk@1.1.1(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.0(react@19.2.0))(react@19.2.0):
     dependencies:
@@ -19603,6 +19757,8 @@ snapshots:
   function-bind@1.1.2: {}
 
   generator-function@2.0.1: {}
+
+  generic-pool@3.9.0: {}
 
   gensync@1.0.0-beta.2: {}
 
@@ -22224,8 +22380,6 @@ snapshots:
     dependencies:
       pg: 8.18.0
 
-  pg-protocol@1.10.3: {}
-
   pg-protocol@1.11.0: {}
 
   pg-types@2.2.0:
@@ -22730,6 +22884,15 @@ snapshots:
     dependencies:
       indent-string: 4.0.0
       strip-indent: 3.0.0
+
+  redis@4.7.1:
+    dependencies:
+      '@redis/bloom': 1.2.0(@redis/client@1.6.1)
+      '@redis/client': 1.6.1
+      '@redis/graph': 1.1.1(@redis/client@1.6.1)
+      '@redis/json': 1.0.7(@redis/client@1.6.1)
+      '@redis/search': 1.2.0(@redis/client@1.6.1)
+      '@redis/time-series': 1.1.0(@redis/client@1.6.1)
 
   redux-thunk@3.1.0(redux@5.0.1):
     dependencies:

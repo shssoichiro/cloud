@@ -40,6 +40,8 @@ export const ConfigRestoreResponseSchema = z.object({
 export const ControllerVersionResponseSchema = z.object({
   version: z.string(),
   commit: z.string(),
+  // optional() for backward compat with older controllers that don't include this field
+  openclawVersion: z.string().nullable().optional(),
 });
 
 export class GatewayControllerError extends Error {

@@ -146,7 +146,7 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
 
       {instanceStatus?.status === 'running' && <PairingCard mutations={mutations} />}
 
-      {earlybirdStatus && !earlybirdStatus.purchased && <EarlybirdBanner />}
+      {earlybirdStatus && <EarlybirdBanner purchased={earlybirdStatus.purchased} />}
       <ChangelogCard />
     </div>
   );

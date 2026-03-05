@@ -55,7 +55,6 @@ import { ModelCombobox, type ModelOption } from '@/components/shared/ModelCombob
 import { AdvancedConfig } from '@/components/shared/AdvancedConfig';
 import { cn } from '@/lib/utils';
 import { MODES } from './ResumeConfigModal';
-import { applyCloudAgentPromoLabel } from '@/lib/promotions/cloud-agent-promo';
 
 type CloudSessionsPageProps = {
   organizationId?: string;
@@ -87,8 +86,6 @@ export function CloudSessionsPage({ organizationId }: CloudSessionsPageProps) {
     () => allModels.map(model => ({ id: model.id, name: model.name })),
     [allModels]
   );
-
-  const promoModelOptions = useMemo(() => applyCloudAgentPromoLabel(modelOptions), [modelOptions]);
 
   // Form state (non-profile related)
   const [prompt, setPrompt] = useState('');
@@ -666,7 +663,7 @@ export function CloudSessionsPage({ organizationId }: CloudSessionsPageProps) {
               setModel(newModel);
               setIsModelUserSelected(true);
             }}
-            modelOptions={promoModelOptions}
+            modelOptions={modelOptions}
             isLoadingModels={!modelsData}
           />
 
