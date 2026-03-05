@@ -759,7 +759,7 @@ export async function customLlmRequest(
     }
   }
 
-  const result = streamText({ model, ...commonParams, includeRawChunks: true });
+  const result = streamText({ model, ...commonParams, includeRawChunks: inStreamDebugMode });
 
   if (inStreamDebugMode) {
     debugSaveLog(JSON.stringify(request, undefined, 2), 'request.gateway.json');
