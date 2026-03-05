@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   const state = url?.searchParams.get('state');
 
   if (state?.startsWith('org_')) {
-    const orgId = state.split('_')[1];
+    const orgId = state.replace('org_', '');
     await ensureOrganizationAccess({ user }, orgId);
 
     // TODO: Reconsider blindly deleting the existing integration on re-install.
