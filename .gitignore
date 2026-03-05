@@ -89,3 +89,5 @@ supabase/.temp
 
 # Husky generated hook shims
 .husky/_/
+
+.dev-logs/
