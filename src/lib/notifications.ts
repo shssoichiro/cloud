@@ -313,9 +313,10 @@ async function generateKimiFreeEndingNotification(user: User): Promise<KiloNotif
         id: 'kimi-k25-free-ending-mar-5',
         title: 'Kimi K2.5 Free Promotion Ending Soon',
         message:
-          'We hope you enjoyed free use of Kimi K2.5! The promotion will be ending soon. You can switch to another free model or keep using Kimi with credits.',
+          'We hope you enjoyed free use of Kimi K2.5! The promotion will be ending soon. You can switch to Kilo: Auto free mode or keep using Kimi with credits.',
+        suggestModelId: 'kilo/auto-free',
         action: {
-          actionText: 'Add Credits',
+          actionText: 'Switch to Kilo: Auto Free',
           actionURL: `${APP_URL}/credits`,
         },
         showIn: ['cli', 'extension'],
