@@ -31,7 +31,10 @@ import { INTERNAL_API_SECRET } from '@/lib/config.server';
 import { postIssueComment } from '@/lib/auto-fix/github/post-comment';
 import { generateGitHubInstallationToken } from '@/lib/integrations/platforms/github/adapter';
 import { getIntegrationById } from '@/lib/integrations/db/platform-integrations';
-import { handleCommentReply } from '@/lib/auto-fix/github/handle-comment-reply';
+import {
+  handleCommentReply,
+  sanitizePublicErrorMessage,
+} from '@/lib/auto-fix/github/handle-comment-reply';
 import { handleCreateIssuePR } from '@/lib/auto-fix/github/handle-create-issue-pr';
 
 type LegacyCallbackPayload = {
@@ -162,7 +165,7 @@ export async function POST(req: NextRequest) {
               await postIssueComment({
                 repoFullName: ticket.repo_full_name,
                 issueNumber: ticket.issue_number,
-                body: `🤖 **Auto-Fix Update**\n\nI attempted to create a pull request to fix this issue, but encountered an error:\n\n\`\`\`\n${errorMessage || 'Unknown error'}\n\`\`\`\n\nThis issue may require manual attention.`,
+                body: `🤖 **Auto-Fix Update**\n\nI attempted to create a pull request to fix this issue, but encountered an error:\n\n\`\`\`\n${sanitizePublicErrorMessage(errorMessage || 'Unknown error')}\n\`\`\`\n\nThis issue may require manual attention.`,
                 githubToken: tokenData.token,
               });
 
