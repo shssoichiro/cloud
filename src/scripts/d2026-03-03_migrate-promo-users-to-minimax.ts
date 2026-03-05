@@ -165,11 +165,6 @@ async function migrateReviewModelsForDb(
 async function migrateReviewModels(candidates: CandidateConfig[]): Promise<UpdateResult> {
   const result: UpdateResult = { updated: 0, details: [], migratedConfigIds: [] };
 
-  if (isDryRun) {
-    await migrateReviewModelsForDb(db, candidates, result);
-    return result;
-  }
-
   await db.transaction(async tx => {
     await migrateReviewModelsForDb(tx, candidates, result);
   });
