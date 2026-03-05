@@ -239,11 +239,6 @@ async function run() {
     return;
   }
 
-  for (const c of allCandidates) {
-    console.log(`  ${c.ownerType}: ${c.ownerLabel} (${c.platform}) — $${c.balanceUsd.toFixed(2)}`);
-  }
-  console.log('');
-
   // Phase 2
   console.log('Phase 2: Updating agent_configs...');
   const result = await migrateReviewModels(allCandidates);
