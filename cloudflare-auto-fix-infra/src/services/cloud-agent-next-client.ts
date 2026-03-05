@@ -86,6 +86,7 @@ export class CloudAgentNextClient {
       headers: {
         Authorization: `Bearer ${this.authToken}`,
         'Content-Type': 'application/json',
+        'x-internal-api-key': this.internalApiKey,
       },
       body: JSON.stringify({ cloudAgentSessionId }),
     });
