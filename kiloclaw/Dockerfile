@@ -58,16 +58,22 @@ RUN npm install -g @steipete/summarize@0.11.1
 ENV GO_VERSION=1.26.0
 RUN ARCH="$(dpkg --print-architecture)" \
     && curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz -o /tmp/go.tar.gz \
+    && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz.sha256" -o /tmp/go.tar.gz.sha256 \
+    && echo "$(cat /tmp/go.tar.gz.sha256)  /tmp/go.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/go.tar.gz -C /usr/local \
-    && rm /tmp/go.tar.gz
+    && rm /tmp/go.tar.gz /tmp/go.tar.gz.sha256
+# IMPORTANT: A Fly Volume is mounted at /root at runtime, which shadows
+# everything the image layer writes under /root.
+# - Pre-installed tools use GOBIN=/usr/local/bin so they survive the mount.
+# - At runtime, Go defaults to GOBIN=/root/go/bin (on the persistent volume),
+#   so user-installed tools persist across restarts and are included in snapshots.
+# - npm/Node (installed to /usr/local) and apt packages (/usr/bin) are unaffected.
 ENV PATH="/usr/local/go/bin:/root/go/bin:$PATH"
-
-# Install Go CLI tools: gog, goplaces, blogwatcher, xurl, gifgrep
-RUN go install github.com/steipete/gogcli/cmd/gog@v0.11.0 \
-    && go install github.com/steipete/goplaces/cmd/goplaces@v0.3.0 \
-    && go install github.com/Hyaxia/blogwatcher/cmd/blogwatcher@v0.0.2 \
-    && go install github.com/xdevplatform/xurl@v1.0.3 \
-    && go install github.com/steipete/gifgrep/cmd/gifgrep@v0.2.3 \
+RUN GOBIN=/usr/local/bin go install github.com/steipete/gogcli/cmd/gog@v0.11.0 \
+    && GOBIN=/usr/local/bin go install github.com/steipete/goplaces/cmd/goplaces@v0.3.0 \
+    && GOBIN=/usr/local/bin go install github.com/Hyaxia/blogwatcher/cmd/blogwatcher@v0.0.2 \
+    && GOBIN=/usr/local/bin go install github.com/xdevplatform/xurl@v1.0.3 \
+    && GOBIN=/usr/local/bin go install github.com/steipete/gifgrep/cmd/gifgrep@v0.2.3 \
     && go clean -cache -modcache
 
 # Install pinned Bun (build-time only) and compile the controller bundle.
