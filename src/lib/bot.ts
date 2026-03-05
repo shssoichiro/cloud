@@ -46,7 +46,9 @@ bot.onNewMention(async function handleIncomingMessage(
   const user = await findUserById(kiloUserId);
 
   if (!user) {
-    throw new Error('User not found');
+    await unlinkKiloUser(bot.getState(), identity);
+    await promptLinkAccount(thread, message, identity);
+    return;
   }
 
   const received = thread.createSentMessageFromMessage(message);
