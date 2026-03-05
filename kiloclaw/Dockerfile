@@ -51,13 +51,23 @@ RUN npm install -g clawhub
 # Install mcporter (MCP server tooling)
 RUN npm install -g mcporter@0.7.3
 
-# Install gog (gogcli - Google Workspace CLI)
-RUN curl -fsSL https://github.com/steipete/gogcli/releases/download/v0.11.0/gogcli_0.11.0_linux_amd64.tar.gz \
-    -o /tmp/gogcli.tar.gz \
-    && tar -xzf /tmp/gogcli.tar.gz -C /tmp gog \
-    && mv /tmp/gog /usr/local/bin/gog \
-    && chmod +x /usr/local/bin/gog \
-    && rm /tmp/gogcli.tar.gz
+# Install summarize (web page summarization CLI)
+RUN npm install -g @steipete/summarize@0.11.1
+
+# Install Go (available at runtime for users to `go install` additional tools)
+ENV GO_VERSION=1.26.0
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz -o /tmp/go.tar.gz \
+    && tar -xzf /tmp/go.tar.gz -C /usr/local \
+    && rm /tmp/go.tar.gz
+ENV PATH="/usr/local/go/bin:/root/go/bin:$PATH"
+
+# Install Go CLI tools: gog, goplaces, blogwatcher, xurl, gifgrep
+RUN go install github.com/steipete/gogcli/cmd/gog@v0.11.0 \
+    && go install github.com/steipete/goplaces/cmd/goplaces@v0.3.0 \
+    && go install github.com/Hyaxia/blogwatcher/cmd/blogwatcher@v0.0.2 \
+    && go install github.com/xdevplatform/xurl@v1.0.3 \
+    && go install github.com/steipete/gifgrep/cmd/gifgrep@v0.2.3 \
+    && go clean -cache -modcache
 
 # Install pinned Bun (build-time only) and compile the controller bundle.
 ARG BUN_VERSION=1.2.4

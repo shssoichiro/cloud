@@ -13,7 +13,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-03-04',
     description:
-      'Added gog (gogcli) to the default image. gog is a CLI tool for interacting with Google services from the terminal.',
+      'Added Go 1.26, gog (gogcli), goplaces, blogwatcher, xurl, gifgrep, and summarize to the default image. Go is available at runtime for installing additional tools via `go install`.',
     category: 'feature',
     deployHint: 'redeploy_suggested',
   },
