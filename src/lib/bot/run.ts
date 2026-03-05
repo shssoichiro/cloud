@@ -1,20 +1,69 @@
 import {
-  BOT_SYSTEM_PROMPT,
   BOT_USER_AGENT,
   BOT_VERSION,
   DEFAULT_BOT_MODEL,
+  MAX_ITERATIONS,
 } from '@/lib/bot/constants';
-import { MAX_ITERATIONS } from '@/lib/bot/constants';
 import spawnCloudAgentSession, {
   spawnCloudAgentInputSchema,
 } from '@/lib/bot/tools/spawn-cloud-agent-session';
 import { APP_URL } from '@/lib/constants';
 import { FEATURE_HEADER } from '@/lib/feature-detection';
+import type { Owner } from '@/lib/integrations/core/types';
+import {
+  formatGitHubRepositoriesForPrompt,
+  getGitHubRepositoryContext,
+} from '@/lib/slack-bot/github-repository-context';
+import {
+  formatGitLabRepositoriesForPrompt,
+  getGitLabRepositoryContext,
+} from '@/lib/slack-bot/gitlab-repository-context';
 import { generateApiToken } from '@/lib/tokens';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { PlatformIntegration, User } from '@kilocode/db';
 import { ToolLoopAgent, stepCountIs, tool } from 'ai';
 import type { Thread, Message } from 'chat';
+
+function ownerFromIntegration(pi: PlatformIntegration): Owner {
+  if (pi.owned_by_organization_id) return { type: 'org', id: pi.owned_by_organization_id };
+  else return { type: 'user', id: pi.owned_by_user_id as string };
+}
+
+async function buildSystemPrompt(platformIntegration: PlatformIntegration) {
+  const owner = ownerFromIntegration(platformIntegration);
+
+  const [githubContext, gitlabContext] = await Promise.all([
+    getGitHubRepositoryContext(owner),
+    getGitLabRepositoryContext(owner),
+  ]);
+
+  return `You are Kilo Bot, a helpful AI assistant.
+
+## Core behavior
+- Be concise and direct. Prefer short messages over long explanations.
+- Don't add filler. Start with the answer or the next action.
+- If the user's request is ambiguous, ask 1-2 clarifying questions instead of guessing.
+
+## Answering questions about Kilo Bot
+- When users ask what you can do, how you work, or for general help, include a link to the Bot documentation: https://kilo.ai/docs/advanced-usage/slackbot
+- Provide the docs link along with your answer so users can learn more.
+
+## Context you may receive
+Additional context may be appended to this prompt:
+- Conversation context (recent messages, thread context)
+${githubContext.repositories && '- Available GitHub repositories for this integration'}
+${gitlabContext.repositories && '- Available GitLab projects for this integration'}
+
+${formatGitHubRepositoriesForPrompt(githubContext)}
+${formatGitLabRepositoriesForPrompt(gitlabContext)}
+
+Treat this context as authoritative. Prefer selecting a repo from the provided repository list. If the user requests work on a repo that isn't in the list, ask them to confirm the exact owner/repo (or group/project for GitLab) and ensure it's accessible to the integration. Never invent repository names.
+
+## Accuracy & safety
+- Don't claim you ran tools, changed code, or created a PR/MR unless the tool results confirm it.
+- Don't fabricate links (including PR/MR URLs).
+- If you can't proceed (missing repo, missing details, permissions), say what's missing and what you need next.`;
+}
 
 export async function processMessage({
   thread,
@@ -49,7 +98,7 @@ export async function processMessage({
     (platformIntegration.metadata as { model_slug?: string }).model_slug ?? DEFAULT_BOT_MODEL;
   const agent = new ToolLoopAgent({
     model: provider.chatModel(modelSlug),
-    instructions: BOT_SYSTEM_PROMPT,
+    instructions: await buildSystemPrompt(platformIntegration),
     stopWhen: stepCountIs(MAX_ITERATIONS),
     tools: {
       spawnCloudAgentSession: tool({
