@@ -723,8 +723,6 @@ function applyLegacyExtensionHack(choice: ChatCompletionChunkChoice | undefined)
 export async function customLlmRequest(
   customLlm: CustomLlm,
   request: OpenRouterChatCompletionRequest,
-  userId: string,
-  taskId: string | undefined,
   isLegacyExtension: boolean
 ) {
   const messages = request.messages as OpenRouterChatCompletionsInput;
