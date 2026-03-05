@@ -296,13 +296,17 @@ export async function addReactionToPRReviewComment(
  * if the lookup fails (e.g. the App lacks permission to query collaborators).
  * @param appType - The type of GitHub App to use (defaults to 'standard')
  */
+type CollaboratorPermission = 'admin' | 'write' | 'read' | 'none';
+
+const KNOWN_PERMISSIONS = new Set<string>(['admin', 'write', 'read', 'none']);
+
 export async function getCollaboratorPermissionLevel(
   installationId: string,
   owner: string,
   repo: string,
   username: string,
   appType: GitHubAppType = 'standard'
-): Promise<'admin' | 'write' | 'read' | 'none' | null> {
+): Promise<CollaboratorPermission | null> {
   try {
     const tokenData = await generateGitHubInstallationToken(installationId, appType);
     const octokit = new Octokit({ auth: tokenData.token });
@@ -313,7 +317,11 @@ export async function getCollaboratorPermissionLevel(
       username,
     });
 
-    return data.permission as 'admin' | 'write' | 'read' | 'none';
+    if (KNOWN_PERMISSIONS.has(data.permission)) {
+      // Safe: value validated against the known set above
+      return data.permission as CollaboratorPermission;
+    }
+    return null;
   } catch {
     return null;
   }
