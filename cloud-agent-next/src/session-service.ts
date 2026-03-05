@@ -1329,6 +1329,9 @@ export class SessionService {
       platform: context.platform,
     });
 
+    // Write auth file BEFORE kilo import so KiloSessions.bootstrap() can authenticate
+    await writeAuthFile(sandbox, context.sessionHome, kilocodeToken);
+
     await this.restoreSessionSnapshot(session, sessionId, metadata.kiloSessionId, env, userId);
 
     // Re-run setup commands (fresh clone, need to reinstall)
@@ -1336,9 +1339,6 @@ export class SessionService {
       logger.info('Re-running setup commands after fresh clone');
       await runSetupCommands(session, context, metadata.setupCommands, false); // lenient
     }
-
-    // Re-write auth file (fresh clone)
-    await writeAuthFile(sandbox, context.sessionHome, kilocodeToken);
   }
 
   /**

@@ -1,6 +1,6 @@
 import { NextResponse, type NextResponse as NextResponseType } from 'next/server';
 import { type NextRequest } from 'next/server';
-import { stripRequiredPrefix } from '@/lib/utils';
+import { isOpenCodeBasedClient, isRooCodeBasedClient, stripRequiredPrefix } from '@/lib/utils';
 import { generateProviderSpecificHash } from '@/lib/providerHash';
 import { extractPromptInfo, type MicrodollarUsageContext } from '@/lib/processUsage';
 import { validateFeatureHeader, FEATURE_HEADER } from '@/lib/feature-detection';
@@ -61,6 +61,7 @@ import { isRateLimitedToDeath } from '@/lib/rate-limited-models';
 import { isActiveReviewPromo } from '@/lib/code-reviews/core/constants';
 import { isActiveCloudAgentPromo } from '@/lib/promotions/cloud-agent-promo';
 import { isKiloAutoModel, resolveAutoModel } from '@/lib/kilo-auto-model';
+import { fixOpenCodeDuplicateReasoning } from '@/lib/providers/fixOpenCodeDuplicateReasoning';
 
 export const maxDuration = 800;
 
@@ -360,6 +361,10 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     repairTools(requestBodyParsed);
   }
 
+  if (isOpenCodeBasedClient(fraudHeaders)) {
+    fixOpenCodeDuplicateReasoning(originalModelIdLowerCased, requestBodyParsed, taskId);
+  }
+
   const toolsAvailable = getToolsAvailable(requestBodyParsed.tools);
   const toolsUsed = getToolsUsed(requestBodyParsed.messages);
 
@@ -378,7 +383,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
         requestBodyParsed,
         user.id,
         taskId,
-        !!fraudHeaders.http_user_agent?.startsWith('Kilo-Code/')
+        isRooCodeBasedClient(fraudHeaders)
       )
     : await openRouterRequest({
         path,
