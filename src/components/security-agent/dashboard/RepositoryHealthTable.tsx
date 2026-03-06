@@ -87,7 +87,7 @@ export function RepositoryHealthTable({
                     <TableRow key={repo.repoFullName} className="border-gray-800">
                       <TableCell>
                         <Link
-                          href={`${basePath}/findings?repoFullName=${encodeURIComponent(repo.repoFullName)}`}
+                          href={`${basePath}/findings?repoFullName=${encodeURIComponent(repo.repoFullName)}${extraParams}`}
                           className="text-sm text-gray-300 hover:text-white"
                         >
                           {repo.repoFullName}
@@ -113,7 +113,7 @@ export function RepositoryHealthTable({
             {repos.length >= 10 && (
               <div className="mt-3 text-right">
                 <Link
-                  href={`${basePath}/findings`}
+                  href={`${basePath}/findings?status=open${extraParams}`}
                   className="text-xs text-blue-400 hover:text-blue-300"
                 >
                   View all &rarr;
