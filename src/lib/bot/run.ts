@@ -4,6 +4,10 @@ import {
   DEFAULT_BOT_MODEL,
   MAX_ITERATIONS,
 } from '@/lib/bot/constants';
+import {
+  getConversationContext,
+  formatConversationContextForPrompt,
+} from '@/lib/bot/conversation-context';
 import spawnCloudAgentSession, {
   spawnCloudAgentInputSchema,
 } from '@/lib/bot/tools/spawn-cloud-agent-session';
@@ -31,12 +35,17 @@ function ownerFromIntegration(pi: PlatformIntegration): Owner {
   else return { type: 'user', id: pi.owned_by_user_id as string };
 }
 
-async function buildSystemPrompt(platformIntegration: PlatformIntegration) {
+async function buildSystemPrompt(
+  platformIntegration: PlatformIntegration,
+  thread: Thread,
+  triggerMessage: Message
+) {
   const owner = ownerFromIntegration(platformIntegration);
 
-  const [githubContext, gitlabContext] = await Promise.all([
+  const [githubContext, gitlabContext, conversationContext] = await Promise.all([
     getGitHubRepositoryContext(owner),
     getGitLabRepositoryContext(owner),
+    getConversationContext(thread, triggerMessage),
   ]);
 
   return `You are Kilo Bot, a helpful AI assistant.
@@ -64,7 +73,9 @@ Treat this context as authoritative. Prefer selecting a repo from the provided r
 ## Accuracy & safety
 - Don't claim you ran tools, changed code, or created a PR/MR unless the tool results confirm it.
 - Don't fabricate links (including PR/MR URLs).
-- If you can't proceed (missing repo, missing details, permissions), say what's missing and what you need next.`;
+- If you can't proceed (missing repo, missing details, permissions), say what's missing and what you need next.
+
+${formatConversationContextForPrompt(conversationContext)}`;
 }
 
 export async function processMessage({
@@ -102,7 +113,7 @@ export async function processMessage({
 
   const agent = new ToolLoopAgent({
     model: provider.chatModel(modelSlug),
-    instructions: await buildSystemPrompt(platformIntegration),
+    instructions: await buildSystemPrompt(platformIntegration, thread, message),
     stopWhen: stepCountIs(MAX_ITERATIONS),
     tools: {
       spawnCloudAgentSession: tool({
