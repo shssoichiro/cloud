@@ -86,6 +86,18 @@ type SecurityFindingsCardProps = {
   onSortByChange: (sortBy: 'severity_desc' | 'severity_asc') => void;
 };
 
+// Outcome filters that imply their own status constraint in the DB query.
+// Kept at module level to avoid re-allocating on every render.
+const STATUS_IMPLYING_OUTCOMES = new Set([
+  'exploitable',
+  'not_exploitable',
+  'safe_to_dismiss',
+  'needs_review',
+  'triage_complete',
+  'fixed',
+  'dismissed',
+]);
+
 export function SecurityFindingsCard({
   findings,
   repositories,
@@ -119,27 +131,13 @@ export function SecurityFindingsCard({
   // Calculate closed count (fixed + ignored)
   const closedCount = stats.fixed + stats.ignored;
 
-  // Outcome filters like 'fixed', 'dismissed', 'exploitable' etc. add their
-  // own status constraint in the DB query.  Clear the status filter when one
-  // of these is selected to avoid impossible AND conditions (e.g. status='open'
-  // AND status='fixed'), and vice-versa.
-  const statusImplyingOutcomes = new Set([
-    'exploitable',
-    'not_exploitable',
-    'safe_to_dismiss',
-    'needs_review',
-    'triage_complete',
-    'fixed',
-    'dismissed',
-  ]);
-
   const handleStatusChange = (value: string) => {
     const newStatus = value === 'all' ? undefined : value;
     onFiltersChange({
       ...filters,
       status: newStatus,
       outcomeFilter:
-        newStatus && filters.outcomeFilter && statusImplyingOutcomes.has(filters.outcomeFilter)
+        newStatus && filters.outcomeFilter && STATUS_IMPLYING_OUTCOMES.has(filters.outcomeFilter)
           ? undefined
           : filters.outcomeFilter,
     });
@@ -167,7 +165,7 @@ export function SecurityFindingsCard({
     onFiltersChange({
       ...filters,
       outcomeFilter: newOutcome,
-      status: newOutcome && statusImplyingOutcomes.has(newOutcome) ? undefined : filters.status,
+      status: newOutcome && STATUS_IMPLYING_OUTCOMES.has(newOutcome) ? undefined : filters.status,
     });
     onPageChange(1);
   };

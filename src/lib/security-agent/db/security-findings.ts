@@ -356,14 +356,14 @@ export async function listSecurityFindings(
           conditions.push(eq(security_findings.status, 'open'));
           conditions.push(eq(security_findings.analysis_status, 'completed'));
           conditions.push(
-            sql`(${security_findings.analysis}->'sandboxAnalysis'->>'isExploitable')::boolean = true`
+            sql`(${security_findings.analysis}->'sandboxAnalysis'->>'isExploitable') = 'true'`
           );
           break;
         case 'not_exploitable':
           conditions.push(eq(security_findings.status, 'open'));
           conditions.push(eq(security_findings.analysis_status, 'completed'));
           conditions.push(
-            sql`(${security_findings.analysis}->'sandboxAnalysis'->>'isExploitable')::boolean = false`
+            sql`(${security_findings.analysis}->'sandboxAnalysis'->>'isExploitable') = 'false'`
           );
           break;
         case 'safe_to_dismiss':

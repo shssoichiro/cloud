@@ -169,14 +169,14 @@ export function createSecurityAgentHandlers<TExtra = {}>(deps: SecurityAgentDeps
       }
 
       const triageModelSlug =
-        result.storedConfig.triage_model_slug ||
-        result.storedConfig.model_slug ||
-        result.config.triage_model_slug ||
+        result.storedConfig.triage_model_slug ??
+        result.storedConfig.model_slug ??
+        result.config.triage_model_slug ??
         DEFAULT_SECURITY_AGENT_TRIAGE_MODEL;
       const analysisModelSlug =
-        result.storedConfig.analysis_model_slug ||
-        result.storedConfig.model_slug ||
-        result.config.analysis_model_slug ||
+        result.storedConfig.analysis_model_slug ??
+        result.storedConfig.model_slug ??
+        result.config.analysis_model_slug ??
         DEFAULT_SECURITY_AGENT_ANALYSIS_MODEL;
 
       return {
@@ -839,6 +839,10 @@ export function createSecurityAgentHandlers<TExtra = {}>(deps: SecurityAgentDeps
               alertNumber,
               input.reason,
               input.comment
+            );
+          } else {
+            console.warn(
+              `Dependabot finding ${input.findingId} has non-numeric source_id "${finding.source_id}", skipping GitHub dismissal`
             );
           }
         }
