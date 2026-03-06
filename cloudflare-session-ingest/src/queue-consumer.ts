@@ -1,7 +1,7 @@
 import { eq, and, sql } from 'drizzle-orm';
 import { getWorkerDb } from '@kilocode/db/client';
 import { cli_sessions_v2 } from '@kilocode/db/schema';
-import { JSONParser } from '@streamparser/json';
+import { Tokenizer, TokenParser, TokenType } from '@streamparser/json';
 
 import type { Env } from './env';
 import { SessionItemSchema } from './types/session-sync';
@@ -18,6 +18,129 @@ export interface IngestQueueMessage {
   ingestedAt: number;
 }
 
+/**
+ * Creates a streaming item extractor that uses a low-level Tokenizer to parse
+ * items from `$.data[]` one at a time, with a per-item byte budget.
+ *
+ * Items within budget get their tokens fed to a fresh TokenParser that builds
+ * the JS object. Oversized items have their tokens discarded without ever
+ * materializing a JS object.
+ *
+ * Peak memory: one R2 chunk + one parsed item (bounded by MAX_SINGLE_ITEM_BYTES).
+ */
+function createItemExtractor(r2Key: string) {
+  const pending: Record<string, unknown>[] = [];
+
+  // Depth: 0=before root, 1=root object, 2=$.data array, 3+=inside an item
+  let depth = 0;
+  let pendingKey: string | undefined;
+  let foundDataArray = false;
+  let itemStartOffset = 0;
+  let skippingItem = false;
+  let itemParser: TokenParser | null = null;
+
+  function startItemParser() {
+    itemParser = new TokenParser({ paths: ['$'], keepStack: false });
+    itemParser.onValue = ({ value, stack }) => {
+      if (stack.length === 0 && value != null) {
+        pending.push(value as Record<string, unknown>);
+      }
+    };
+    itemParser.onError = (err: Error) => {
+      console.error('TokenParser error in queue consumer', { r2Key, error: err.message });
+    };
+  }
+
+  const tokenizer = new Tokenizer();
+  tokenizer.onToken = ({ token, value, offset }) => {
+    const isOpen = token === TokenType.LEFT_BRACE || token === TokenType.LEFT_BRACKET;
+    const isClose = token === TokenType.RIGHT_BRACE || token === TokenType.RIGHT_BRACKET;
+
+    // --- Skipping an oversized item: just track depth to find closing brace ---
+    if (skippingItem) {
+      if (isOpen) depth++;
+      if (isClose) {
+        depth--;
+        if (depth === 2) {
+          skippingItem = false;
+        }
+      }
+      return;
+    }
+
+    // --- Inside an item (depth >= 3): feed tokens to item parser with byte budget ---
+    if (foundDataArray && depth >= 3) {
+      if (offset - itemStartOffset > MAX_SINGLE_ITEM_BYTES) {
+        console.warn('Skipping oversized item in queue consumer (byte budget exceeded)', {
+          r2Key,
+          bytesConsumed: offset - itemStartOffset,
+          maxBytes: MAX_SINGLE_ITEM_BYTES,
+        });
+        skippingItem = true;
+        itemParser = null;
+        if (isOpen) depth++;
+        if (isClose) depth--;
+        return;
+      }
+
+      itemParser?.write({ token, value });
+      if (isOpen) depth++;
+      if (isClose) {
+        depth--;
+        if (depth === 2) {
+          // Item complete — onValue already fired, clean up
+          itemParser = null;
+        }
+      }
+      return;
+    }
+
+    // --- Structural tokens outside items ---
+    if (isOpen) {
+      depth++;
+
+      // depth just became 3 inside $.data[] with { → item start
+      if (foundDataArray && depth === 3 && token === TokenType.LEFT_BRACE) {
+        itemStartOffset = offset;
+        startItemParser();
+        itemParser?.write({ token, value });
+        return;
+      }
+
+      // depth just became 2 with [ after "data" key → found $.data array
+      if (depth === 2 && token === TokenType.LEFT_BRACKET && pendingKey === 'data') {
+        foundDataArray = true;
+        pendingKey = undefined;
+        return;
+      }
+
+      pendingKey = undefined;
+      return;
+    }
+
+    if (isClose) {
+      if (foundDataArray && depth === 2 && token === TokenType.RIGHT_BRACKET) {
+        foundDataArray = false;
+      }
+      depth--;
+      return;
+    }
+
+    // Track keys at depth 1 (root object properties) to detect "data"
+    if (depth === 1 && token === TokenType.STRING) {
+      pendingKey = value as string;
+    } else if (token !== TokenType.COLON) {
+      pendingKey = undefined;
+    }
+  };
+
+  tokenizer.onError = (err: Error) => {
+    console.error('Tokenizer error in queue consumer', { r2Key, error: err.message });
+  };
+
+  return { tokenizer, pending };
+}
+
 async function processMessage(env: Env, msg: IngestQueueMessage): Promise<void> {
   const { r2Key, kiloUserId, sessionId, ingestVersion, ingestedAt } = msg;
 
@@ -28,60 +151,43 @@ async function processMessage(env: Env, msg: IngestQueueMessage): Promise<void> 
   }
 
   const mergedChanges = new Map<string, string | null>();
+  const { tokenizer, pending } = createItemExtractor(r2Key);
 
-  // Collect complete items from the streaming parser, then process them sequentially
-  const items: Record<string, unknown>[] = [];
-
-  const parser = new JSONParser({ paths: ['$.data.*'], keepStack: false });
-
-  parser.onValue = parsedElementInfo => {
-    const { value, stack } = parsedElementInfo;
-    // Only capture top-level array elements emitted by $.data.* path
-    if (stack.length === 2 && value != null) {
-      items.push(value as Record<string, unknown>);
-    }
-  };
-
-  parser.onError = (err: Error) => {
-    console.error('JSON parse error in queue consumer', {
-      r2Key,
-      error: err.message,
-    });
-  };
-
-  // Feed the R2 body into the parser
+  // Feed the R2 body chunk by chunk, processing completed items between reads
   const reader = obj.body.getReader();
-  let readDone = false;
-  while (!readDone) {
+  while (true) {
     const result: ReadableStreamReadResult<Uint8Array> = await reader.read();
     if (result.done) {
-      parser.end();
-      readDone = true;
+      tokenizer.end();
     } else {
-      parser.write(result.value);
+      tokenizer.write(result.value);
     }
-  }
 
-  // Process collected items sequentially
-  for (const rawItem of items) {
-    try {
-      await processItem(
-        env,
-        rawItem,
-        r2Key,
-        kiloUserId,
-        sessionId,
-        ingestVersion,
-        ingestedAt,
-        mergedChanges
-      );
-    } catch (err) {
-      console.error('Error processing single item in queue consumer, continuing', {
-        r2Key,
-        type: rawItem['type'],
-        error: err instanceof Error ? err.message : String(err),
-      });
+    // Process any items completed during this chunk
+    while (pending.length > 0) {
+      const rawItem = pending.shift();
+      if (!rawItem) break;
+      try {
+        await processItem(
+          env,
+          rawItem,
+          r2Key,
+          kiloUserId,
+          sessionId,
+          ingestVersion,
+          ingestedAt,
+          mergedChanges
+        );
+      } catch (err) {
+        console.error('Error processing single item in queue consumer, continuing', {
+          r2Key,
+          type: rawItem['type'],
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
+
+    if (result.done) break;
   }
 
   // Update Postgres with metadata changes
@@ -101,18 +207,6 @@ async function processItem(
   ingestedAt: number,
   mergedChanges: Map<string, string | null>
 ): Promise<void> {
-  // Check serialized size
-  const itemJson = JSON.stringify(rawItem);
-  if (itemJson.length > MAX_SINGLE_ITEM_BYTES) {
-    console.warn('Skipping oversized item in queue consumer', {
-      r2Key,
-      sizeBytes: itemJson.length,
-      maxBytes: MAX_SINGLE_ITEM_BYTES,
-      type: rawItem['type'],
-    });
-    return;
-  }
-
   // Validate against schema
   const parsed = SessionItemSchema.safeParse(rawItem);
   if (!parsed.success) {
