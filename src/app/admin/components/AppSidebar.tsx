@@ -114,7 +114,7 @@ const productEngineeringItems: MenuItem[] = [
     icon: () => <MessageSquare />,
   },
   {
-    title: () => 'Bot Requests',
+    title: () => 'Kilo Bot',
     url: '/admin/bot-requests',
     icon: () => <Bot />,
   },

@@ -11,7 +11,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
 import { format, parseISO } from 'date-fns';
 import AdminPage from '../components/AdminPage';
 import { BreadcrumbItem, BreadcrumbPage } from '@/components/ui/breadcrumb';
@@ -37,6 +46,7 @@ import {
 
 const MESSAGE_PREVIEW_LENGTH = 80;
 const DEFAULT_DAYS = 30;
+const PLATFORM_COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#0891b2', '#475569'];
 
 const breadcrumbs = (
   <>
@@ -91,6 +101,13 @@ function ChartError({ title, message }: { title: string; message: string }) {
       </CardHeader>
     </Card>
   );
+}
+
+function formatPlatformLabel(platform: string) {
+  return platform
+    .split(/[-_]/)
+    .map(part => (part.length > 0 ? `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}` : part))
+    .join(' ');
 }
 
 function WeeklyActiveUsersChart() {
@@ -231,16 +248,77 @@ function DailyUsageChart() {
     );
   }
 
-  const chartData = data.map(item => ({
-    date: format(parseISO(item.date), 'MM/dd'),
-    totalRequests: item.totalRequests,
-  }));
+  const platforms = [...new Set(data.map(item => item.platform))].sort();
+  const rowsByDate = new Map<string, Record<string, number | string>>();
+
+  for (const item of data) {
+    const formattedDate = format(parseISO(item.date), 'MM/dd');
+    let row = rowsByDate.get(formattedDate);
+
+    if (!row) {
+      row = { date: formattedDate };
+
+      for (const platform of platforms) {
+        row[platform] = 0;
+      }
+
+      rowsByDate.set(formattedDate, row);
+    }
+
+    row[item.platform] = item.totalRequests;
+  }
+
+  const chartData = Array.from(rowsByDate.values());
+
+  type PlatformTooltipProps = {
+    active?: boolean;
+    payload?: Array<{ dataKey?: string; value?: number; color?: string }>;
+    label?: string;
+  };
+
+  const PlatformTooltip = ({ active, payload, label }: PlatformTooltipProps) => {
+    if (!active || !payload?.length) return null;
+
+    const series = payload.filter(
+      item => typeof item.dataKey === 'string' && typeof item.value === 'number' && item.value > 0
+    );
+
+    if (series.length === 0) return null;
+
+    const total = series.reduce((sum, item) => sum + (item.value ?? 0), 0);
+
+    return (
+      <div className="bg-background rounded-lg border p-3 shadow-sm">
+        <p className="text-sm font-medium">{label}</p>
+        <div className="mt-2 space-y-1">
+          {series.map(item => (
+            <p key={item.dataKey} className="flex items-center justify-between gap-3 text-sm">
+              <span className="flex items-center gap-2">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full"
+                  style={{ backgroundColor: item.color }}
+                />
+                <span className="text-muted-foreground">
+                  {formatPlatformLabel(item.dataKey ?? 'Unknown')}
+                </span>
+              </span>
+              <span className="font-medium">{item.value?.toLocaleString()}</span>
+            </p>
+          ))}
+          <p className="flex items-center justify-between gap-3 border-t pt-2 text-sm font-medium">
+            <span>Total</span>
+            <span>{total.toLocaleString()}</span>
+          </p>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Daily Usage</CardTitle>
-        <CardDescription>Total bot requests per day</CardDescription>
+        <CardTitle>Daily Usage by Platform</CardTitle>
+        <CardDescription>Total bot requests per day, stacked by platform</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="h-[300px] w-full">
@@ -266,8 +344,17 @@ function DailyUsageChart() {
                   style: { fontSize: 12 },
                 }}
               />
-              <Tooltip content={<SimpleTooltip valueLabel="Requests" />} />
-              <Bar dataKey="totalRequests" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              <Tooltip content={<PlatformTooltip />} />
+              <Legend />
+              {platforms.map((platform, index) => (
+                <Bar
+                  key={platform}
+                  dataKey={platform}
+                  stackId="requests"
+                  fill={PLATFORM_COLORS[index % PLATFORM_COLORS.length]}
+                  name={formatPlatformLabel(platform)}
+                />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         </div>

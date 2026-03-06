@@ -76,15 +76,17 @@ export const adminBotRequestsRouter = createTRPCRouter({
     const result = await db
       .select({
         date: sql<string>`DATE(${bot_requests.created_at})`,
+        platform: bot_requests.platform,
         totalRequests: sql<number>`COUNT(*)`,
       })
       .from(bot_requests)
       .where(gte(bot_requests.created_at, startDate.toISOString()))
-      .groupBy(sql`DATE(${bot_requests.created_at})`)
-      .orderBy(sql`DATE(${bot_requests.created_at})`);
+      .groupBy(sql`DATE(${bot_requests.created_at})`, bot_requests.platform)
+      .orderBy(sql`DATE(${bot_requests.created_at})`, bot_requests.platform);
 
     return result.map(row => ({
       date: String(row.date),
+      platform: row.platform,
       totalRequests: bigIntToNumber(row.totalRequests),
     }));
   }),
