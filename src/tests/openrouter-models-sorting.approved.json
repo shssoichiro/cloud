@@ -637,9 +637,9 @@
     },
     {
       "id": "kilo/auto",
-      "name": "[DEPRECATED] use kilo-auto/frontier instead",
+      "name": "Deprecated: Kilo Auto: Frontier",
       "created": 0,
-      "description": "Automatically routes your request to the best model for the task.",
+      "description": "kilo/auto is deprecated, use kilo-auto/frontier instead",
       "architecture": {
         "input_modalities": [
           "text",
@@ -678,9 +678,9 @@
     },
     {
       "id": "kilo/auto-free",
-      "name": "[DEPRECATED] use kilo-auto/free instead",
+      "name": "Deprecated: Kilo Auto: Free",
       "created": 0,
-      "description": "Automatically routes your request to a free model.",
+      "description": "kilo/auto-free is deprecated, use kilo-auto/free instead",
       "architecture": {
         "input_modalities": [
           "text"
@@ -723,9 +723,9 @@
     },
     {
       "id": "kilo/auto-small",
-      "name": "[DEPRECATED] use kilo-auto/small instead",
+      "name": "Deprecated: Kilo Auto: Small",
       "created": 0,
-      "description": "Automatically routes your request to a small model.",
+      "description": "kilo/auto-small is deprecated, use kilo-auto/small instead",
       "architecture": {
         "input_modalities": [
           "text",

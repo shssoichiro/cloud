@@ -133,7 +133,8 @@ export function deprecatedAutoModelsToPreventNewExtensionModelPickerFromGettingS
   return AUTO_MODELS.map(m => ({
     ...m,
     id: mapping[m.id],
-    name: `[DEPRECATED] use ${m.id} instead`,
+    name: 'Deprecated: ' + m.name,
+    description: `${mapping[m.id]} is deprecated, use ${m.id} instead`,
   }));
 }
 
