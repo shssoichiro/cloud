@@ -431,9 +431,11 @@ export class SessionIngestDO extends DurableObject<Env> {
   }
 }
 
+type ItemDataRef = Pick<typeof ingestItems.$inferSelect, 'item_data' | 'item_data_r2_key'>;
+
 async function enqueueItemData(
   controller: ReadableStreamDefaultController<Uint8Array>,
-  ref: { item_data: string; item_data_r2_key: string | null },
+  ref: ItemDataRef,
   r2: R2Bucket,
   encoder: TextEncoder
 ): Promise<void> {
