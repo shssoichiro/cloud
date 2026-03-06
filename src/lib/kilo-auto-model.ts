@@ -70,7 +70,7 @@ export const KILO_AUTO_SMALL_MODEL: AutoModel = {
 export const AUTO_MODELS = [KILO_AUTO_FRONTIER_MODEL, KILO_AUTO_FREE_MODEL, KILO_AUTO_SMALL_MODEL];
 
 export function isKiloAutoModel(model: string) {
-  return AUTO_MODELS.some(m => m.id === model);
+  return AUTO_MODELS.some(m => m.id === model) || legacyMapping[model] !== undefined;
 }
 
 type ResolvedAutoModel = {
@@ -85,7 +85,7 @@ const CODE_MODEL: ResolvedAutoModel = {
   verbosity: 'low',
 };
 
-// Mode → model mappings for kilo/auto routing.
+// Mode → model mappings for kilo-auto/frontier routing.
 // Add/remove/modify entries here to change routing behavior.
 const MODE_TO_MODEL = new Map<string, ResolvedAutoModel>([
   // Opus modes (planning, reasoning, orchestration, debugging)
@@ -122,11 +122,18 @@ const MODE_TO_MODEL = new Map<string, ResolvedAutoModel>([
   ['code', CODE_MODEL],
 ]);
 
+const legacyMapping: Record<string, string | undefined> = {
+  'kilo/auto': KILO_AUTO_FRONTIER_MODEL.id,
+  'kilo/auto-free': KILO_AUTO_FREE_MODEL.id,
+  'kilo/auto-small': KILO_AUTO_SMALL_MODEL.id,
+};
+
 export function resolveAutoModel(model: string, modeHeader: string | null): ResolvedAutoModel {
-  if (model === KILO_AUTO_FREE_MODEL.id) {
+  const mappedModel = legacyMapping[model] ?? model;
+  if (mappedModel === KILO_AUTO_FREE_MODEL.id) {
     return { model: minimax_m25_free_model.public_id };
   }
-  if (model === KILO_AUTO_SMALL_MODEL.id) {
+  if (mappedModel === KILO_AUTO_SMALL_MODEL.id) {
     return { model: 'openai/gpt-5-nano' };
   }
   const mode = modeHeader?.trim().toLowerCase() ?? '';
