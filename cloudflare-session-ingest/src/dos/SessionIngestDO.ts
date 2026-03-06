@@ -270,7 +270,7 @@ export class SessionIngestDO extends DurableObject<Env> {
           }
 
           // --- messages ---
-          const CURSOR_BATCH = 30;
+          const CURSOR_BATCH = 10;
           controller.enqueue(encoder.encode(',"messages":['));
           let msgCursor = 0;
           let firstMsg = true;
