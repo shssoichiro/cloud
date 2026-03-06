@@ -333,6 +333,38 @@ export async function POST(
     // - running -> completed/failed (callback)
     // - queued -> completed/failed (edge case: immediate failure)
 
+    // Fetch integration once — used for gate check updates and post-completion actions
+    const integration = review.platform_integration_id
+      ? await getIntegrationById(review.platform_integration_id)
+      : null;
+
+    // Resolve GitLab token once, shared between gate check and reaction/footer logic
+    const isGitLab = (review.platform || 'github') === PLATFORM.GITLAB;
+    const gitlabAccessToken =
+      integration && isGitLab
+        ? await resolveGitLabAccessToken(integration, review.platform_project_id).catch(
+            () => undefined
+          )
+        : undefined;
+
+    // Update PR gate check BEFORE writing terminal DB state.
+    // Once the DB moves to a terminal status, subsequent callbacks hit the early-return
+    // above, so a flaky gate update would be unrecoverable.
+    if (integration) {
+      try {
+        await updatePRGateCheck(review, integration, status, errorMessage, gitlabAccessToken);
+      } catch (gateCheckError) {
+        logExceptInTest('[code-review-status] Failed to update PR gate check:', gateCheckError);
+        const isTerminal = status === 'completed' || status === 'failed' || status === 'cancelled';
+        if (isTerminal) {
+          captureException(gateCheckError, {
+            tags: { source: 'code-review-status-gate-check' },
+            extra: { reviewId, status, checkRunId: String(review.check_run_id ?? '') },
+          });
+        }
+      }
+    }
+
     // Update review status in database
     await updateCodeReviewStatus(reviewId, status, {
       sessionId,
@@ -351,30 +383,6 @@ export async function POST(
       cliSessionId,
       status,
     });
-
-    // Fetch integration once — used for gate check updates and post-completion actions
-    const integration = review.platform_integration_id
-      ? await getIntegrationById(review.platform_integration_id)
-      : null;
-
-    // Resolve GitLab token once, shared between gate check and reaction/footer logic
-    const isGitLab = (review.platform || 'github') === PLATFORM.GITLAB;
-    const gitlabAccessToken =
-      integration && isGitLab
-        ? await resolveGitLabAccessToken(integration, review.platform_project_id).catch(
-            () => undefined
-          )
-        : undefined;
-
-    // Update PR gate check (GitHub Check Run / GitLab commit status)
-    if (integration) {
-      try {
-        await updatePRGateCheck(review, integration, status, errorMessage, gitlabAccessToken);
-      } catch (gateCheckError) {
-        // Non-blocking — log but don't fail the status callback
-        logExceptInTest('[code-review-status] Failed to update PR gate check:', gateCheckError);
-      }
-    }
 
     // Only trigger dispatch for terminal states (completed/failed/cancelled)
     // This frees up a slot for the next pending review
