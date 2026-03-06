@@ -14,7 +14,7 @@ import type { PlatformIntegration } from '@kilocode/db/schema';
 import type { Owner } from '@/lib/code-reviews/core';
 import { getBotUserId } from '@/lib/bot-users/bot-user-service';
 import type { CodeReviewAgentConfig } from '@/lib/agent-config/core/types';
-import { addReactionToPR, createCheckRun } from '../adapter';
+import { addReactionToPR, createCheckRun, updateCheckRun } from '../adapter';
 import { codeReviewWorkerClient } from '@/lib/code-reviews/client/code-review-worker-client';
 import { updateCheckRunId } from '@/lib/code-reviews/db/code-reviews';
 import { resolvePullRequestCheckoutRef } from './pull-request-checkout-ref';
@@ -210,9 +210,10 @@ export async function handlePullRequestCodeReview(
     // 7. Create GitHub Check Run (PR gate) — skip for lite (read-only) app
     const appType = integration.github_app_type ?? 'standard';
     if (appType !== 'lite') {
+      let checkRunId: bigint | undefined;
       try {
         const detailsUrl = `${APP_URL}/code-reviews/${reviewId}`;
-        const checkRunId = await createCheckRun(
+        checkRunId = await createCheckRun(
           integration.platform_installation_id as string,
           repoOwner,
           repoName,
@@ -234,6 +235,24 @@ export async function handlePullRequestCodeReview(
         // Non-blocking — the review still proceeds even if the check run fails
         // (e.g. the app may not yet have the checks:write permission)
         logExceptInTest('Failed to create check run:', checkRunError);
+        // If we created the check run on GitHub but failed to persist its ID,
+        // cancel it so it doesn't block merging on repos with required checks.
+        if (checkRunId !== undefined) {
+          try {
+            await updateCheckRun(
+              integration.platform_installation_id as string,
+              repoOwner,
+              repoName,
+              checkRunId,
+              { status: 'completed', conclusion: 'cancelled' }
+            );
+            logExceptInTest(
+              `Cancelled orphaned check run ${checkRunId.toString()} for ${repository.full_name}#${pull_request.number}`
+            );
+          } catch (cancelError) {
+            logExceptInTest('Failed to cancel orphaned check run:', cancelError);
+          }
+        }
       }
     }
 
