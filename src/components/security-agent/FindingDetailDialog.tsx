@@ -374,7 +374,7 @@ export function FindingDetailDialog({
           </TabsContent>
 
           <TabsContent value="analysis" className="space-y-4 pt-2">
-            {analysis?.sandboxAnalysis ? (
+            {analysis?.sandboxAnalysis && analysisStatus === 'completed' ? (
               <div className="space-y-4">
                 <div className="flex flex-wrap gap-2">
                   {analysis.sandboxAnalysis.isExploitable === true && (
@@ -450,27 +450,14 @@ export function FindingDetailDialog({
                     className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm transition-colors"
                   >
                     <ExternalLink className="h-4 w-4" />
-                    {analysisStatus === 'running'
-                      ? 'Watch analysis in Cloud Agent'
-                      : 'Continue conversation in Cloud Agent'}
+                    Continue conversation in Cloud Agent
                   </Link>
                 )}
-                {analysisStatus === 'failed' && (
-                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
-                    <p className="text-sm text-red-400">
-                      Codebase analysis failed: {analysisError || 'Unknown error'}
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleStartAnalysis({ retrySandboxOnly: true })}
-                      disabled={isAnalyzing}
-                      className="mt-2"
-                    >
-                      Retry Analysis
-                    </Button>
-                  </div>
-                )}
+              </div>
+            ) : analysisStatus === 'completed' && analysis?.rawMarkdown ? (
+              // Legacy analysis: completed with top-level rawMarkdown but no sandboxAnalysis
+              <div className="space-y-4">
+                <MarkdownProse markdown={analysis.rawMarkdown} className="text-muted-foreground" />
               </div>
             ) : analysisStatus === 'running' || analysisStatus === 'pending' ? (
               <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">

@@ -124,7 +124,7 @@ function getOutcome(finding: SecurityFinding): Outcome | null {
     }
     return {
       icon: Shield,
-      label: 'Triage Complete',
+      label: triage ? 'Triage Complete' : 'Analyzed',
       className: 'text-muted-foreground',
       spin: false,
       tooltip: triage?.needsSandboxReasoning || null,
