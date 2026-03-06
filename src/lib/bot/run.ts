@@ -108,7 +108,7 @@ export async function processMessage({
       spawnCloudAgentSession: tool({
         description: `Spawn a Cloud Agent session to perform coding tasks on a GitHub repository or GitLab project. The agent can make code changes, fix bugs, implement features, review/analyze code, run tests, or open PRs/MRs. Do NOT use it for questions you can answer directly.
 
-After the tool returns, check the result for a PR/MR URL and share it with the user — this is the most important output.`,
+After the tool returns, if mode was "code", check the result for a PR/MR URL and share it with the user — this is the most important output.`,
         inputSchema: spawnCloudAgentInputSchema,
         execute: async args =>
           await spawnCloudAgentSession(
