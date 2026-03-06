@@ -15,7 +15,7 @@ const sessionIdSchema = z.string().startsWith('ses_').length(30);
 export { SessionIngestDO } from './dos/SessionIngestDO';
 export { SessionAccessCacheDO } from './dos/SessionAccessCacheDO';
 export { SessionIngestRPC } from './session-ingest-rpc';
-export { queue } from './queue-consumer';
+import { queue } from './queue-consumer';
 
 const app = new Hono<{
   Bindings: Env;
@@ -99,4 +99,5 @@ app.get('/internal/session/:sessionId/export', async c => {
   return c.body(stream, 200, { 'content-type': 'application/json; charset=utf-8' });
 });
 
-export default app;
+export { app };
+export default { fetch: app.fetch, queue };
