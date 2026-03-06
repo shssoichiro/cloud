@@ -13,7 +13,6 @@ type ConversationContext = {
 
 type FormattedMessage = {
   authorName: string;
-  isBot: boolean | 'unknown';
   text: string;
 };
 
@@ -26,7 +25,6 @@ function formatMessage(msg: Message): FormattedMessage {
   const collapsed = msg.text.replace(/\s+/g, ' ').trim();
   return {
     authorName: msg.author.fullName || msg.author.userName || msg.author.userId,
-    isBot: msg.author.isBot,
     text: truncate(collapsed, MAX_MESSAGE_TEXT_LENGTH),
   };
 }
@@ -104,8 +102,10 @@ export async function getConversationContext(
 export function formatConversationContextForPrompt(ctx: ConversationContext): string {
   const lines: string[] = ['\n\nConversation context:'];
 
-  // Channel info
-  const channelLabel = ctx.isDM ? 'DM' : ctx.channelName ? `#${ctx.channelName}` : 'channel';
+  // Channel info — some adapters (e.g. Slack) include a leading '#' in the
+  // channel name already, so strip it before re-adding to avoid '##general'.
+  const name = ctx.channelName?.replace(/^#/, '');
+  const channelLabel = ctx.isDM ? 'DM' : name ? `#${name}` : 'channel';
   lines.push(`- Channel: ${channelLabel}`);
 
   if (ctx.channelTopic) {
