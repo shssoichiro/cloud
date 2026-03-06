@@ -213,6 +213,7 @@ export function ReviewConfigForm({
   const [maxReviewTime, setMaxReviewTime] = useState([10]);
   const [selectedModel, setSelectedModel] = useState(PRIMARY_DEFAULT_MODEL);
   const [thinkingEffort, setThinkingEffort] = useState<string | null>(null);
+  const [gateThreshold, setGateThreshold] = useState<'off' | 'all' | 'warning' | 'critical'>('off');
   const isCloudAgentNextEnabled = configData?.isCloudAgentNextEnabled ?? false;
   const [repositorySelectionMode, setRepositorySelectionMode] = useState<'all' | 'selected'>('all');
   const [selectedRepositoryIds, setSelectedRepositoryIds] = useState<number[]>([]);
@@ -312,6 +313,7 @@ export function ReviewConfigForm({
       setMaxReviewTime([configData.maxReviewTimeMinutes]);
       setSelectedModel(configData.modelSlug);
       setThinkingEffort(configData.thinkingEffort ?? null);
+      setGateThreshold(configData.gateThreshold ?? 'off');
       // For GitLab, default to 'selected' mode since 'all' is not supported
       const repoMode = configData.repositorySelectionMode || 'all';
       setRepositorySelectionMode(isGitLab ? 'selected' : repoMode);
@@ -462,6 +464,7 @@ export function ReviewConfigForm({
         maxReviewTimeMinutes: maxReviewTime[0],
         modelSlug: selectedModel,
         thinkingEffort,
+        gateThreshold,
         repositorySelectionMode,
         selectedRepositoryIds,
         manuallyAddedRepositories,
@@ -477,6 +480,7 @@ export function ReviewConfigForm({
         maxReviewTimeMinutes: maxReviewTime[0],
         modelSlug: selectedModel,
         thinkingEffort,
+        gateThreshold,
         repositorySelectionMode,
         selectedRepositoryIds,
         manuallyAddedRepositories,
@@ -580,6 +584,28 @@ export function ReviewConfigForm({
                 </p>
               </div>
             )}
+
+            {/* PR Gate Threshold */}
+            <div className="space-y-2">
+              <Label>PR Gate Threshold</Label>
+              <Select
+                value={gateThreshold}
+                onValueChange={v => setGateThreshold(v as 'off' | 'all' | 'warning' | 'critical')}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="off">Off — system errors only</SelectItem>
+                  <SelectItem value="all">All findings</SelectItem>
+                  <SelectItem value="warning">Warnings and above</SelectItem>
+                  <SelectItem value="critical">Critical issues only</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground text-sm">
+                Controls when the PR status check reports a failure based on review findings
+              </p>
+            </div>
 
             {/* Review Style */}
             <div className="space-y-3">
