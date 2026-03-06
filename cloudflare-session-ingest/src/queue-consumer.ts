@@ -168,8 +168,7 @@ async function processMessage(env: Env, msg: IngestQueueMessage): Promise<void> 
 
   const obj = await env.SESSION_INGEST_R2.get(r2Key);
   if (!obj) {
-    console.warn('R2 object not found, skipping', { r2Key });
-    return;
+    throw new Error(`R2 staging object not found: ${r2Key}`);
   }
 
   const mergedChanges = new Map<string, string | null>();
