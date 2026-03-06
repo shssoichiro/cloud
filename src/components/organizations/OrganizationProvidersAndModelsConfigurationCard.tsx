@@ -34,6 +34,10 @@ export function computeProviderSelectionsForSummaryCard(params: {
   modelDenyList: string[];
 }): ProviderSelection[] | null {
   const { openRouterProviders, providerDenyList, modelDenyList } = params;
+  // If both deny lists are empty, there are no restrictions
+  if (providerDenyList.length === 0 && modelDenyList.length === 0) {
+    return null;
+  }
 
   const providerDenySet = new Set(providerDenyList);
   const modelDenySet = new Set(modelDenyList.map(id => normalizeModelId(id)));
@@ -53,11 +57,6 @@ export function computeProviderSelectionsForSummaryCard(params: {
         models: availableModels,
       });
     }
-  }
-
-  // If both deny lists are empty, there are no restrictions
-  if (providerDenyList.length === 0 && modelDenyList.length === 0) {
-    return null;
   }
 
   // Empty array means restrictions exist but nothing survived — distinct from null ("no restrictions")
