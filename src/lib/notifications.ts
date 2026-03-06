@@ -67,8 +67,7 @@ const normalUnconditionalNotifications: KiloNotification[] = [
   {
     id: 'app-builder-promo-mar-6',
     title: 'Try App Builder',
-    message:
-      "Don't feel like coding? Try App Builder to build with natural language from the web",
+    message: "Don't feel like coding? Try App Builder to build with natural language from the web",
     action: {
       actionText: 'Try App Builder',
       actionURL: 'https://app.kilo.ai/app-builder',
