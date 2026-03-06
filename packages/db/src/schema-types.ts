@@ -297,6 +297,11 @@ export const CodeReviewAgentConfigSchema = z.object({
   selected_repository_ids: z.array(z.number()).optional(),
   // Manually added repositories (for GitLab where pagination limits results)
   manually_added_repositories: z.array(ManuallyAddedRepositorySchema).optional(),
+  // When true, the PR gate check (GitHub Check Run / GitLab commit status) will
+  // fail if the review finds blocking issues. When false (default), the check
+  // only fails on system errors (timeout, crash, etc.).
+  // Requires the cloud agent to report a gate_result in its callback.
+  strict_gate: z.boolean().optional(),
 });
 
 export type CodeReviewAgentConfig = z.infer<typeof CodeReviewAgentConfigSchema>;
