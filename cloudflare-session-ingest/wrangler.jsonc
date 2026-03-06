@@ -61,6 +61,27 @@
       "new_sqlite_classes": ["SessionIngestDO", "SessionAccessCacheDO"],
     },
   ],
+  "r2_buckets": [
+    {
+      "binding": "SESSION_INGEST_R2",
+      "bucket_name": "session-ingest-staging",
+    },
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "INGEST_QUEUE",
+        "queue": "session-ingest-processing",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "session-ingest-processing",
+        "max_retries": 3,
+        "dead_letter_queue": "session-ingest-dlq",
+      },
+    ],
+  },
   "services": [
     {
       "binding": "O11Y",

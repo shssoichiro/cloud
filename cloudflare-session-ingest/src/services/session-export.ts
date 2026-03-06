@@ -40,3 +40,35 @@ export async function getSessionExport(
     'SessionIngestDO.getAll'
   );
 }
+
+/**
+ * Fetch the full session export as a streaming ReadableStream.
+ *
+ * @returns A ReadableStream of the JSON payload, or `null` if the session
+ *          does not exist or does not belong to the user.
+ */
+export async function getSessionExportStream(
+  env: Env,
+  sessionId: string,
+  kiloUserId: string
+): Promise<ReadableStream<Uint8Array> | null> {
+  const db = getWorkerDb(env.HYPERDRIVE.connectionString);
+
+  const rows = await db
+    .select({ session_id: cli_sessions_v2.session_id })
+    .from(cli_sessions_v2)
+    .where(
+      and(eq(cli_sessions_v2.session_id, sessionId), eq(cli_sessions_v2.kilo_user_id, kiloUserId))
+    )
+    .limit(1);
+
+  if (!rows[0]) {
+    return null;
+  }
+
+  return withDORetry(
+    () => getSessionIngestDO(env, { kiloUserId, sessionId }),
+    stub => stub.getAllStream(),
+    'SessionIngestDO.getAllStream'
+  );
+}

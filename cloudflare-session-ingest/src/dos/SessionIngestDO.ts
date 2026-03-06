@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { eq, ne, inArray } from 'drizzle-orm';
+import { eq, ne, gt, and, inArray } from 'drizzle-orm';
 import { drizzle, type DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 
@@ -88,7 +88,9 @@ export class SessionIngestDO extends DurableObject<Env> {
     payload: IngestBatch,
     kiloUserId: string,
     sessionId: string,
-    ingestVersion = 0
+    ingestVersion = 0,
+    ingestedAt?: number,
+    r2References?: Record<string, string>
   ): Promise<{
     changes: Changes;
   }> {
@@ -114,14 +116,43 @@ export class SessionIngestDO extends DurableObject<Env> {
     for (const item of payload) {
       const { item_id, item_type } = getItemIdentity(item);
 
-      const itemDataJson = JSON.stringify(item.data);
+      // Check timestamp guard: skip if existing row has a newer ingested_at
+      if (ingestedAt !== undefined) {
+        const existing = this.db
+          .select({ ingested_at: ingestItems.ingested_at })
+          .from(ingestItems)
+          .where(eq(ingestItems.item_id, item_id))
+          .get();
+        if (
+          existing?.ingested_at !== null &&
+          existing?.ingested_at !== undefined &&
+          existing.ingested_at > ingestedAt
+        ) {
+          continue;
+        }
+      }
+
+      const r2Key = r2References?.[item_id];
+      const itemDataJson = r2Key ? '{}' : JSON.stringify(item.data);
+      const itemDataR2Key = r2Key ?? null;
 
       this.db
         .insert(ingestItems)
-        .values({ item_id, item_type, item_data: itemDataJson })
+        .values({
+          item_id,
+          item_type,
+          item_data: itemDataJson,
+          item_data_r2_key: itemDataR2Key,
+          ingested_at: ingestedAt ?? null,
+        })
         .onConflictDoUpdate({
           target: ingestItems.item_id,
-          set: { item_type, item_data: itemDataJson },
+          set: {
+            item_type,
+            item_data: itemDataJson,
+            item_data_r2_key: itemDataR2Key,
+            ingested_at: ingestedAt ?? null,
+          },
         })
         .run();
 
@@ -184,6 +215,7 @@ export class SessionIngestDO extends DurableObject<Env> {
         item_id: ingestItems.item_id,
         item_type: ingestItems.item_type,
         item_data: ingestItems.item_data,
+        item_data_r2_key: ingestItems.item_data_r2_key,
       })
       .from(ingestItems)
       .where(ne(ingestItems.item_type, 'session_diff'))
@@ -193,7 +225,14 @@ export class SessionIngestDO extends DurableObject<Env> {
     const items: IngestBatch = [];
     for (const row of rows) {
       try {
-        const parsedData: unknown = JSON.parse(row.item_data);
+        let dataStr = row.item_data;
+        if (row.item_data_r2_key) {
+          const r2Obj = await this.env.SESSION_INGEST_R2.get(row.item_data_r2_key);
+          if (r2Obj) {
+            dataStr = await r2Obj.text();
+          }
+        }
+        const parsedData: unknown = JSON.parse(dataStr);
 
         // DB values are untyped; trust stored shape.
         items.push({
@@ -207,6 +246,65 @@ export class SessionIngestDO extends DurableObject<Env> {
 
     const snapshot = buildSharedSessionSnapshot(items);
     return JSON.stringify(snapshot);
+  }
+
+  async getAllStream(): Promise<ReadableStream<Uint8Array>> {
+    const db = this.db;
+    const r2 = this.env.SESSION_INGEST_R2;
+    const encoder = new TextEncoder();
+
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          const items: IngestBatch = [];
+          let cursor = 0;
+
+          // Read one row at a time to minimize memory usage
+          while (true) {
+            const row = db
+              .select({
+                id: ingestItems.id,
+                item_id: ingestItems.item_id,
+                item_type: ingestItems.item_type,
+                item_data: ingestItems.item_data,
+                item_data_r2_key: ingestItems.item_data_r2_key,
+              })
+              .from(ingestItems)
+              .where(and(ne(ingestItems.item_type, 'session_diff'), gt(ingestItems.id, cursor)))
+              .orderBy(ingestItems.id)
+              .limit(1)
+              .get();
+
+            if (!row) break;
+            cursor = row.id;
+
+            try {
+              let dataStr = row.item_data;
+              if (row.item_data_r2_key) {
+                const r2Obj = await r2.get(row.item_data_r2_key);
+                if (r2Obj) {
+                  dataStr = await r2Obj.text();
+                }
+              }
+              const parsedData: unknown = JSON.parse(dataStr);
+
+              items.push({
+                type: row.item_type as SessionDataItem['type'],
+                data: parsedData as SessionDataItem['data'],
+              } as IngestBatch[number]);
+            } catch {
+              // Ignore corrupted rows; best-effort read.
+            }
+          }
+
+          const snapshot = buildSharedSessionSnapshot(items);
+          controller.enqueue(encoder.encode(JSON.stringify(snapshot)));
+          controller.close();
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+    });
   }
 
   /**

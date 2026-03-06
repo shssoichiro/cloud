@@ -12,6 +12,7 @@ import { withDORetry } from '@kilocode/worker-utils';
 export { SessionIngestDO } from './dos/SessionIngestDO';
 export { SessionAccessCacheDO } from './dos/SessionAccessCacheDO';
 export { SessionIngestRPC } from './session-ingest-rpc';
+export { queue } from './queue-consumer';
 
 const app = new Hono<{
   Bindings: Env;
