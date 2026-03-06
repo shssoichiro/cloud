@@ -23,7 +23,7 @@ function truncate(text: string, maxLen: number): string {
 
 /** Strip characters that could break XML-like structural delimiters. */
 function sanitizeForDelimiters(text: string): string {
-  return text.replace(/[<>]/g, '');
+  return text.replace(/[<>"\n\r]/g, '');
 }
 
 function formatMessage(msg: Message): FormattedMessage {
