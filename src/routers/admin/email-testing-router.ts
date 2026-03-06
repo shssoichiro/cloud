@@ -2,7 +2,7 @@ import { adminProcedure, createTRPCRouter } from '@/lib/trpc/init';
 import { NEXTAUTH_URL } from '@/lib/config.server';
 import { sendViaCustomerIo } from '@/lib/email-customerio';
 import { sendViaMailgun } from '@/lib/email-mailgun';
-import { templates, subjects, buildCreditsSection, type TemplateName } from '@/lib/email';
+import { templates, subjects, buildCreditsSection, RawHtml, type TemplateName } from '@/lib/email';
 import * as z from 'zod';
 
 const templateNames: [TemplateName, ...TemplateName[]] = [
@@ -28,7 +28,7 @@ type ProviderName = (typeof providerNames)[number];
 
 const ProviderNameSchema = z.enum(providerNames);
 
-function fixtureTemplateVars(template: TemplateName): Record<string, string> {
+function fixtureTemplateVars(template: TemplateName): Record<string, string | RawHtml> {
   const orgId = 'fixture-org-id';
   const organization_url = `${NEXTAUTH_URL}/organizations/${orgId}`;
   const invoices_url = `${NEXTAUTH_URL}/organizations/${orgId}/payment-details`;
@@ -59,7 +59,7 @@ function fixtureTemplateVars(template: TemplateName): Record<string, string> {
         app_url: NEXTAUTH_URL,
       };
     case 'balanceAlert':
-      return { minimum_balance: '10', organization_url, invoices_url };
+      return { minimum_balance: '10', organization_url };
     case 'autoTopUpFailed':
       return { reason: 'Card declined', credits_url: `${NEXTAUTH_URL}/credits?show-auto-top-up` };
     case 'ossInviteNewUser':
@@ -110,12 +110,19 @@ import path from 'path';
 
 function renderTemplateForPreview(
   templateName: TemplateName,
-  vars: Record<string, string>
+  vars: Record<string, string | RawHtml>
 ): string {
   const templatePath = path.join(process.cwd(), 'src', 'emails', `${templateName}.html`);
   const html = fs.readFileSync(templatePath, 'utf-8');
-  const allVars: Record<string, string> = { ...vars, year: String(new Date().getFullYear()) };
-  return html.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => allVars[key] ?? `{{${key}}}`);
+  const allVars: Record<string, string | RawHtml> = {
+    ...vars,
+    year: String(new Date().getFullYear()),
+  };
+  return html.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
+    const v = allVars[key];
+    if (v === undefined) return `{{${key}}}`;
+    return v instanceof RawHtml ? v.html : v;
+  });
 }
 
 export const emailTestingRouter = createTRPCRouter({
@@ -138,11 +145,14 @@ export const emailTestingRouter = createTRPCRouter({
           html: renderTemplateForPreview(input.template, vars),
         };
       }
+      const messageData: Record<string, string> = Object.fromEntries(
+        Object.entries(vars).map(([k, v]) => [k, v instanceof RawHtml ? v.html : v])
+      );
       return {
         type: 'customerio' as const,
         transactional_message_id: templates[input.template],
         subject: subjects[input.template],
-        message_data: vars,
+        message_data: messageData,
       };
     }),
 
@@ -158,10 +168,13 @@ export const emailTestingRouter = createTRPCRouter({
       const vars = fixtureTemplateVars(input.template);
 
       if (input.provider === 'customerio') {
+        const messageData: Record<string, string> = Object.fromEntries(
+          Object.entries(vars).map(([k, v]) => [k, v instanceof RawHtml ? v.html : v])
+        );
         await sendViaCustomerIo({
           transactional_message_id: templates[input.template],
           to: input.recipient,
-          message_data: vars,
+          message_data: messageData,
           identifiers: { email: input.recipient },
           reply_to: 'hi@kilocode.ai',
         });

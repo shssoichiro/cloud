@@ -39,26 +39,46 @@ export const subjects: Record<TemplateName, string> = {
   deployFailed: 'Kilo: Your Deployment Failed',
 };
 
-function renderTemplate(name: string, vars: Record<string, string>): string {
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Variables wrapped in RawHtml are interpolated without HTML escaping.
+// Use only for values that are already trusted HTML (e.g. credits_section).
+export class RawHtml {
+  constructor(public readonly html: string) {}
+}
+
+type TemplateVars = Record<string, string | RawHtml>;
+
+function renderTemplate(name: string, vars: TemplateVars): string {
   const templatePath = path.join(process.cwd(), 'src', 'emails', `${name}.html`);
   const html = fs.readFileSync(templatePath, 'utf-8');
   return html.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
     if (!(key in vars)) {
       throw new Error(`Missing template variable '${key}' in email template '${name}'`);
     }
-    return vars[key];
+    const value = vars[key];
+    return value instanceof RawHtml ? value.html : escapeHtml(value);
   });
 }
 
-export function buildCreditsSection(monthlyCreditsUsd: number): string {
-  if (monthlyCreditsUsd <= 0) return '';
-  return `<br />• <strong style="color: #d1d5db">$${monthlyCreditsUsd} USD in Kilo credits</strong>, which reset every 30 days`;
+export function buildCreditsSection(monthlyCreditsUsd: number): RawHtml {
+  if (monthlyCreditsUsd <= 0) return new RawHtml('');
+  return new RawHtml(
+    `<br />• <strong style="color: #d1d5db">$${monthlyCreditsUsd} USD in Kilo credits</strong>, which reset every 30 days`
+  );
 }
 
 type SendParams = {
   to: string;
   templateName: TemplateName;
-  templateVars: Record<string, string>;
+  templateVars: TemplateVars;
 };
 
 async function send(params: SendParams) {
@@ -70,10 +90,14 @@ async function send(params: SendParams) {
     });
     return sendViaMailgun({ to: params.to, subject, html });
   }
+  // Customer.io handles its own rendering; pass raw string values
+  const messageData: Record<string, string> = Object.fromEntries(
+    Object.entries(params.templateVars).map(([k, v]) => [k, v instanceof RawHtml ? v.html : v])
+  );
   return sendViaCustomerIo({
     transactional_message_id: templates[params.templateName],
     to: params.to,
-    message_data: params.templateVars,
+    message_data: messageData,
     identifiers: { email: params.to },
     reply_to: 'hi@kilocode.ai',
   });
@@ -212,17 +236,14 @@ export async function sendBalanceAlertEmail(props: SendBalanceAlertEmailProps) {
   }
 
   const organization_url = `${NEXTAUTH_URL}/organizations/${organizationId}`;
-  const invoices_url = `${NEXTAUTH_URL}/organizations/${organizationId}/payment-details`;
 
   const sendToRecipient = (email: string) =>
     send({
       to: email,
       templateName: 'balanceAlert',
       templateVars: {
-        organizationId,
         minimum_balance: String(minimum_balance),
         organization_url,
-        invoices_url,
       },
     });
 
