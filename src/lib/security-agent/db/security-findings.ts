@@ -372,12 +372,23 @@ export async function listSecurityFindings(
           conditions.push(
             sql`(${security_findings.analysis}->'triage'->>'suggestedAction') = 'dismiss'`
           );
+          // Exclude findings where sandbox has a definitive result, since
+          // getOutcome() gives sandbox priority over triage. Without this a
+          // finding triaged as "dismiss" but sandbox-confirmed as exploitable
+          // would appear under "Safe to Dismiss" yet display as "Exploitable".
+          conditions.push(
+            sql`(${security_findings.analysis}->'sandboxAnalysis'->>'isExploitable') IS NULL OR (${security_findings.analysis}->'sandboxAnalysis'->>'isExploitable') = 'unknown'`
+          );
           break;
         case 'needs_review':
           conditions.push(eq(security_findings.status, 'open'));
           conditions.push(eq(security_findings.analysis_status, 'completed'));
           conditions.push(
             sql`(${security_findings.analysis}->'triage'->>'suggestedAction') = 'manual_review'`
+          );
+          // Same as safe_to_dismiss: exclude findings where sandbox overrides triage.
+          conditions.push(
+            sql`(${security_findings.analysis}->'sandboxAnalysis'->>'isExploitable') IS NULL OR (${security_findings.analysis}->'sandboxAnalysis'->>'isExploitable') = 'unknown'`
           );
           break;
         case 'triage_complete':

@@ -228,7 +228,11 @@ export function FindingDetailDialog({
             </TabsTrigger>
             <TabsTrigger value="analysis" className="flex items-center gap-1.5">
               <AnalysisStatusIcon
-                status={analysis?.sandboxAnalysis ? 'completed' : analysisStatus}
+                status={
+                  analysis?.sandboxAnalysis && analysisStatus === 'completed'
+                    ? 'completed'
+                    : analysisStatus
+                }
                 fallback={<Brain className="h-3.5 w-3.5" />}
               />
               Analysis

@@ -626,12 +626,14 @@ export function SecurityAgentPageClient({ organizationId }: SecurityAgentPageCli
     let optimisticAdditional = 0;
     for (const id of startingAnalysisIds) {
       const finding = findings.find(f => f.id === id);
+      // Skip findings not on the current page — serverRunningCount is global
+      // and will already include them once the server processes the mutation.
+      // Previously `!finding` counted as additional, which double-counted when
+      // the user changed page/filter while the mutation was in-flight.
+      if (!finding) continue;
       // Only count as additional if the server data doesn't already reflect
       // this analysis (i.e. the finding's status hasn't moved to pending/running yet).
-      if (
-        !finding ||
-        (finding.analysis_status !== 'pending' && finding.analysis_status !== 'running')
-      ) {
+      if (finding.analysis_status !== 'pending' && finding.analysis_status !== 'running') {
         optimisticAdditional++;
       }
     }
