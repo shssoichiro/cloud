@@ -144,9 +144,7 @@ function createItemExtractor(r2Key: string) {
   return {
     tokenizer,
     pending,
-    getParseError() {
-      return parseError;
-    },
+    getParseError: () => parseError,
   };
 }
 
