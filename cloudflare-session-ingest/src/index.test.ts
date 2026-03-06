@@ -92,7 +92,7 @@ describe('public session route', () => {
     ]);
 
     const stub = {
-      getAll: vi.fn(async () => '{"ok":true}'),
+      getAllStream: vi.fn(async () => new Response('{"ok":true}').body!),
     };
     vi.mocked(getSessionIngestDO).mockReturnValue(
       stub as unknown as ReturnType<typeof getSessionIngestDO>

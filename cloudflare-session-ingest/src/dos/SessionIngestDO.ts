@@ -8,7 +8,6 @@ import type { Env } from '../env';
 import type { IngestBatch } from '../types/session-sync';
 import type { SessionDataItem } from '../types/session-sync';
 import { getItemIdentity } from '../util/compaction';
-import { buildSharedSessionSnapshot } from '../util/share-output';
 import {
   extractNormalizedGitBranchFromItem,
   extractNormalizedGitUrlFromItem,
@@ -209,96 +208,117 @@ export class SessionIngestDO extends DurableObject<Env> {
     };
   }
 
-  async getAll(): Promise<string> {
-    const rows = this.db
-      .select({
-        item_id: ingestItems.item_id,
-        item_type: ingestItems.item_type,
-        item_data: ingestItems.item_data,
-        item_data_r2_key: ingestItems.item_data_r2_key,
-      })
-      .from(ingestItems)
-      .where(ne(ingestItems.item_type, 'session_diff'))
-      .orderBy(ingestItems.id)
-      .all();
-
-    const items: IngestBatch = [];
-    for (const row of rows) {
-      try {
-        let dataStr = row.item_data;
-        if (row.item_data_r2_key) {
-          const r2Obj = await this.env.SESSION_INGEST_R2.get(row.item_data_r2_key);
-          if (r2Obj) {
-            dataStr = await r2Obj.text();
-          }
-        }
-        const parsedData: unknown = JSON.parse(dataStr);
-
-        // DB values are untyped; trust stored shape.
-        items.push({
-          type: row.item_type as SessionDataItem['type'],
-          data: parsedData as SessionDataItem['data'],
-        } as IngestBatch[number]);
-      } catch {
-        // Ignore corrupted rows; best-effort read.
-      }
-    }
-
-    const snapshot = buildSharedSessionSnapshot(items);
-    return JSON.stringify(snapshot);
-  }
-
   async getAllStream(): Promise<ReadableStream<Uint8Array>> {
     const db = this.db;
     const r2 = this.env.SESSION_INGEST_R2;
     const encoder = new TextEncoder();
 
+    // Phase 1: Scan — collect lightweight refs from SQLite
+    type ItemRef = {
+      item_id: string;
+      item_type: string;
+      item_data: string;
+      r2Key: string | null;
+    };
+    const refs: ItemRef[] = [];
+    let cursor = 0;
+    while (true) {
+      const row = db
+        .select({
+          id: ingestItems.id,
+          item_id: ingestItems.item_id,
+          item_type: ingestItems.item_type,
+          item_data: ingestItems.item_data,
+          item_data_r2_key: ingestItems.item_data_r2_key,
+        })
+        .from(ingestItems)
+        .where(and(ne(ingestItems.item_type, 'session_diff'), gt(ingestItems.id, cursor)))
+        .orderBy(ingestItems.id)
+        .limit(1)
+        .get();
+
+      if (!row) break;
+      cursor = row.id;
+      refs.push({
+        item_id: row.item_id,
+        item_type: row.item_type,
+        item_data: row.item_data,
+        r2Key: row.item_data_r2_key,
+      });
+    }
+
+    // Phase 2: Group — build snapshot structure from refs
+    let sessionRef: ItemRef | null = null;
+    const messageOrder: string[] = [];
+    const messageRefById = new Map<string, ItemRef>();
+    const partRefsByMsgId = new Map<string, ItemRef[]>();
+
+    for (const ref of refs) {
+      if (ref.item_type === 'session') {
+        sessionRef = ref;
+      } else if (ref.item_type === 'message') {
+        // item_id = 'message/{msgId}'
+        const msgId = ref.item_id.slice('message/'.length);
+        messageRefById.set(msgId, ref);
+        if (!messageOrder.includes(msgId)) {
+          messageOrder.push(msgId);
+        }
+      } else if (ref.item_type === 'part') {
+        // item_id = '{msgId}/{partId}'
+        const slashIdx = ref.item_id.indexOf('/');
+        const msgId = slashIdx >= 0 ? ref.item_id.slice(0, slashIdx) : ref.item_id;
+        let parts = partRefsByMsgId.get(msgId);
+        if (!parts) {
+          parts = [];
+          partRefsByMsgId.set(msgId, parts);
+        }
+        parts.push(ref);
+        // Ensure message is in order list even if we see parts before message
+        if (!messageRefById.has(msgId) && !messageOrder.includes(msgId)) {
+          messageOrder.push(msgId);
+        }
+      }
+    }
+
+    // Phase 3: Stream JSON
     return new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          const items: IngestBatch = [];
-          let cursor = 0;
-
-          // Read one row at a time to minimize memory usage
-          while (true) {
-            const row = db
-              .select({
-                id: ingestItems.id,
-                item_id: ingestItems.item_id,
-                item_type: ingestItems.item_type,
-                item_data: ingestItems.item_data,
-                item_data_r2_key: ingestItems.item_data_r2_key,
-              })
-              .from(ingestItems)
-              .where(and(ne(ingestItems.item_type, 'session_diff'), gt(ingestItems.id, cursor)))
-              .orderBy(ingestItems.id)
-              .limit(1)
-              .get();
-
-            if (!row) break;
-            cursor = row.id;
-
-            try {
-              let dataStr = row.item_data;
-              if (row.item_data_r2_key) {
-                const r2Obj = await r2.get(row.item_data_r2_key);
-                if (r2Obj) {
-                  dataStr = await r2Obj.text();
-                }
-              }
-              const parsedData: unknown = JSON.parse(dataStr);
-
-              items.push({
-                type: row.item_type as SessionDataItem['type'],
-                data: parsedData as SessionDataItem['data'],
-              } as IngestBatch[number]);
-            } catch {
-              // Ignore corrupted rows; best-effort read.
-            }
+          // {"info":
+          controller.enqueue(encoder.encode('{"info":'));
+          if (sessionRef) {
+            await enqueueItemData(controller, sessionRef, r2, encoder);
+          } else {
+            controller.enqueue(encoder.encode('{}'));
           }
 
-          const snapshot = buildSharedSessionSnapshot(items);
-          controller.enqueue(encoder.encode(JSON.stringify(snapshot)));
+          // ,"messages":[
+          controller.enqueue(encoder.encode(',"messages":['));
+
+          let firstMsg = true;
+          for (const msgId of messageOrder) {
+            const msgRef = messageRefById.get(msgId);
+            if (!msgRef) continue;
+
+            if (!firstMsg) controller.enqueue(encoder.encode(','));
+            firstMsg = false;
+
+            // {"info":
+            controller.enqueue(encoder.encode('{"info":'));
+            await enqueueItemData(controller, msgRef, r2, encoder);
+
+            // ,"parts":[
+            controller.enqueue(encoder.encode(',"parts":['));
+            const parts = partRefsByMsgId.get(msgId) ?? [];
+            for (let i = 0; i < parts.length; i++) {
+              if (i > 0) controller.enqueue(encoder.encode(','));
+              await enqueueItemData(controller, parts[i], r2, encoder);
+            }
+            controller.enqueue(encoder.encode(']}'));
+          }
+
+          // ]}
+          controller.enqueue(encoder.encode(']}'));
           controller.close();
         } catch (err) {
           controller.error(err);
@@ -425,6 +445,29 @@ export class SessionIngestDO extends DurableObject<Env> {
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     await migrate(this.db, migrations);
+  }
+}
+
+async function enqueueItemData(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  ref: { item_data: string; r2Key: string | null },
+  r2: R2Bucket,
+  encoder: TextEncoder
+): Promise<void> {
+  if (ref.r2Key) {
+    const obj = await r2.get(ref.r2Key);
+    if (obj) {
+      const reader = obj.body.getReader();
+      while (true) {
+        const result: ReadableStreamReadResult<Uint8Array> = await reader.read();
+        if (result.done) break;
+        controller.enqueue(result.value);
+      }
+    } else {
+      controller.enqueue(encoder.encode('{}'));
+    }
+  } else {
+    controller.enqueue(encoder.encode(ref.item_data));
   }
 }
 

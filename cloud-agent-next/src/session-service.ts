@@ -943,17 +943,26 @@ export class SessionService {
     const tmpPath = `/tmp/kilo-session-export-${sessionId}.json`;
     let wroteSnapshot = false;
     try {
-      const payload = await env.SESSION_INGEST.exportSession({
-        sessionId: kiloSessionId,
-        kiloUserId: userId,
-      });
+      const internalSecret = await env.INTERNAL_SERVICE_SECRET.get();
+      const response = await env.SESSION_INGEST.fetch(
+        new Request(`https://session-ingest/internal/session/${kiloSessionId}/export`, {
+          headers: {
+            'X-Internal-Secret': internalSecret,
+            'X-Kilo-User-Id': userId,
+          },
+        })
+      );
 
-      if (payload === null) {
+      if (response.status === 404) {
         throw new SessionSnapshotRestoreError(
           `Session snapshot restore failed: session not found`,
           404
         );
       }
+      if (!response.ok) {
+        throw new Error(`Session export failed: ${response.status}`);
+      }
+      const payload = await response.text();
       await session.writeFile(tmpPath, payload);
       wroteSnapshot = true;
 

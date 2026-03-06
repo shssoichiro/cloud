@@ -202,13 +202,13 @@ api.get('/session/:sessionId/export', async c => {
   }
 
   const kiloUserId = c.get('user_id');
-  const json = await getSessionExport(c.env, parsed.data, kiloUserId);
+  const stream = await getSessionExport(c.env, parsed.data, kiloUserId);
 
-  if (json === null) {
+  if (stream === null) {
     return c.json({ success: false, error: 'session_not_found' }, 404);
   }
 
-  return c.body(json, 200, {
+  return c.body(stream, 200, {
     'content-type': 'application/json; charset=utf-8',
   });
 });

@@ -10,7 +10,7 @@ function getStub(kiloUserId: string, sessionId: string) {
 describe('SessionIngestDO integration', () => {
   const kiloUserId = 'usr_test_integration';
 
-  describe('ingest + getAll round-trip', () => {
+  describe('ingest + getAllStream round-trip', () => {
     it('ingests a single session item and exports it', async () => {
       const sessionId = 'ses_roundtrip_single_000000001';
       const stub = getStub(kiloUserId, sessionId);
@@ -22,7 +22,7 @@ describe('SessionIngestDO integration', () => {
         1
       );
 
-      const raw = await stub.getAll();
+      const raw = await stub.getAllStream().then(s => new Response(s).text());
       const snapshot = JSON.parse(raw);
 
       expect(snapshot.info).toEqual({ title: 'Test Session' });
@@ -52,7 +52,7 @@ describe('SessionIngestDO integration', () => {
         1
       );
 
-      const raw = await stub.getAll();
+      const raw = await stub.getAllStream().then(s => new Response(s).text());
       const snapshot = JSON.parse(raw);
 
       expect(snapshot.info).toEqual({ title: 'Multi Item Session' });
@@ -87,7 +87,7 @@ describe('SessionIngestDO integration', () => {
         1
       );
 
-      const raw = await stub.getAll();
+      const raw = await stub.getAllStream().then(s => new Response(s).text());
       const snapshot = JSON.parse(raw);
 
       expect(snapshot.messages).toHaveLength(2);
@@ -115,7 +115,7 @@ describe('SessionIngestDO integration', () => {
         1
       );
 
-      const raw = await stub.getAll();
+      const raw = await stub.getAllStream().then(s => new Response(s).text());
       const snapshot = JSON.parse(raw);
 
       expect(snapshot.info).toEqual({ title: 'Updated Title' });
@@ -163,11 +163,11 @@ describe('SessionIngestDO integration', () => {
   });
 
   describe('export produces valid JSON', () => {
-    it('returns valid JSON from getAll even with no items', async () => {
+    it('returns valid JSON from getAllStream even with no items', async () => {
       const sessionId = 'ses_export_empty_0000000007';
       const stub = getStub(kiloUserId, sessionId);
 
-      const raw = await stub.getAll();
+      const raw = await stub.getAllStream().then(s => new Response(s).text());
       const snapshot = JSON.parse(raw);
 
       expect(snapshot).toHaveProperty('info');
@@ -201,7 +201,7 @@ describe('SessionIngestDO integration', () => {
 
       await stub.ingest(items as never, kiloUserId, sessionId, 1);
 
-      const raw = await stub.getAll();
+      const raw = await stub.getAllStream().then(s => new Response(s).text());
       const snapshot = JSON.parse(raw);
 
       expect(snapshot.messages).toHaveLength(50);
@@ -229,7 +229,7 @@ describe('SessionIngestDO integration', () => {
 
       await stub.clear();
 
-      const raw = await stub.getAll();
+      const raw = await stub.getAllStream().then(s => new Response(s).text());
       const snapshot = JSON.parse(raw);
 
       expect(snapshot.info).toEqual({});

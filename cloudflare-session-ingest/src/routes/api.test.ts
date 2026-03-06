@@ -374,7 +374,7 @@ describe('api routes', () => {
 
     const payload = JSON.stringify({ success: true, events: [] });
     const ingestStub = {
-      getAll: vi.fn(async () => payload),
+      getAllStream: vi.fn(async () => new Response(payload).body!),
     };
     vi.mocked(getSessionIngestDO).mockReturnValue(
       ingestStub as unknown as ReturnType<typeof getSessionIngestDO>
@@ -391,7 +391,7 @@ describe('api routes', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8');
     expect(await res.text()).toBe(payload);
-    expect(ingestStub.getAll).toHaveBeenCalled();
+    expect(ingestStub.getAllStream).toHaveBeenCalled();
   });
 
   it('DELETE /session/:sessionId revokes cache, clears DO, and deletes row', async () => {

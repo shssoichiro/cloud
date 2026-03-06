@@ -34,7 +34,7 @@ async function processMessage(env: Env, msg: IngestQueueMessage): Promise<void> 
 
   const parser = new JSONParser({ paths: ['$.data.*'], keepStack: false });
 
-  parser.onValue = (parsedElementInfo) => {
+  parser.onValue = parsedElementInfo => {
     const { value, stack } = parsedElementInfo;
     // Only capture top-level array elements emitted by $.data.* path
     if (stack.length === 2 && value != null) {
@@ -65,7 +65,16 @@ async function processMessage(env: Env, msg: IngestQueueMessage): Promise<void> 
   // Process collected items sequentially
   for (const rawItem of items) {
     try {
-      await processItem(env, rawItem, r2Key, kiloUserId, sessionId, ingestVersion, ingestedAt, mergedChanges);
+      await processItem(
+        env,
+        rawItem,
+        r2Key,
+        kiloUserId,
+        sessionId,
+        ingestVersion,
+        ingestedAt,
+        mergedChanges
+      );
     } catch (err) {
       console.error('Error processing single item in queue consumer, continuing', {
         r2Key,
@@ -222,10 +231,7 @@ async function applyMetadataChanges(
   }
 }
 
-export async function queue(
-  batch: MessageBatch<IngestQueueMessage>,
-  env: Env
-): Promise<void> {
+export async function queue(batch: MessageBatch<IngestQueueMessage>, env: Env): Promise<void> {
   for (const msg of batch.messages) {
     try {
       await processMessage(env, msg.body);

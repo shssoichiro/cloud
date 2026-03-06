@@ -41,9 +41,9 @@ import type { PersistenceEnv, CloudAgentSessionState } from './persistence/types
 describe('SessionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockEnv.SESSION_INGEST.exportSession = vi
+    (mockEnv.SESSION_INGEST as { fetch: ReturnType<typeof vi.fn> }).fetch = vi
       .fn()
-      .mockResolvedValue(JSON.stringify({ info: {}, messages: [] }));
+      .mockResolvedValue(new Response(JSON.stringify({ info: {}, messages: [] })));
   });
 
   const mockedSetupWorkspace = vi.mocked(mockSetupWorkspace);
@@ -68,8 +68,11 @@ describe('SessionService', () => {
     } as unknown as PersistenceEnv['CLOUD_AGENT_SESSION'],
     NEXTAUTH_SECRET: 'mock-secret',
     SESSION_INGEST: {
-      exportSession: vi.fn(),
+      fetch: vi.fn(),
     } as unknown as PersistenceEnv['SESSION_INGEST'],
+    INTERNAL_SERVICE_SECRET: {
+      get: vi.fn().mockResolvedValue('test-secret'),
+    } as unknown as PersistenceEnv['INTERNAL_SERVICE_SECRET'],
   };
 
   const createMetadataEnv = (
@@ -166,14 +169,14 @@ describe('SessionService', () => {
       expect(result.context.sessionId).toBe(sessionId);
     });
 
-    it('does not restore session snapshot during initiate (no exportSession call)', async () => {
-      const exportSessionMock = vi
+    it('does not restore session snapshot during initiate (no fetch call)', async () => {
+      const fetchMock = vi
         .fn()
-        .mockResolvedValue(JSON.stringify({ info: {}, messages: [] }));
+        .mockResolvedValue(new Response(JSON.stringify({ info: {}, messages: [] })));
       const envWithIngest: PersistenceEnv = {
         ...mockEnv,
         SESSION_INGEST: {
-          exportSession: exportSessionMock,
+          fetch: fetchMock,
         } as unknown as PersistenceEnv['SESSION_INGEST'],
       };
 
@@ -209,7 +212,7 @@ describe('SessionService', () => {
         env: envWithIngest,
       });
 
-      expect(exportSessionMock).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
       expect(fakeSession.writeFile).not.toHaveBeenCalled();
       expect(fakeSession.exec).not.toHaveBeenCalledWith(
         `kilo import "/tmp/kilo-session-export-${sessionId}.json"`
@@ -575,11 +578,11 @@ describe('SessionService', () => {
     it('restores workspace then session snapshot when workspace is missing', async () => {
       const mockDOGetMetadata = vi.fn();
       const payload = JSON.stringify({ info: {}, messages: [] });
-      const exportSessionMock = vi.fn().mockResolvedValue(payload);
+      const fetchMock = vi.fn().mockResolvedValue(new Response(payload));
       const envWithIngest: PersistenceEnv = {
         ...mockEnv,
         SESSION_INGEST: {
-          exportSession: exportSessionMock,
+          fetch: fetchMock,
         } as unknown as PersistenceEnv['SESSION_INGEST'],
         CLOUD_AGENT_SESSION: {
           idFromName: vi.fn(() => 'mock-do-id' as unknown as DurableObjectId),
@@ -632,10 +635,11 @@ describe('SessionService', () => {
         env: envWithIngest,
       });
 
-      expect(exportSessionMock).toHaveBeenCalledWith({
-        sessionId: kiloSessionId,
-        kiloUserId: userId,
-      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: `https://session-ingest/internal/session/${kiloSessionId}/export`,
+        })
+      );
       expect(fakeSession.writeFile).toHaveBeenCalledWith(
         `/tmp/kilo-session-export-${sessionId}.json`,
         payload
