@@ -1,5 +1,6 @@
 import 'server-only';
 import { db } from '@/lib/drizzle';
+import { captureException } from '@sentry/nextjs';
 import { eq } from 'drizzle-orm';
 import { after } from 'next/server';
 import { bot_requests, type BotRequestStatus, type BotRequestStep } from '@kilocode/db/schema';
@@ -41,7 +42,7 @@ export async function createBotRequest(
 
     return row?.id;
   } catch (error) {
-    console.error('[Bot:RequestLog] Failed to create request log:', error);
+    captureException(error, { tags: { component: 'bot-request-log', op: 'create' } });
     return undefined;
   }
 }
@@ -71,7 +72,7 @@ async function performUpdate(id: string, params: UpdateBotRequestParams): Promis
       })
       .where(eq(bot_requests.id, id));
   } catch (error) {
-    console.error('[Bot:RequestLog] Failed to update request log:', error);
+    captureException(error, { tags: { component: 'bot-request-log', op: 'update' } });
   }
 }
 
