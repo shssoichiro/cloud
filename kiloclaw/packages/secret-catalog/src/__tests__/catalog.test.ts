@@ -63,16 +63,34 @@ describe('Secret Catalog', () => {
     });
 
     it('no validation pattern exhibits catastrophic backtracking', { timeout: 1000 }, () => {
-      const longString = 'a'.repeat(10000);
+      // ReDoS-prone patterns blow up on near-match inputs (long valid prefix + invalid suffix),
+      // not on completely unrelated strings like 'aaa...'. Test both cases.
+      const evilSuffixes = ['!', '\x00', ' '];
+      const longRepeats = [
+        'a'.repeat(10000),
+        'A'.repeat(10000),
+        '1'.repeat(10000),
+        'xoxb-' + 'A'.repeat(10000),
+        'xapp-' + 'A'.repeat(10000),
+        '1234567890:' + 'A'.repeat(10000),
+      ];
+
       for (const entry of SECRET_CATALOG) {
         for (const field of entry.fields) {
           if (field.validationPattern) {
-            const pattern = field.validationPattern;
-            const regex = new RegExp(pattern);
-            // Test completes quickly if no catastrophic backtracking
-            const result = regex.test(longString);
-            // Assert something to make the test meaningful
-            expect(typeof result).toBe('boolean');
+            const regex = new RegExp(field.validationPattern);
+
+            // Test completely unrelated long input
+            for (const input of longRepeats) {
+              expect(typeof regex.test(input)).toBe('boolean');
+            }
+
+            // Test near-match: long valid-ish prefix + invalid suffix
+            for (const input of longRepeats) {
+              for (const suffix of evilSuffixes) {
+                expect(typeof regex.test(input + suffix)).toBe('boolean');
+              }
+            }
           }
         }
       }
