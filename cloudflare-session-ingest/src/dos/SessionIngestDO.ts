@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { eq, ne, gt, and, inArray } from 'drizzle-orm';
+import { eq, ne, gt, and, like, inArray } from 'drizzle-orm';
 import { drizzle, type DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 
@@ -213,111 +213,94 @@ export class SessionIngestDO extends DurableObject<Env> {
     const r2 = this.env.SESSION_INGEST_R2;
     const encoder = new TextEncoder();
 
-    // Phase 1: Scan — collect lightweight refs from SQLite
-    type ItemRef = {
-      item_id: string;
-      item_type: string;
-      item_data: string;
-      r2Key: string | null;
-    };
-    const refs: ItemRef[] = [];
-    let cursor = 0;
-    while (true) {
-      const row = db
-        .select({
-          id: ingestItems.id,
-          item_id: ingestItems.item_id,
-          item_type: ingestItems.item_type,
-          item_data: ingestItems.item_data,
-          item_data_r2_key: ingestItems.item_data_r2_key,
-        })
-        .from(ingestItems)
-        .where(and(ne(ingestItems.item_type, 'session_diff'), gt(ingestItems.id, cursor)))
-        .orderBy(ingestItems.id)
-        .limit(1)
-        .get();
-
-      if (!row) break;
-      cursor = row.id;
-      refs.push({
-        item_id: row.item_id,
-        item_type: row.item_type,
-        item_data: row.item_data,
-        r2Key: row.item_data_r2_key,
-      });
-    }
-
-    // Phase 2: Group — build snapshot structure from refs
-    let sessionRef: ItemRef | null = null;
-    const messageOrder: string[] = [];
-    const messageRefById = new Map<string, ItemRef>();
-    const partRefsByMsgId = new Map<string, ItemRef[]>();
-
-    for (const ref of refs) {
-      if (ref.item_type === 'session') {
-        sessionRef = ref;
-      } else if (ref.item_type === 'message') {
-        // item_id = 'message/{msgId}'
-        const msgId = ref.item_id.slice('message/'.length);
-        messageRefById.set(msgId, ref);
-        if (!messageOrder.includes(msgId)) {
-          messageOrder.push(msgId);
-        }
-      } else if (ref.item_type === 'part') {
-        // item_id = '{msgId}/{partId}'
-        const slashIdx = ref.item_id.indexOf('/');
-        const msgId = slashIdx >= 0 ? ref.item_id.slice(0, slashIdx) : ref.item_id;
-        let parts = partRefsByMsgId.get(msgId);
-        if (!parts) {
-          parts = [];
-          partRefsByMsgId.set(msgId, parts);
-        }
-        parts.push(ref);
-        // Ensure message is in order list even if we see parts before message
-        if (!messageRefById.has(msgId) && !messageOrder.includes(msgId)) {
-          messageOrder.push(msgId);
-        }
-      }
-    }
-
-    // Phase 3: Stream JSON
     return new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          // {"info":
+          // --- session info ---
           controller.enqueue(encoder.encode('{"info":'));
-          if (sessionRef) {
-            await enqueueItemData(controller, sessionRef, r2, encoder);
+          const sessionRow = db
+            .select({
+              item_data: ingestItems.item_data,
+              item_data_r2_key: ingestItems.item_data_r2_key,
+            })
+            .from(ingestItems)
+            .where(eq(ingestItems.item_type, 'session'))
+            .limit(1)
+            .get();
+          if (sessionRow) {
+            await enqueueItemData(controller, sessionRow, r2, encoder);
           } else {
             controller.enqueue(encoder.encode('{}'));
           }
 
-          // ,"messages":[
+          // --- messages ---
           controller.enqueue(encoder.encode(',"messages":['));
-
+          let msgCursor = 0;
           let firstMsg = true;
-          for (const msgId of messageOrder) {
-            const msgRef = messageRefById.get(msgId);
-            if (!msgRef) continue;
+
+          while (true) {
+            const msgRow = db
+              .select({
+                id: ingestItems.id,
+                item_id: ingestItems.item_id,
+                item_data: ingestItems.item_data,
+                item_data_r2_key: ingestItems.item_data_r2_key,
+              })
+              .from(ingestItems)
+              .where(
+                and(eq(ingestItems.item_type, 'message'), gt(ingestItems.id, msgCursor))
+              )
+              .orderBy(ingestItems.id)
+              .limit(1)
+              .get();
+
+            if (!msgRow) break;
+            msgCursor = msgRow.id;
 
             if (!firstMsg) controller.enqueue(encoder.encode(','));
             firstMsg = false;
 
-            // {"info":
+            // message info
             controller.enqueue(encoder.encode('{"info":'));
-            await enqueueItemData(controller, msgRef, r2, encoder);
+            await enqueueItemData(controller, msgRow, r2, encoder);
 
-            // ,"parts":[
+            // parts for this message: item_id = '{msgId}/{partId}'
+            const msgId = msgRow.item_id.slice('message/'.length);
             controller.enqueue(encoder.encode(',"parts":['));
-            const parts = partRefsByMsgId.get(msgId) ?? [];
-            for (let i = 0; i < parts.length; i++) {
-              if (i > 0) controller.enqueue(encoder.encode(','));
-              await enqueueItemData(controller, parts[i], r2, encoder);
+            let partCursor = 0;
+            let firstPart = true;
+
+            while (true) {
+              const partRow = db
+                .select({
+                  id: ingestItems.id,
+                  item_data: ingestItems.item_data,
+                  item_data_r2_key: ingestItems.item_data_r2_key,
+                })
+                .from(ingestItems)
+                .where(
+                  and(
+                    eq(ingestItems.item_type, 'part'),
+                    like(ingestItems.item_id, `${msgId}/%`),
+                    gt(ingestItems.id, partCursor)
+                  )
+                )
+                .orderBy(ingestItems.id)
+                .limit(1)
+                .get();
+
+              if (!partRow) break;
+              partCursor = partRow.id;
+
+              if (!firstPart) controller.enqueue(encoder.encode(','));
+              firstPart = false;
+
+              await enqueueItemData(controller, partRow, r2, encoder);
             }
+
             controller.enqueue(encoder.encode(']}'));
           }
 
-          // ]}
           controller.enqueue(encoder.encode(']}'));
           controller.close();
         } catch (err) {
@@ -450,12 +433,12 @@ export class SessionIngestDO extends DurableObject<Env> {
 
 async function enqueueItemData(
   controller: ReadableStreamDefaultController<Uint8Array>,
-  ref: { item_data: string; r2Key: string | null },
+  ref: { item_data: string; item_data_r2_key: string | null },
   r2: R2Bucket,
   encoder: TextEncoder
 ): Promise<void> {
-  if (ref.r2Key) {
-    const obj = await r2.get(ref.r2Key);
+  if (ref.item_data_r2_key) {
+    const obj = await r2.get(ref.item_data_r2_key);
     if (obj) {
       const reader = obj.body.getReader();
       while (true) {
