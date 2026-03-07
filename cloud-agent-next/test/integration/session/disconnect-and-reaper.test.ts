@@ -331,4 +331,123 @@ describe('Disconnect handling & reaper', () => {
     expect(delta).toBeGreaterThanOrEqual(295_000);
     expect(delta).toBeLessThanOrEqual(305_000);
   });
+
+  // ---------------------------------------------------------------------------
+  // failExecution idempotency & interrupt cleanup
+  // ---------------------------------------------------------------------------
+
+  it('reaper is idempotent - second alarm after failure produces no additional events', async () => {
+    const userId = 'user_reaper_5';
+    const sessionId = 'agent_reaper_5';
+    const doId = env.CLOUD_AGENT_SESSION.idFromName(`${userId}:${sessionId}`);
+    const stub = env.CLOUD_AGENT_SESSION.get(doId);
+
+    const result = await runInDurableObject(stub, async (instance, state) => {
+      const now = Date.now();
+
+      await instance.updateMetadata({
+        version: now,
+        sessionId,
+        userId,
+        timestamp: now,
+      });
+
+      const excId = 'exc_idempotent' as ExecutionId;
+      await instance.addExecution({
+        executionId: excId,
+        mode: 'code',
+        streamingMode: 'websocket',
+        ingestToken: excId,
+      });
+      await instance.setActiveExecution(excId);
+
+      await instance.updateExecutionStatus({
+        executionId: excId,
+        status: 'running',
+      });
+
+      // Stale heartbeat — exceeds the 90s threshold
+      await instance.updateExecutionHeartbeat(excId, now - 200_000);
+
+      // First alarm: should mark execution as failed and insert error event
+      await instance.alarm();
+
+      const db = drizzle(state.storage, { logger: false });
+      const eventQueries = createEventQueries(db, state.storage.sql);
+
+      const eventsAfterFirst = eventQueries.findByFilters({ executionIds: [excId] });
+      const errorCountAfterFirst = eventsAfterFirst.filter(
+        e => e.stream_event_type === 'error'
+      ).length;
+
+      // Second alarm: execution is already terminal — should be a no-op
+      await instance.alarm();
+
+      const eventsAfterSecond = eventQueries.findByFilters({ executionIds: [excId] });
+      const errorCountAfterSecond = eventsAfterSecond.filter(
+        e => e.stream_event_type === 'error'
+      ).length;
+
+      const execution = await instance.getExecution(excId);
+      const activeExecId = await instance.getActiveExecutionId();
+
+      return { errorCountAfterFirst, errorCountAfterSecond, execution, activeExecId };
+    });
+
+    expect(result.errorCountAfterFirst).toBe(1);
+    expect(result.errorCountAfterSecond).toBe(1);
+    expect(result.execution?.status).toBe('failed');
+    expect(result.activeExecId).toBeNull();
+  });
+
+  it('reaper clears interrupt flag when marking stale execution as failed', async () => {
+    const userId = 'user_reaper_6';
+    const sessionId = 'agent_reaper_6';
+    const doId = env.CLOUD_AGENT_SESSION.idFromName(`${userId}:${sessionId}`);
+    const stub = env.CLOUD_AGENT_SESSION.get(doId);
+
+    const result = await runInDurableObject(stub, async (instance, state) => {
+      const now = Date.now();
+
+      await instance.updateMetadata({
+        version: now,
+        sessionId,
+        userId,
+        timestamp: now,
+      });
+
+      const excId = 'exc_interrupt_clear' as ExecutionId;
+      await instance.addExecution({
+        executionId: excId,
+        mode: 'code',
+        streamingMode: 'websocket',
+        ingestToken: excId,
+      });
+      await instance.setActiveExecution(excId);
+
+      await instance.updateExecutionStatus({
+        executionId: excId,
+        status: 'running',
+      });
+
+      // Stale heartbeat
+      await instance.updateExecutionHeartbeat(excId, now - 200_000);
+
+      // Set the interrupt flag before the reaper runs
+      await instance.requestInterrupt();
+      const interruptBefore = await instance.isInterruptRequested();
+
+      // Run the alarm — reaper should fail the execution AND clear the interrupt
+      await instance.alarm();
+
+      const execution = await instance.getExecution(excId);
+      const interruptAfter = await instance.isInterruptRequested();
+
+      return { execution, interruptBefore, interruptAfter };
+    });
+
+    expect(result.interruptBefore).toBe(true);
+    expect(result.execution?.status).toBe('failed');
+    expect(result.interruptAfter).toBe(false);
+  });
 });

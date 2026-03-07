@@ -391,42 +391,12 @@ export class CloudAgentSession extends DurableObject {
               })
               .warn('Wrapper disconnected while execution active - marking as failed');
 
-            const now = Date.now();
-
-            // Mark execution as failed — if another codepath already moved it
-            // to a terminal state, skip the broadcast and cleanup.
-            const statusResult = await this.updateExecutionStatus({
+            await this.failExecution({
               executionId: activeExecutionId,
               status: 'failed',
               error: 'Wrapper disconnected',
-              completedAt: now,
-            });
-
-            if (!statusResult.ok) {
-              logger
-                .withFields({ executionId: activeExecutionId, error: statusResult.error })
-                .info('Skipping disconnect cleanup - status transition failed');
-              return;
-            }
-
-            // Clear active execution (updateStatus should do this, but ensure it)
-            await this.executionQueries.clearActiveExecution();
-
-            // Clear interrupt flag if set
-            await this.executionQueries.clearInterrupt();
-
-            // Insert a synthetic wrapper_disconnected event so /stream clients are notified
-            const sessionId = await this.requireSessionId();
-            this.insertAndBroadcastEvent({
-              executionId: activeExecutionId,
-              sessionId,
               streamEventType: 'wrapper_disconnected',
-              payload: JSON.stringify({
-                reason: 'Wrapper disconnected',
-                wsCloseCode: code,
-                wsCloseReason: reason,
-              }),
-              timestamp: now,
+              streamPayload: { wsCloseCode: code, wsCloseReason: reason },
             });
           }
         }
@@ -1019,40 +989,11 @@ export class CloudAgentSession extends DurableObject {
           })
           .info('Marking stale execution as failed');
 
-        // Mark as failed — if another codepath already moved it to a terminal
-        // state (e.g. webSocketClose), skip cleanup and broadcast.
-        const statusResult = await this.updateExecutionStatus({
+        await this.failExecution({
           executionId: activeExecutionId,
           status: 'failed',
           error: 'Execution timeout - no heartbeat received',
-          completedAt: now,
-        });
-
-        if (!statusResult.ok) {
-          logger
-            .withFields({ executionId: activeExecutionId, error: statusResult.error })
-            .info('Skipping reaper cleanup - status transition failed');
-          return;
-        }
-
-        // Clear active execution (updateStatus should do this, but ensure it)
-        await this.executionQueries.clearActiveExecution();
-
-        // Clear interrupt flag if set
-        await this.executionQueries.clearInterrupt();
-
-        // Notify /stream clients that the execution was reaped
-        const sessionId = await this.requireSessionId();
-        const errorPayload = JSON.stringify({
-          error: 'Execution timeout - no heartbeat received',
-          fatal: true,
-        });
-        this.insertAndBroadcastEvent({
-          executionId: activeExecutionId,
-          sessionId,
           streamEventType: 'error',
-          payload: errorPayload,
-          timestamp: now,
         });
       }
     }
@@ -1071,37 +1012,11 @@ export class CloudAgentSession extends DurableObject {
           })
           .info('Marking stuck pending execution as failed');
 
-        // Mark as failed — if another codepath already moved it to a terminal
-        // state, skip cleanup and broadcast.
-        const statusResult = await this.updateExecutionStatus({
+        await this.failExecution({
           executionId: activeExecutionId,
           status: 'failed',
           error: 'Execution timeout - wrapper never connected',
-          completedAt: now,
-        });
-
-        if (!statusResult.ok) {
-          logger
-            .withFields({ executionId: activeExecutionId, error: statusResult.error })
-            .info('Skipping pending timeout cleanup - status transition failed');
-          return;
-        }
-
-        await this.executionQueries.clearActiveExecution();
-        await this.executionQueries.clearInterrupt();
-
-        // Notify /stream clients that the pending execution timed out
-        const sessionId = await this.requireSessionId();
-        const errorPayload = JSON.stringify({
-          error: 'Execution timeout - wrapper never connected',
-          fatal: true,
-        });
-        this.insertAndBroadcastEvent({
-          executionId: activeExecutionId,
-          sessionId,
           streamEventType: 'error',
-          payload: errorPayload,
-          timestamp: now,
         });
       }
     }
@@ -1295,6 +1210,66 @@ export class CloudAgentSession extends DurableObject {
   }
 
   /**
+   * Fail an execution with full cleanup.
+   * Idempotent — safe to call if execution is already terminal.
+   *
+   * Performs:
+   * 1. Update execution status to terminal (enqueues callback)
+   * 2. Clear active execution (safety net)
+   * 3. Clear interrupt flag
+   * 4. Broadcast event to /stream clients
+   *
+   * Returns false if the execution was already terminal (no-op).
+   */
+  private async failExecution(params: {
+    executionId: ExecutionId;
+    status: 'failed' | 'interrupted';
+    error: string;
+    streamEventType: string;
+    streamPayload?: Record<string, unknown>;
+  }): Promise<boolean> {
+    const { executionId, status, error, streamEventType, streamPayload } = params;
+
+    // 1. Update status (enqueues callback notification on terminal)
+    const statusResult = await this.updateExecutionStatus({
+      executionId,
+      status,
+      error,
+      completedAt: Date.now(),
+    });
+
+    if (!statusResult.ok) {
+      logger
+        .withFields({ executionId, error: statusResult.error })
+        .info('failExecution: status transition rejected (already terminal?)');
+      return false;
+    }
+
+    // 2. Clear active execution (idempotent safety net — updateStatus clears it
+    //    internally for the active execution, but another may have been set)
+    await this.executionQueries.clearActiveExecution();
+
+    // 3. Clear interrupt flag
+    await this.executionQueries.clearInterrupt();
+
+    // 4. Broadcast to /stream clients
+    const sessionId = await this.requireSessionId();
+    this.insertAndBroadcastEvent({
+      executionId,
+      sessionId,
+      streamEventType,
+      payload: JSON.stringify({
+        error,
+        fatal: true,
+        ...streamPayload,
+      }),
+      timestamp: Date.now(),
+    });
+
+    return true;
+  }
+
+  /**
    * Update execution heartbeat timestamp.
    */
   async updateExecutionHeartbeat(executionId: ExecutionId, timestamp: number): Promise<boolean> {
@@ -1339,6 +1314,23 @@ export class CloudAgentSession extends DurableObject {
       streamEventType: 'error',
       payload,
       timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * RPC wrapper for failExecution — allows external callers (e.g. interrupt
+   * handler) to perform a full execution failure with cleanup.
+   */
+  async failExecutionRpc(params: {
+    executionId: string;
+    error: string;
+    streamEventType?: string;
+  }): Promise<boolean> {
+    return this.failExecution({
+      executionId: params.executionId as ExecutionId,
+      status: 'failed',
+      error: params.error,
+      streamEventType: params.streamEventType ?? 'error',
     });
   }
 
@@ -1940,19 +1932,12 @@ export class CloudAgentSession extends DurableObject {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      // Update status first (enqueues callback notification on terminal)
-      await this.updateExecutionStatus({
+      await this.failExecution({
         executionId,
         status: 'failed',
         error: errorMessage,
-        completedAt: Date.now(),
+        streamEventType: 'error',
       });
-
-      // Clear active execution (updateExecutionStatus does not clear it)
-      await this.executionQueries.clearActiveExecution();
-
-      // Broadcast error event so /stream clients are notified
-      await this.emitExecutionError(executionId, errorMessage);
 
       throw error;
     }
