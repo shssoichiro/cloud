@@ -34,6 +34,7 @@ const createMockKiloClient = (): KiloClient => ({
   answerPermission: vi.fn().mockResolvedValue(true),
   answerQuestion: vi.fn().mockResolvedValue(true),
   rejectQuestion: vi.fn().mockResolvedValue(true),
+  generateCommitMessage: vi.fn().mockResolvedValue({ message: 'test commit' }),
 });
 
 const createMockConnectionManager = (): ConnectionManager => ({
