@@ -293,16 +293,20 @@ export function createSecurityAgentHandlers<TExtra = {}>(deps: SecurityAgentDeps
           ctx.user.id
         );
 
-        // When include_existing is toggled ON while auto-analysis is enabled,
-        // enqueue all existing unanalyzed findings so they don't have to wait
-        // for the next sync cron.
-        const wasIncludeExisting =
-          existingConfig?.config.auto_analysis_include_existing ?? false;
-        const isNowIncludeExisting = input.autoAnalysisIncludeExisting ?? wasIncludeExisting;
+        // Enqueue backlog findings when include_existing becomes active — either
+        // because it was just toggled ON, or because auto-analysis was re-enabled
+        // while include_existing was already ON.
+        const wasAutoAnalysisOn = existingConfig?.config.auto_analysis_enabled ?? false;
         const isAutoAnalysisOn =
           input.autoAnalysisEnabled ?? existingConfig?.config.auto_analysis_enabled ?? false;
+        const wasIncludeExisting = existingConfig?.config.auto_analysis_include_existing ?? false;
+        const isNowIncludeExisting = input.autoAnalysisIncludeExisting ?? wasIncludeExisting;
 
-        if (isAutoAnalysisOn && isNowIncludeExisting && !wasIncludeExisting) {
+        const includeExistingJustTurnedOn = isNowIncludeExisting && !wasIncludeExisting;
+        const autoAnalysisReEnabled =
+          isAutoAnalysisOn && !wasAutoAnalysisOn && isNowIncludeExisting;
+
+        if (isAutoAnalysisOn && (includeExistingJustTurnedOn || autoAnalysisReEnabled)) {
           enqueueBacklogFindings({
             owner: securityOwner,
             autoAnalysisMinSeverity:

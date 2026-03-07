@@ -69,8 +69,7 @@ export async function upsertSecurityAgentConfig(
     createdBy,
   });
 
-  const securityOwner =
-    owner.type === 'org' ? { organizationId: owner.id } : { userId: owner.id };
+  const securityOwner = owner.type === 'org' ? { organizationId: owner.id } : { userId: owner.id };
 
   if (isNowAutoAnalysisEnabled) {
     if (!wasAutoAnalysisEnabled) {

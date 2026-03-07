@@ -407,9 +407,7 @@ export async function setOwnerAutoAnalysisEnabledAtNow(owner: SecurityReviewOwne
  * Used when auto-analysis is re-enabled (toggled OFF then ON) so the time
  * boundary reflects the latest activation, not the original one.
  */
-export async function resetOwnerAutoAnalysisEnabledAt(
-  owner: SecurityReviewOwner
-): Promise<void> {
+export async function resetOwnerAutoAnalysisEnabledAt(owner: SecurityReviewOwner): Promise<void> {
   const ownerConverted = toOwner(owner);
   const ownerCondition =
     ownerConverted.type === 'org'
