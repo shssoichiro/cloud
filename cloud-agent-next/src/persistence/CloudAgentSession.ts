@@ -1938,18 +1938,23 @@ export class CloudAgentSession extends DurableObject {
 
       return this.buildStartResult(executionId);
     } catch (error) {
-      // Execution failed - clear active execution
-      await this.executionQueries.clearActiveExecution();
+      const errorMessage = error instanceof Error ? error.message : String(error);
 
-      // Mark execution as failed
-      await this.executionQueries.updateStatus({
+      // Update status first (enqueues callback notification on terminal)
+      await this.updateExecutionStatus({
         executionId,
         status: 'failed',
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
         completedAt: Date.now(),
       });
 
-      throw error; // Re-throw for caller handling
+      // Clear active execution (updateExecutionStatus does not clear it)
+      await this.executionQueries.clearActiveExecution();
+
+      // Broadcast error event so /stream clients are notified
+      await this.emitExecutionError(executionId, errorMessage);
+
+      throw error;
     }
   }
 
