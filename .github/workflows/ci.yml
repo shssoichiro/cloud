@@ -153,7 +153,6 @@ jobs:
         run: pnpm run dependency-cycle-check
 
   test:
-    needs: [typecheck, lint, format-check, dependency-cycle-check]
     runs-on: ubuntu-24.04-8core
 
     services:
@@ -200,7 +199,6 @@ jobs:
         run: pnpm run test
 
   build:
-    needs: [typecheck, lint, format-check, dependency-cycle-check]
     runs-on: ubuntu-24.04-8core
     steps:
       - uses: actions/checkout@v4
