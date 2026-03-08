@@ -679,6 +679,10 @@ export async function enqueueBacklogFindings(params: {
  * Targets both `queued` and `pending` (claimed but not yet running) rows
  * because the auto-analysis worker may claim rows between per-finding
  * enqueue and this repo-level cleanup.
+ *
+ * Also clears `analysis_status` on the findings themselves so a lease
+ * acquired between supersede and dequeue doesn't keep the finding
+ * counted against the owner's concurrency cap.
  */
 export async function dequeueSupersededFindings(findingIds: string[]): Promise<number> {
   if (findingIds.length === 0) return 0;
@@ -703,6 +707,24 @@ export async function dequeueSupersededFindings(findingIds: string[]): Promise<n
       )
     )
     .returning({ id: security_analysis_queue.id });
+
+  // Clear any in-flight analysis_status so countRunningAnalyses no longer
+  // counts these superseded findings against the owner's concurrency cap.
+  await db
+    .update(security_findings)
+    .set({
+      analysis_status: null,
+      updated_at: sql`now()`,
+    })
+    .where(
+      and(
+        inArray(security_findings.id, findingIds),
+        or(
+          eq(security_findings.analysis_status, 'pending'),
+          eq(security_findings.analysis_status, 'running')
+        )
+      )
+    );
 
   return result.length;
 }

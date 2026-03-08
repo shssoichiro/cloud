@@ -500,6 +500,10 @@ async function supersedeDuplicateFindings(
 /**
  * Remove superseded findings from the auto-analysis queue so the worker
  * doesn't analyze findings that are no longer open.
+ *
+ * Also clears `analysis_status` on the findings themselves so a lease
+ * acquired between supersede and dequeue doesn't keep the finding
+ * counted against the owner's concurrency cap.
  */
 async function dequeueSupersededFindings(db: WorkerDb, findingIds: string[]): Promise<number> {
   if (findingIds.length === 0) return 0;
@@ -525,6 +529,24 @@ async function dequeueSupersededFindings(db: WorkerDb, findingIds: string[]): Pr
         )
       )
       .returning({ id: security_analysis_queue.id });
+
+    // Clear any in-flight analysis_status so countRunningAnalyses no longer
+    // counts these superseded findings against the owner's concurrency cap.
+    await db
+      .update(security_findings)
+      .set({
+        analysis_status: null,
+        updated_at: sql`now()`,
+      })
+      .where(
+        and(
+          inArray(security_findings.id, findingIds),
+          or(
+            eq(security_findings.analysis_status, 'pending'),
+            eq(security_findings.analysis_status, 'running')
+          )
+        )
+      );
 
     return result.length;
   } catch (error) {
