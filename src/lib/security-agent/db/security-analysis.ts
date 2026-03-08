@@ -5,7 +5,7 @@ import {
   security_analysis_owner_state,
   type SecurityFinding,
 } from '@kilocode/db/schema';
-import { eq, and, sql, count, isNotNull, desc, or, isNull, inArray } from 'drizzle-orm';
+import { eq, and, sql, count, isNotNull, desc, or, isNull, inArray, not, like } from 'drizzle-orm';
 import { captureException } from '@sentry/nextjs';
 import type {
   AutoAnalysisMinSeverity,
@@ -172,7 +172,18 @@ export async function updateAnalysisStatus(
       updateData.analysis_completed_at = sql`now()`;
     }
 
-    await db.update(security_findings).set(updateData).where(eq(security_findings.id, findingId));
+    await db
+      .update(security_findings)
+      .set(updateData)
+      .where(
+        and(
+          eq(security_findings.id, findingId),
+          or(
+            isNull(security_findings.ignored_reason),
+            not(like(security_findings.ignored_reason, 'superseded:%'))
+          )
+        )
+      );
   } catch (error) {
     captureException(error, {
       tags: { operation: 'updateAnalysisStatus' },

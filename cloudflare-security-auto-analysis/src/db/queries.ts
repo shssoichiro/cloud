@@ -504,7 +504,15 @@ export async function setFindingPending(
       cli_session_id: null,
       updated_at: sql`now()`.mapWith(String),
     })
-    .where(eq(security_findings.id, findingId));
+    .where(
+      and(
+        eq(security_findings.id, findingId),
+        or(
+          isNull(security_findings.ignored_reason),
+          not(like(security_findings.ignored_reason, 'superseded:%'))
+        )
+      )
+    );
 }
 
 export async function setFindingRunning(
@@ -524,7 +532,15 @@ export async function setFindingRunning(
       ),
       updated_at: sql`now()`.mapWith(String),
     })
-    .where(eq(security_findings.id, findingId));
+    .where(
+      and(
+        eq(security_findings.id, findingId),
+        or(
+          isNull(security_findings.ignored_reason),
+          not(like(security_findings.ignored_reason, 'superseded:%'))
+        )
+      )
+    );
 }
 
 export async function setFindingCompleted(
