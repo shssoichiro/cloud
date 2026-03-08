@@ -134,11 +134,17 @@ export async function POST(
     }
 
     // Skip if finding was superseded — the analysis result is no longer relevant.
+    // Transition the queue row so it doesn't permanently hold a concurrency slot.
     if (finding.ignored_reason?.startsWith('superseded:')) {
       log('Finding was superseded, skipping callback', {
         findingId,
         ignoredReason: finding.ignored_reason,
         callbackStatus: payload.status,
+      });
+      await transitionAutoAnalysisQueueFromCallback({
+        findingId,
+        toStatus: 'completed',
+        failureCode: 'SKIPPED_NO_LONGER_ELIGIBLE',
       });
       return NextResponse.json({ success: true, message: 'Superseded finding ignored' });
     }

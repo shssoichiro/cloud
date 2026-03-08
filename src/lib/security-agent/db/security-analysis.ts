@@ -682,8 +682,8 @@ export async function enqueueBacklogFindings(params: {
  *
  * Clears `analysis_status` for `pending` findings so they no longer count
  * against the owner's concurrency cap. Already-running analyses are left
- * alone — the callback route guards against superseded findings, so those
- * jobs will be discarded when they report back.
+ * alone — the callback route transitions their queue rows when the job
+ * reports back, releasing the concurrency slot at that point.
  */
 export async function dequeueSupersededFindings(findingIds: string[]): Promise<number> {
   if (findingIds.length === 0) return 0;
@@ -711,10 +711,8 @@ export async function dequeueSupersededFindings(findingIds: string[]): Promise<n
 
   // Clear pending analysis_status so countRunningAnalyses no longer counts
   // these superseded findings against the owner's concurrency cap.
-  // Running analyses are left alone — the callback route checks
-  // finding.ignored_reason and will skip superseded findings when the job
-  // completes, avoiding a race where we clear the status and the callback
-  // immediately writes it back.
+  // Running analyses are left alone — the callback route transitions their
+  // queue rows when the job completes, releasing the concurrency slot.
   await db
     .update(security_findings)
     .set({

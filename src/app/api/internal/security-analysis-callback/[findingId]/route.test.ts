@@ -311,7 +311,7 @@ describe('POST /api/internal/security-analysis-callback/[findingId]', () => {
       );
     });
 
-    it('skips processing when finding has been superseded', async () => {
+    it('skips processing when finding has been superseded but transitions queue row', async () => {
       mockGetSecurityFindingById.mockResolvedValue(
         createMockFinding({
           status: 'ignored',
@@ -328,7 +328,11 @@ describe('POST /api/internal/security-analysis-callback/[findingId]', () => {
       expect(body.success).toBe(true);
       expect(body.message).toBe('Superseded finding ignored');
       expect(mockUpdateAnalysisStatus).not.toHaveBeenCalled();
-      expect(mockTransitionAutoAnalysisQueueFromCallback).not.toHaveBeenCalled();
+      expect(mockTransitionAutoAnalysisQueueFromCallback).toHaveBeenCalledWith({
+        findingId: FINDING_ID,
+        toStatus: 'completed',
+        failureCode: 'SKIPPED_NO_LONGER_ELIGIBLE',
+      });
     });
 
     it('skips processing when finding is already completed', async () => {
