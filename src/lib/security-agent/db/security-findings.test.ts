@@ -498,10 +498,9 @@ describe('getLastSyncTime', () => {
     expect(result).not.toBe('2026-06-01T00:00:00.000Z');
   });
 
-  it('falls back to owner-level runtime_state for repo with zero findings', async () => {
+  it('returns null for repo with zero findings (no per-repo sync metadata)', async () => {
     const user = await insertTestUser();
     const owner: SecurityReviewOwner = { userId: user.id };
-    const expectedTime = '2026-03-01T12:00:00.000Z';
 
     await db.insert(agent_configs).values({
       owned_by_user_id: user.id,
@@ -509,12 +508,13 @@ describe('getLastSyncTime', () => {
       platform: 'github',
       config: {},
       is_enabled: true,
-      runtime_state: { last_synced_at: expectedTime },
+      runtime_state: { last_synced_at: '2026-03-01T12:00:00.000Z' },
       created_by: 'test',
     });
 
-    // No findings inserted for this repo — simulates a clean repo with zero alerts
+    // No findings for this repo — could be a clean repo or one added after the last sync.
+    // Without per-repo sync metadata, returning null is safer than overstating freshness.
     const result = await getLastSyncTime({ owner, repoFullName: 'test-org/clean-repo' });
-    expect(result).toBe(expectedTime);
+    expect(result).toBeNull();
   });
 });

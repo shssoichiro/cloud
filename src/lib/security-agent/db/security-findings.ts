@@ -815,8 +815,10 @@ export async function getLastSyncTime(params: {
       return await getOwnerLastSyncedAt(ownerConverted);
     }
 
-    // Repo-specific: read MAX(last_synced_at) from findings for the specific repo.
-    // Falls back to owner-level runtime_state for repos with zero findings (clean repos).
+    // Repo-specific: read MAX(last_synced_at) from findings for this repo.
+    // Returns null for repos with zero findings — we lack per-repo sync metadata,
+    // so falling back to the owner-level timestamp would overstate freshness for
+    // repos added after the last full sync.
     const findingConditions: SQL[] = [];
     if (ownerConverted.type === 'org') {
       findingConditions.push(eq(security_findings.owned_by_organization_id, ownerConverted.id));
@@ -830,9 +832,7 @@ export async function getLastSyncTime(params: {
       .from(security_findings)
       .where(and(...findingConditions));
 
-    // Clean repos have no findings rows, so fall back to the owner-level
-    // runtime_state.last_synced_at (set only after a fully successful sync).
-    return result[0]?.lastSyncedAt ?? (await getOwnerLastSyncedAt(ownerConverted));
+    return result[0]?.lastSyncedAt ?? null;
   } catch (error) {
     captureException(error, {
       tags: { operation: 'getLastSyncTime' },
