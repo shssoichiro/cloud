@@ -460,11 +460,11 @@ async function supersedeDuplicateFindings(
           id,
           ROW_NUMBER() OVER (
             PARTITION BY repo_full_name, source, ghsa_id, package_name, manifest_path
-            ORDER BY source_id::int DESC
+            ORDER BY CASE WHEN source_id ~ '^\d+$' THEN source_id::int ELSE 0 END DESC
           ) AS rn,
           FIRST_VALUE(id) OVER (
             PARTITION BY repo_full_name, source, ghsa_id, package_name, manifest_path
-            ORDER BY source_id::int DESC
+            ORDER BY CASE WHEN source_id ~ '^\d+$' THEN source_id::int ELSE 0 END DESC
           ) AS canonical_id
         FROM security_findings
         WHERE repo_full_name = ${repoFullName}

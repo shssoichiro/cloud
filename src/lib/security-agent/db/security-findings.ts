@@ -287,7 +287,7 @@ export async function supersedeDuplicateFindings(repoFullName: string): Promise<
                        ${security_findings.ghsa_id},
                        ${security_findings.package_name},
                        ${security_findings.manifest_path}
-          ORDER BY ${security_findings.source_id}::int DESC
+          ORDER BY CASE WHEN ${security_findings.source_id} ~ '^\d+$' THEN ${security_findings.source_id}::int ELSE 0 END DESC
         ) AS rn,
         FIRST_VALUE(${security_findings.id}) OVER (
           PARTITION BY ${security_findings.repo_full_name},
@@ -295,7 +295,7 @@ export async function supersedeDuplicateFindings(repoFullName: string): Promise<
                        ${security_findings.ghsa_id},
                        ${security_findings.package_name},
                        ${security_findings.manifest_path}
-          ORDER BY ${security_findings.source_id}::int DESC
+          ORDER BY CASE WHEN ${security_findings.source_id} ~ '^\d+$' THEN ${security_findings.source_id}::int ELSE 0 END DESC
         ) AS canonical_id
       FROM ${security_findings}
       WHERE ${security_findings.repo_full_name} = ${repoFullName}
