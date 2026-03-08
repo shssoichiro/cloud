@@ -257,8 +257,8 @@ describe('ingest WS reconnection', () => {
     ws.simulateClose(1006);
     expect(manager.isReconnecting()).toBe(true);
 
-    // Backoff delays: 1s, 2s, 4s, 8s, 16s
-    const delays = [1_000, 2_000, 4_000, 8_000, 16_000];
+    // Backoff delays: 1s, 2s, 4s (3 attempts)
+    const delays = [1_000, 2_000, 4_000];
 
     for (let i = 0; i < delays.length; i++) {
       expect(callbacks.onReconnecting).toHaveBeenCalledWith(i + 1);
@@ -272,7 +272,7 @@ describe('ingest WS reconnection', () => {
       await vi.advanceTimersByTimeAsync(0);
     }
 
-    // After 5 failures, onDisconnect should fire
+    // After 3 failures, onDisconnect should fire
     expect(callbacks.onDisconnect).toHaveBeenCalledWith(
       'ingest websocket closed (reconnection failed)'
     );

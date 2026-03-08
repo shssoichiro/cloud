@@ -333,6 +333,202 @@ describe('Disconnect handling & reaper', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Disconnect grace period (alarm-based, survives hibernation)
+  // ---------------------------------------------------------------------------
+
+  it('alarm fires disconnect grace and marks execution as failed', async () => {
+    const userId = 'user_grace_1';
+    const sessionId = 'agent_grace_1';
+    const doId = env.CLOUD_AGENT_SESSION.idFromName(`${userId}:${sessionId}`);
+    const stub = env.CLOUD_AGENT_SESSION.get(doId);
+
+    const result = await runInDurableObject(stub, async (instance, state) => {
+      const now = Date.now();
+
+      await instance.updateMetadata({
+        version: now,
+        sessionId,
+        userId,
+        timestamp: now,
+      });
+
+      const excId = 'exc_grace_expired' as ExecutionId;
+      await instance.addExecution({
+        executionId: excId,
+        mode: 'code',
+        streamingMode: 'websocket',
+        ingestToken: excId,
+      });
+      await instance.setActiveExecution(excId);
+
+      await instance.updateExecutionStatus({
+        executionId: excId,
+        status: 'running',
+      });
+
+      // Fresh heartbeat so the reaper's stale-execution check won't trigger
+      await instance.updateExecutionHeartbeat(excId, now - 5_000);
+
+      // Simulate writing the disconnect grace state directly into storage
+      // (normally done by webSocketClose → startDisconnectGrace, which we
+      // can't call without a real ingest WebSocket).
+      const graceState = {
+        executionId: excId,
+        disconnectedAt: now - 15_000, // 15s ago — well past the 10s grace
+        wsCloseCode: 1006,
+        wsCloseReason: 'WebSocket disconnected without sending Close frame.',
+      };
+      await state.storage.put('disconnect_grace', graceState);
+
+      // Run the alarm — should detect expired grace and fail the execution
+      await instance.alarm();
+
+      const execution = await instance.getExecution(excId);
+      const activeExecId = await instance.getActiveExecutionId();
+
+      // The grace state should be cleared after processing
+      const graceAfter = await state.storage.get('disconnect_grace');
+
+      const db = drizzle(state.storage, { logger: false });
+      const eventQueries = createEventQueries(db, state.storage.sql);
+      const events = eventQueries.findByFilters({ executionIds: [excId] });
+      const disconnectEvents = events.filter(e => e.stream_event_type === 'wrapper_disconnected');
+
+      return { execution, activeExecId, graceAfter, disconnectEvents };
+    });
+
+    expect(result.execution?.status).toBe('failed');
+    expect(result.execution?.error).toBe('Wrapper disconnected');
+    expect(result.activeExecId).toBeNull();
+    expect(result.graceAfter).toBeUndefined();
+    expect(result.disconnectEvents).toHaveLength(1);
+
+    const payload = JSON.parse(result.disconnectEvents[0].payload);
+    expect(payload.wsCloseCode).toBe(1006);
+  });
+
+  it('alarm skips disconnect grace when period has not yet elapsed', async () => {
+    const userId = 'user_grace_2';
+    const sessionId = 'agent_grace_2';
+    const doId = env.CLOUD_AGENT_SESSION.idFromName(`${userId}:${sessionId}`);
+    const stub = env.CLOUD_AGENT_SESSION.get(doId);
+
+    const result = await runInDurableObject(stub, async (instance, state) => {
+      const now = Date.now();
+
+      await instance.updateMetadata({
+        version: now,
+        sessionId,
+        userId,
+        timestamp: now,
+      });
+
+      const excId = 'exc_grace_not_expired' as ExecutionId;
+      await instance.addExecution({
+        executionId: excId,
+        mode: 'code',
+        streamingMode: 'websocket',
+        ingestToken: excId,
+      });
+      await instance.setActiveExecution(excId);
+
+      await instance.updateExecutionStatus({
+        executionId: excId,
+        status: 'running',
+      });
+
+      await instance.updateExecutionHeartbeat(excId, now - 5_000);
+
+      // Grace period started only 3s ago — not yet expired (10s threshold)
+      const graceState = {
+        executionId: excId,
+        disconnectedAt: now - 3_000,
+        wsCloseCode: 1006,
+        wsCloseReason: 'test',
+      };
+      await state.storage.put('disconnect_grace', graceState);
+
+      await instance.alarm();
+
+      const execution = await instance.getExecution(excId);
+      const activeExecId = await instance.getActiveExecutionId();
+      // Grace state should still be present (not yet expired)
+      const graceAfter = await state.storage.get('disconnect_grace');
+
+      return { execution, activeExecId, graceAfter };
+    });
+
+    expect(result.execution?.status).toBe('running');
+    expect(result.activeExecId).toBe('exc_grace_not_expired');
+    expect(result.graceAfter).toBeDefined();
+  });
+
+  it('alarm skips disconnect grace when execution already completed', async () => {
+    const userId = 'user_grace_3';
+    const sessionId = 'agent_grace_3';
+    const doId = env.CLOUD_AGENT_SESSION.idFromName(`${userId}:${sessionId}`);
+    const stub = env.CLOUD_AGENT_SESSION.get(doId);
+
+    const result = await runInDurableObject(stub, async (instance, state) => {
+      const now = Date.now();
+
+      await instance.updateMetadata({
+        version: now,
+        sessionId,
+        userId,
+        timestamp: now,
+      });
+
+      const excId = 'exc_grace_completed' as ExecutionId;
+      await instance.addExecution({
+        executionId: excId,
+        mode: 'code',
+        streamingMode: 'websocket',
+        ingestToken: excId,
+      });
+      await instance.setActiveExecution(excId);
+
+      await instance.updateExecutionStatus({
+        executionId: excId,
+        status: 'running',
+      });
+
+      // Complete the execution before the alarm fires
+      await instance.updateExecutionStatus({
+        executionId: excId,
+        status: 'completed',
+      });
+
+      // Grace state from before the execution completed
+      const graceState = {
+        executionId: excId,
+        disconnectedAt: now - 15_000,
+        wsCloseCode: 1006,
+        wsCloseReason: 'test',
+      };
+      await state.storage.put('disconnect_grace', graceState);
+
+      await instance.alarm();
+
+      const execution = await instance.getExecution(excId);
+
+      // Grace state should be cleared even though we didn't fail
+      const graceAfter = await state.storage.get('disconnect_grace');
+
+      const db = drizzle(state.storage, { logger: false });
+      const eventQueries = createEventQueries(db, state.storage.sql);
+      const events = eventQueries.findByFilters({ executionIds: [excId] });
+      const disconnectEvents = events.filter(e => e.stream_event_type === 'wrapper_disconnected');
+
+      return { execution, graceAfter, disconnectEvents };
+    });
+
+    expect(result.execution?.status).toBe('completed');
+    expect(result.graceAfter).toBeUndefined();
+    expect(result.disconnectEvents).toHaveLength(0);
+  });
+
+  // ---------------------------------------------------------------------------
   // failExecution idempotency & interrupt cleanup
   // ---------------------------------------------------------------------------
 

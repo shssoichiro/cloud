@@ -86,8 +86,19 @@ const LAST_ACTIVITY_KEY = 'last_activity';
 const KILO_SERVER_IDLE_TIMEOUT_MS_DEFAULT = 15 * 60 * 1000;
 
 /** Grace period before failing execution after wrapper disconnect (ms).
- *  Covers the wrapper's ~31s reconnection window (5 attempts with exponential backoff). */
-const DISCONNECT_GRACE_MS = 35_000;
+ *  Covers the first few reconnection attempts (exponential backoff: 1s, 2s, 4s …). */
+const DISCONNECT_GRACE_MS = 10_000;
+
+/** DO storage key for persisting disconnect grace state across hibernation. */
+const DISCONNECT_GRACE_KEY = 'disconnect_grace';
+
+/** Stored in DO storage under DISCONNECT_GRACE_KEY while a grace period is active. */
+type DisconnectGraceState = {
+  executionId: ExecutionId;
+  disconnectedAt: number;
+  wsCloseCode: number;
+  wsCloseReason: string;
+};
 
 export class CloudAgentSession extends DurableObject {
   private executionQueries: ExecutionQueries;
@@ -99,7 +110,6 @@ export class CloudAgentSession extends DurableObject {
   private ingestHandlerSessionId?: SessionId;
   private sessionId?: SessionId;
   private orchestrator?: ExecutionOrchestrator;
-  private disconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
 
   private isTerminalStatus(
     status: ExecutionStatus
@@ -383,13 +393,13 @@ export class CloudAgentSession extends DurableObject {
 
       // If the wrapper disconnected while its execution was still active, start a
       // grace period before failing. This gives the wrapper time to reconnect
-      // (exponential backoff: 1s, 2s, 4s, 8s, 16s ≈ 31s total window).
+      // (exponential backoff: 1s, 2s, 4s …).
       if (disconnectedExecutionId) {
         const activeExecutionId = await this.executionQueries.getActiveExecutionId();
         if (activeExecutionId === disconnectedExecutionId) {
           const execution = await this.executionQueries.get(activeExecutionId);
           if (execution && (execution.status === 'running' || execution.status === 'pending')) {
-            this.startDisconnectGrace(activeExecutionId, code, reason);
+            await this.startDisconnectGrace(activeExecutionId, code, reason);
           }
         }
       }
@@ -855,6 +865,10 @@ export class CloudAgentSession extends DurableObject {
       .info('Alarm fired');
 
     try {
+      // Check disconnect grace period first — this alarm may have been
+      // rescheduled specifically for the grace deadline.
+      await this.checkDisconnectGrace();
+
       // Check if session should be deleted due to inactivity (90 days)
       const lastActivity = await this.ctx.storage.get<number>(LAST_ACTIVITY_KEY);
       if (lastActivity && now - lastActivity > Limits.SESSION_TTL_MS) {
@@ -1202,27 +1216,27 @@ export class CloudAgentSession extends DurableObject {
   }
 
   /**
-   * Cancel any pending disconnect grace timer.
-   * Called when the wrapper reconnects, when another codepath fails the
-   * execution, or defensively before starting a new grace timer.
+   * Cancel any pending disconnect grace period.
+   * Clears the storage-persisted state so the next alarm ignores it.
+   * Called when the wrapper reconnects or when another codepath fails
+   * the execution.
    */
-  private cancelDisconnectGrace(): void {
-    if (this.disconnectGraceTimer) {
-      clearTimeout(this.disconnectGraceTimer);
-      this.disconnectGraceTimer = null;
-    }
+  private async cancelDisconnectGrace(): Promise<void> {
+    await this.ctx.storage.delete(DISCONNECT_GRACE_KEY);
   }
 
   /**
    * Start the disconnect grace period for a wrapper that just disconnected.
-   * Gives the wrapper time to reconnect (exponential backoff: ~31s window)
-   * before marking the execution as failed.
+   * Persists state to DO storage (survives hibernation) and reschedules the
+   * alarm to fire at the grace deadline so it runs even if the DO sleeps.
    */
-  private startDisconnectGrace(
+  private async startDisconnectGrace(
     executionId: ExecutionId,
     wsCloseCode: number,
     wsCloseReason: string
-  ): void {
+  ): Promise<void> {
+    const now = Date.now();
+
     logger
       .withFields({
         sessionId: this.sessionId,
@@ -1233,24 +1247,38 @@ export class CloudAgentSession extends DurableObject {
       })
       .warn('Wrapper disconnected — starting grace period before marking as failed');
 
-    this.cancelDisconnectGrace();
+    const graceState: DisconnectGraceState = {
+      executionId,
+      disconnectedAt: now,
+      wsCloseCode,
+      wsCloseReason,
+    };
+    await this.ctx.storage.put(DISCONNECT_GRACE_KEY, graceState);
 
-    this.disconnectGraceTimer = setTimeout(() => {
-      this.disconnectGraceTimer = null;
-      void this.handleDisconnectGraceExpired(executionId, wsCloseCode, wsCloseReason);
-    }, DISCONNECT_GRACE_MS);
+    // Reschedule alarm to fire at the grace deadline. The alarm handler
+    // always reschedules itself afterward, so the normal reaper cadence
+    // self-heals once this fires.
+    await this.ctx.storage.setAlarm(now + DISCONNECT_GRACE_MS);
   }
 
   /**
-   * Handle expiration of the disconnect grace period.
+   * Check and handle an expired disconnect grace period.
+   * Called from alarm() before normal reaper duties.
    * Re-checks whether the wrapper reconnected or the execution completed
    * during the grace window before failing it.
    */
-  private async handleDisconnectGraceExpired(
-    executionId: ExecutionId,
-    wsCloseCode: number,
-    wsCloseReason: string
-  ): Promise<void> {
+  private async checkDisconnectGrace(): Promise<void> {
+    const graceState = await this.ctx.storage.get<DisconnectGraceState>(DISCONNECT_GRACE_KEY);
+    if (!graceState) return;
+
+    const elapsed = Date.now() - graceState.disconnectedAt;
+    if (elapsed < DISCONNECT_GRACE_MS) return; // alarm fired early (e.g. reaper cadence)
+
+    // Grace period has elapsed — clear the state first to avoid re-processing
+    await this.ctx.storage.delete(DISCONNECT_GRACE_KEY);
+
+    const { executionId, wsCloseCode, wsCloseReason } = graceState;
+
     // Re-check: wrapper may have reconnected during grace period
     const ingestHandler = await this.getIngestHandler();
     if (ingestHandler.hasActiveConnection(executionId)) {
@@ -1307,9 +1335,9 @@ export class CloudAgentSession extends DurableObject {
   }): Promise<boolean> {
     const { executionId, status, error, streamEventType, streamPayload } = params;
 
-    // Clear disconnect grace timer — prevents double-failure if another codepath
-    // already failed the execution while the timer was pending.
-    this.cancelDisconnectGrace();
+    // Clear disconnect grace state — prevents double-failure if another codepath
+    // already failed the execution while a grace period was pending.
+    await this.cancelDisconnectGrace();
 
     // 1. Update status (enqueues callback notification on terminal)
     const statusResult = await this.updateExecutionStatus({

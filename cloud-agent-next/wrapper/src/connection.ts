@@ -68,8 +68,9 @@ type WebSocketCtor = new (
 /** DO sends this close code to signal execution is done — don't reconnect */
 const CLOSE_CODE_EXECUTION_DONE = 4000;
 
-/** Maximum number of reconnection attempts before giving up */
-const MAX_RECONNECT_ATTEMPTS = 5;
+/** Maximum number of reconnection attempts before giving up.
+ *  3 attempts ≈ 7s total (1+2+4), fitting within the DO's 10s grace period. */
+const MAX_RECONNECT_ATTEMPTS = 3;
 /** Base delay for exponential backoff (1 second) */
 const RECONNECT_BASE_DELAY_MS = 1_000;
 
