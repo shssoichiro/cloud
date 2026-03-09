@@ -164,6 +164,9 @@ type EnabledOwnerConfig = {
   repositories: string[];
   repoNameToId: Map<string, number>;
   slaConfig: SecurityAgentConfig;
+  /** Number of selected_repository_ids that are no longer accessible via the installation.
+   *  Non-zero means the app lost access to a configured repo — freshness must not advance. */
+  missingSelectedRepoCount: number;
 };
 
 export async function getOwnerConfig(
@@ -236,18 +239,27 @@ export async function getOwnerConfig(
   }
   const securityConfig = parsed.data;
   let selectedRepos: string[];
+  let missingSelectedRepoCount = 0;
   if (
     securityConfig.repository_selection_mode === 'selected' &&
     securityConfig.selected_repository_ids &&
     securityConfig.selected_repository_ids.length > 0
   ) {
     const selectedIds = new Set(securityConfig.selected_repository_ids);
+    const accessibleIds = new Set(allRepos.map(r => r.id));
     selectedRepos = allRepos.filter(r => selectedIds.has(r.id)).map(r => r.full_name);
+    missingSelectedRepoCount = [...selectedIds].filter(id => !accessibleIds.has(id)).length;
   } else {
     selectedRepos = allRepos.map(r => r.full_name);
   }
 
   if (selectedRepos.length === 0) return null;
+
+  if (missingSelectedRepoCount > 0) {
+    console.warn(`${missingSelectedRepoCount} selected repo(s) no longer accessible for owner`, {
+      owner,
+    });
+  }
 
   return {
     owner,
@@ -256,6 +268,7 @@ export async function getOwnerConfig(
     repositories: selectedRepos,
     repoNameToId,
     slaConfig: { ...DEFAULT_SLA_CONFIG, ...securityConfig },
+    missingSelectedRepoCount,
   };
 }
 
@@ -744,7 +757,13 @@ export async function syncOwner(params: {
   // they were selected for sync but never refreshed.  Skipped repos
   // (Dependabot permanently disabled) do NOT block — that's a permanent
   // repo-level setting, and blocking here would leave the timestamp stuck.
-  if (totalResult.errors === 0 && totalResult.staleRepos.length === 0) {
+  // Missing selected repos (installation lost access) also block — the repo
+  // was configured but silently dropped from the accessible list.
+  if (
+    totalResult.errors === 0 &&
+    totalResult.staleRepos.length === 0 &&
+    config.missingSelectedRepoCount === 0
+  ) {
     try {
       await database
         .update(agent_configs)
@@ -777,6 +796,7 @@ export async function syncOwner(params: {
     errors: totalResult.errors,
     skippedRepos: totalResult.skipped,
     staleRepos: totalResult.staleRepos,
+    missingSelectedRepos: config.missingSelectedRepoCount,
     durationMs: Date.now() - startTime,
   };
 

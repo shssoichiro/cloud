@@ -252,8 +252,15 @@ export async function syncAllReposForOwner(params: {
   platformIntegrationId: string;
   installationId: string;
   repositories: string[];
+  missingSelectedRepoCount?: number;
 }): Promise<SyncResult> {
-  const { owner, platformIntegrationId, installationId, repositories } = params;
+  const {
+    owner,
+    platformIntegrationId,
+    installationId,
+    repositories,
+    missingSelectedRepoCount = 0,
+  } = params;
   const syncStartTime = performance.now();
 
   const totalResult: SyncResult = {
@@ -302,7 +309,13 @@ export async function syncAllReposForOwner(params: {
   // they were selected for sync but never refreshed.  Skipped repos
   // (Dependabot permanently disabled) do NOT block — that's a permanent
   // repo-level setting, and blocking here would leave the timestamp stuck.
-  if (totalResult.errors === 0 && totalResult.staleRepos.length === 0) {
+  // Missing selected repos (installation lost access) also block — the repo
+  // was configured but silently dropped from the accessible list.
+  if (
+    totalResult.errors === 0 &&
+    totalResult.staleRepos.length === 0 &&
+    missingSelectedRepoCount === 0
+  ) {
     await updateLastSyncedAt(owner);
   }
 
@@ -310,6 +323,7 @@ export async function syncAllReposForOwner(params: {
   if (totalResult.synced === 0 && totalResult.errors === 0 && totalResult.skipped === 0) {
     warn('Sync completed with zero findings processed across all repos', {
       reposScanned: repositories.length,
+      missingSelectedRepos: missingSelectedRepoCount,
       durationMs: totalDurationMs,
     });
   } else {
@@ -320,6 +334,7 @@ export async function syncAllReposForOwner(params: {
       findingsUpdated: totalResult.updated,
       errors: totalResult.errors,
       skippedRepos: totalResult.skipped,
+      missingSelectedRepos: missingSelectedRepoCount,
       durationMs: totalDurationMs,
     });
   }
@@ -334,6 +349,9 @@ type EnabledSecurityReviewConfig = {
   repositories: string[];
   /** Maps repo full_name to its numeric ID for pruning stale repos from selected_repository_ids */
   repoNameToId: Map<string, number>;
+  /** Number of selected_repository_ids that are no longer accessible via the installation.
+   *  Non-zero means the app lost access to a configured repo — freshness must not advance. */
+  missingSelectedRepoCount: number;
 };
 
 export async function getEnabledSecurityReviewConfigs(): Promise<EnabledSecurityReviewConfig[]> {
@@ -397,13 +415,16 @@ export async function getEnabledSecurityReviewConfigs(): Promise<EnabledSecurity
     };
 
     let selectedRepos: string[];
+    let missingSelectedRepoCount = 0;
     if (
       securityConfig.repository_selection_mode === 'selected' &&
       securityConfig.selected_repository_ids &&
       securityConfig.selected_repository_ids.length > 0
     ) {
       const selectedIds = new Set(securityConfig.selected_repository_ids);
+      const accessibleIds = new Set(allRepositories.map(r => r.id));
       selectedRepos = allRepositories.filter(r => selectedIds.has(r.id)).map(r => r.full_name);
+      missingSelectedRepoCount = [...selectedIds].filter(id => !accessibleIds.has(id)).length;
     } else {
       selectedRepos = allRepositories.map(r => r.full_name);
     }
@@ -417,12 +438,20 @@ export async function getEnabledSecurityReviewConfigs(): Promise<EnabledSecurity
       ? { organizationId: orgId }
       : { userId: userId as string };
 
+    if (missingSelectedRepoCount > 0) {
+      warn(
+        `${missingSelectedRepoCount} selected repo(s) no longer accessible for config ${config.id}`,
+        { owner }
+      );
+    }
+
     results.push({
       owner,
       platformIntegrationId: integration.id,
       installationId: integration.platform_installation_id,
       repositories: selectedRepos,
       repoNameToId,
+      missingSelectedRepoCount,
     });
   }
 
