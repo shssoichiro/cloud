@@ -36,7 +36,11 @@ import type {
   GitLabDiffContext,
 } from '../prompts/generate-prompt';
 import { getIntegrationById } from '@/lib/integrations/db/platform-integrations';
-import { getCodeReviewById, findPreviousCompletedReview } from '../db/code-reviews';
+import {
+  getCodeReviewById,
+  findPreviousCompletedReview,
+  findPreviousCompletedReviewSession,
+} from '../db/code-reviews';
 import { isFeatureFlagEnabled } from '@/lib/posthog-feature-flags';
 import {
   DEFAULT_CODE_REVIEW_MODEL,
@@ -92,6 +96,8 @@ export type CodeReviewPayload = {
   skipBalanceCheck?: boolean;
   /** Which cloud agent backend to use: 'v1' (cloud-agent SSE) or 'v2' (cloud-agent-next) */
   agentVersion?: string;
+  /** Cloud-agent session ID from a previous completed review, for session continuation */
+  previousCloudAgentSessionId?: string;
 };
 
 /**
@@ -349,6 +355,40 @@ export async function prepareReviewPayload(
       }
     }
 
+    // 4b. Look up previous session ID for session continuation
+    let previousCloudAgentSessionId: string | undefined;
+    if (incrementalEnabled) {
+      try {
+        const previousSession = await findPreviousCompletedReviewSession(
+          review.repo_full_name,
+          review.pr_number,
+          existingReviewState?.headCommitSha ?? review.head_sha,
+          platform
+        );
+        previousCloudAgentSessionId = previousSession?.session_id;
+
+        if (previousCloudAgentSessionId) {
+          logExceptInTest(
+            '[prepareReviewPayload] Found previous session for continuation',
+            {
+              reviewId,
+              previousCloudAgentSessionId,
+              previousHeadSha: previousSession?.head_sha.substring(0, 8),
+            }
+          );
+        }
+      } catch (error) {
+        // Non-critical - fall back to fresh session
+        logExceptInTest(
+          '[prepareReviewPayload] Failed to fetch previous session, falling back to fresh session:',
+          {
+            reviewId,
+            error,
+          }
+        );
+      }
+    }
+
     // 5. Generate auth token for cloud agent with bot identifier
     const authToken = generateApiToken(user, { botId: 'reviewer' });
 
@@ -442,6 +482,7 @@ export async function prepareReviewPayload(
       authToken,
       sessionInput,
       owner,
+      previousCloudAgentSessionId,
     };
 
     logExceptInTest('[prepareReviewPayload] Prepared payload', {
