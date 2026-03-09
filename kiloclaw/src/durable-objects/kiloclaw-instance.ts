@@ -70,6 +70,7 @@ import {
   SECRET_CATALOG,
   FIELD_KEY_TO_ENV_VAR,
   ENV_VAR_TO_FIELD_KEY,
+  ALL_SECRET_FIELD_KEYS,
 } from '@kilocode/kiloclaw-secret-catalog';
 
 /** Channel env var names — used to exclude channel secrets from secretCount (they have their own channelCount). */
@@ -590,7 +591,11 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       const hasAny = fieldValues.some(v => v != null);
       const hasAll = fieldValues.every(v => v != null);
       if (hasAny && !hasAll) {
-        throw new Error(`${entry.label} requires all fields to be set together`);
+        const err = new Error(
+          `Invalid secret patch: ${entry.label} requires all fields to be set together`
+        );
+        (err as Error & { status: number }).status = 400;
+        throw err;
       }
     }
 
@@ -617,8 +622,8 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       }
     }
 
-    // Return field keys before remapping to env var names
-    const configured = Object.keys(cleanedSecrets);
+    // Return only catalog field keys (exclude any non-catalog keys that may exist in storage)
+    const configured = Object.keys(cleanedSecrets).filter(k => ALL_SECRET_FIELD_KEYS.has(k));
 
     // 4. Remap field keys → env var names for encryptedSecrets storage.
     //    buildEnvVars/mergeEnvVarsWithSecrets expects env var names as keys.

@@ -1633,7 +1633,7 @@ describe('updateSecrets', () => {
 
     // Removing only one Slack token should fail — allFieldsRequired
     await expect(instance.updateSecrets({ slackBotToken: null })).rejects.toThrow(
-      'Slack requires all fields to be set together'
+      'Invalid secret patch: Slack requires all fields to be set together'
     );
   });
 });

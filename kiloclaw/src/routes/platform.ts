@@ -79,6 +79,7 @@ const SAFE_ERROR_PREFIXES = [
   'Instance is not ', // e.g. "Instance is not running", "Instance is not provisioned"
   'User already has an ', // duplicate provision
   'Gateway controller ', // already sanitized at DO level
+  'Invalid secret patch: ', // catalog validation (allFieldsRequired, etc.)
 ];
 
 function sanitizeError(err: unknown, operation: string): { message: string; status: number } {
