@@ -70,6 +70,11 @@ export const ChannelsPatchSchema = z.object({
   }),
 });
 
+export const SecretsPatchSchema = z.object({
+  userId: z.string().min(1),
+  secrets: z.record(z.string(), EncryptedEnvelopeSchema.nullable()),
+});
+
 export const ProvisionRequestSchema = z.object({
   userId: z.string().min(1),
   ...InstanceConfigSchema.shape,

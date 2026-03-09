@@ -264,4 +264,57 @@ describe('Secret Catalog', () => {
       );
     });
   });
+
+  describe('allFieldsRequired contract', () => {
+    it('slack entry has allFieldsRequired set', () => {
+      const slack = SECRET_CATALOG_MAP.get('slack');
+      expect(slack?.allFieldsRequired).toBe(true);
+    });
+
+    it('slack entry has exactly 2 fields', () => {
+      const slack = SECRET_CATALOG_MAP.get('slack');
+      expect(slack?.fields.length).toBe(2);
+      expect(slack?.fields.map(f => f.key)).toEqual(['slackBotToken', 'slackAppToken']);
+    });
+
+    it('telegram and discord do not have allFieldsRequired', () => {
+      expect(SECRET_CATALOG_MAP.get('telegram')?.allFieldsRequired).toBeFalsy();
+      expect(SECRET_CATALOG_MAP.get('discord')?.allFieldsRequired).toBeFalsy();
+    });
+
+    it('ALL_SECRET_FIELD_KEYS rejects unknown keys', () => {
+      expect(ALL_SECRET_FIELD_KEYS.has('telegramBotToken')).toBe(true);
+      expect(ALL_SECRET_FIELD_KEYS.has('unknownKey')).toBe(false);
+      expect(ALL_SECRET_FIELD_KEYS.has('')).toBe(false);
+    });
+
+    it('FIELD_KEY_TO_ENTRY maps both slack fields to the same entry', () => {
+      const botEntry = FIELD_KEY_TO_ENTRY.get('slackBotToken');
+      const appEntry = FIELD_KEY_TO_ENTRY.get('slackAppToken');
+      expect(botEntry).toBeDefined();
+      expect(botEntry).toBe(appEntry);
+      expect(botEntry?.allFieldsRequired).toBe(true);
+    });
+  });
+
+  describe('maxLength contract', () => {
+    it('all maxLength values are within the global 500 ceiling', () => {
+      for (const entry of SECRET_CATALOG) {
+        for (const field of entry.fields) {
+          expect(field.maxLength).toBeLessThanOrEqual(500);
+        }
+      }
+    });
+
+    it('field-specific maxLength values are set correctly', () => {
+      const telegram = FIELD_KEY_TO_ENTRY.get('telegramBotToken');
+      const discord = FIELD_KEY_TO_ENTRY.get('discordBotToken');
+      const slackBot = FIELD_KEY_TO_ENTRY.get('slackBotToken');
+
+      expect(telegram?.fields[0].maxLength).toBe(100);
+      expect(discord?.fields[0].maxLength).toBe(200);
+      expect(slackBot?.fields.find(f => f.key === 'slackBotToken')?.maxLength).toBe(300);
+      expect(slackBot?.fields.find(f => f.key === 'slackAppToken')?.maxLength).toBe(300);
+    });
+  });
 });

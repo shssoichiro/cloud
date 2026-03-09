@@ -8,6 +8,12 @@ import { KiloClawInternalClient, KiloClawApiError } from '@/lib/kiloclaw/kilocla
 import { KiloClawUserClient } from '@/lib/kiloclaw/kiloclaw-user-client';
 import { encryptKiloClawSecret } from '@/lib/kiloclaw/encryption';
 import {
+  ALL_SECRET_FIELD_KEYS,
+  SECRET_CATALOG,
+  FIELD_KEY_TO_ENTRY,
+  validateFieldValue,
+} from '@kilocode/kiloclaw-secret-catalog';
+import {
   KILOCLAW_API_URL,
   STRIPE_KILOCLAW_EARLYBIRD_PRICE_ID,
   STRIPE_KILOCLAW_EARLYBIRD_COUPON_ID,
@@ -284,6 +290,76 @@ export const kiloclawRouter = createTRPCRouter({
       channels: buildWorkerChannelsPatch(input),
     });
   }),
+
+  /**
+   * Generic secret patch — catalog-driven replacement for patchChannels.
+   * Validates keys against the secret catalog, enforces allFieldsRequired,
+   * validates values against catalog patterns, encrypts, and forwards to worker.
+   */
+  patchSecrets: baseProcedure
+    .input(z.object({ secrets: z.record(z.string(), z.string().max(500).nullable()) }))
+    .mutation(async ({ ctx, input }) => {
+      const { secrets } = input;
+
+      // 1. Validate all keys are known catalog field keys
+      for (const key of Object.keys(secrets)) {
+        if (!ALL_SECRET_FIELD_KEYS.has(key)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `Unknown secret field key: ${key}`,
+          });
+        }
+      }
+
+      // 2. Enforce allFieldsRequired: reject partial updates for entries that need all fields
+      for (const entry of SECRET_CATALOG) {
+        if (!entry.allFieldsRequired) continue;
+        const fieldValues = entry.fields.map(f => secrets[f.key]);
+        // Skip entries where no fields are in this patch
+        if (fieldValues.every(v => v === undefined)) continue;
+        const hasAny = fieldValues.some(v => v !== null && v !== undefined);
+        const hasAll = fieldValues.every(v => v !== null && v !== undefined);
+        if (hasAny && !hasAll) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `${entry.label} requires all fields to be set together`,
+          });
+        }
+      }
+
+      // 3. Validate non-null values against catalog patterns + enforce per-field maxLength
+      for (const [key, value] of Object.entries(secrets)) {
+        if (value === null) continue;
+
+        const entry = FIELD_KEY_TO_ENTRY.get(key);
+        const field = entry?.fields.find(f => f.key === key);
+
+        // Enforce per-field maxLength from catalog (falls back to 500 from zod schema above)
+        if (field?.maxLength != null && value.length > field.maxLength) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `${field.label} exceeds maximum length of ${field.maxLength} characters`,
+          });
+        }
+
+        if (!validateFieldValue(value, field?.validationPattern)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: field?.validationMessage ?? `Invalid value for ${key}`,
+          });
+        }
+      }
+
+      // 4. Encrypt non-null values
+      const encryptedPatch: Record<string, ReturnType<typeof encryptKiloClawSecret> | null> = {};
+      for (const [key, value] of Object.entries(secrets)) {
+        encryptedPatch[key] = value === null ? null : encryptKiloClawSecret(value);
+      }
+
+      // 5. Forward to worker
+      const client = new KiloClawInternalClient();
+      return client.patchSecrets(ctx.user.id, { secrets: encryptedPatch });
+    }),
 
   // User-facing (user client -- forwards user's short-lived JWT)
   getConfig: baseProcedure.query(async ({ ctx }) => {

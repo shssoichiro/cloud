@@ -10,6 +10,8 @@ import type {
   KiloCodeConfigResponse,
   ChannelsPatchInput,
   ChannelsPatchResponse,
+  SecretsPatchInput,
+  SecretsPatchResponse,
   PairingListResponse,
   PairingApproveResponse,
   DevicePairingListResponse,
@@ -147,6 +149,13 @@ export class KiloClawInternalClient {
 
   async patchChannels(userId: string, input: ChannelsPatchInput): Promise<ChannelsPatchResponse> {
     return this.request('/api/platform/channels', {
+      method: 'PATCH',
+      body: JSON.stringify({ userId, ...input }),
+    });
+  }
+
+  async patchSecrets(userId: string, input: SecretsPatchInput): Promise<SecretsPatchResponse> {
+    return this.request('/api/platform/secrets', {
       method: 'PATCH',
       body: JSON.stringify({ userId, ...input }),
     });

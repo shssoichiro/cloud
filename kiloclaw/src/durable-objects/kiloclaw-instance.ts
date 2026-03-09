@@ -66,6 +66,7 @@ import {
   ControllerVersionResponseSchema,
   GatewayControllerError,
 } from './gateway-controller-types';
+import { SECRET_CATALOG } from '@kilocode/kiloclaw-secret-catalog';
 import { parseRegions, shuffleRegions, deprioritizeRegion } from './regions';
 import {
   METADATA_RECOVERY_COOLDOWN_MS,
@@ -518,48 +519,87 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     slackBot: boolean;
     slackApp: boolean;
   }> {
-    await this.loadState();
-
-    const merged = this.channels ? { ...this.channels } : {};
-
-    if (patch.telegramBotToken !== undefined) {
-      if (patch.telegramBotToken === null) {
-        delete merged.telegramBotToken;
-      } else {
-        merged.telegramBotToken = patch.telegramBotToken;
-      }
-    }
-    if (patch.discordBotToken !== undefined) {
-      if (patch.discordBotToken === null) {
-        delete merged.discordBotToken;
-      } else {
-        merged.discordBotToken = patch.discordBotToken;
-      }
-    }
-    if (patch.slackBotToken !== undefined) {
-      if (patch.slackBotToken === null) {
-        delete merged.slackBotToken;
-      } else {
-        merged.slackBotToken = patch.slackBotToken;
-      }
-    }
-    if (patch.slackAppToken !== undefined) {
-      if (patch.slackAppToken === null) {
-        delete merged.slackAppToken;
-      } else {
-        merged.slackAppToken = patch.slackAppToken;
+    // Delegate to updateSecrets so both storage fields stay in sync.
+    // Only forward keys that were explicitly provided in the patch.
+    const secretsPatch: Record<string, EncryptedEnvelope | null> = {};
+    for (const [key, value] of Object.entries(patch)) {
+      if (value !== undefined) {
+        secretsPatch[key] = value;
       }
     }
 
-    const hasAny = Object.values(merged).some(Boolean);
-    this.channels = hasAny ? merged : null;
-    await this.ctx.storage.put({ channels: this.channels });
+    const { configured } = await this.updateSecrets(secretsPatch);
 
     return {
-      telegram: !!this.channels?.telegramBotToken,
-      discord: !!this.channels?.discordBotToken,
-      slackBot: !!this.channels?.slackBotToken,
-      slackApp: !!this.channels?.slackAppToken,
+      telegram: configured.includes('telegramBotToken'),
+      discord: configured.includes('discordBotToken'),
+      slackBot: configured.includes('slackBotToken'),
+      slackApp: configured.includes('slackAppToken'),
+    };
+  }
+
+  /**
+   * Generic secret update — catalog-driven replacement for updateChannels.
+   * Reads from both legacy `channels` + new `encryptedSecrets`, merges,
+   * applies the patch, then dual-writes to both fields for backward compat.
+   *
+   * Does NOT restart the machine; the caller should prompt the user to restart.
+   */
+  async updateSecrets(
+    patch: Record<string, EncryptedEnvelope | null>
+  ): Promise<{ configured: string[] }> {
+    await this.loadState();
+
+    // 1. Read from both legacy channels + new encryptedSecrets
+    const currentSecrets: Record<string, EncryptedEnvelope | null> = {
+      ...(this.channels ?? {}),
+      ...(this.encryptedSecrets ?? {}),
+    };
+
+    // 2. Apply patch (log operation + field key, NEVER log secret values)
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null) {
+        console.log('[DO] Secret removed', { fieldKey: key, operation: 'remove' });
+        delete currentSecrets[key];
+      } else {
+        console.log('[DO] Secret updated', { fieldKey: key, operation: 'set' });
+        currentSecrets[key] = value;
+      }
+    }
+
+    // 3. Dual-write: update both fields for backward compat
+    //    Legacy callers (patchChannels) still read from `channels`
+    const channelKeys = new Set(
+      SECRET_CATALOG.filter(e => e.category === 'channel').flatMap(e => e.fields.map(f => f.key))
+    );
+    const channelsSubset: Record<string, EncryptedEnvelope> = {};
+    for (const [key, value] of Object.entries(currentSecrets)) {
+      if (channelKeys.has(key) && value) {
+        channelsSubset[key] = value;
+      }
+    }
+
+    const hasChannels = Object.keys(channelsSubset).length > 0;
+    this.channels = hasChannels ? (channelsSubset as PersistedState['channels']) : null;
+
+    // Filter out null values for storage (only store non-null envelopes)
+    const cleanedSecrets: Record<string, EncryptedEnvelope> = {};
+    for (const [key, value] of Object.entries(currentSecrets)) {
+      if (value) {
+        cleanedSecrets[key] = value;
+      }
+    }
+    const hasSecrets = Object.keys(cleanedSecrets).length > 0;
+    this.encryptedSecrets = hasSecrets ? cleanedSecrets : null;
+
+    await this.ctx.storage.put({
+      channels: this.channels,
+      encryptedSecrets: this.encryptedSecrets,
+    });
+
+    // Return the list of field keys that have a value set
+    return {
+      configured: Object.keys(cleanedSecrets),
     };
   }
 

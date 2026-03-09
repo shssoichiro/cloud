@@ -55,6 +55,17 @@ export type ChannelsPatchResponse = {
   slackApp: boolean;
 };
 
+/** Input to PATCH /api/platform/secrets */
+export type SecretsPatchInput = {
+  secrets: Record<string, EncryptedEnvelope | null>;
+};
+
+/** Response from PATCH /api/platform/secrets */
+export type SecretsPatchResponse = {
+  /** Field keys that have a value set after the patch */
+  configured: string[];
+};
+
 /** A pending channel pairing request (e.g. from Telegram DM) */
 export type PairingRequest = {
   code: string;
