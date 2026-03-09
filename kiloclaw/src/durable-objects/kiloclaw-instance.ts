@@ -71,6 +71,7 @@ import {
   FIELD_KEY_TO_ENV_VAR,
   ENV_VAR_TO_FIELD_KEY,
   ALL_SECRET_FIELD_KEYS,
+  type SecretFieldKey,
 } from '@kilocode/kiloclaw-secret-catalog';
 
 /** Channel env var names — used to exclude channel secrets from secretCount (they have their own channelCount). */
@@ -556,8 +557,8 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
    * Does NOT restart the machine; the caller should prompt the user to restart.
    */
   async updateSecrets(
-    patch: Record<string, EncryptedEnvelope | null>
-  ): Promise<{ configured: string[] }> {
+    patch: Partial<Record<SecretFieldKey, EncryptedEnvelope | null>>
+  ): Promise<{ configured: SecretFieldKey[] }> {
     await this.loadState();
 
     // 1. Read from both legacy channels + new encryptedSecrets into field-keyed working set.
@@ -623,7 +624,9 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     }
 
     // Return only catalog field keys (exclude any non-catalog keys that may exist in storage)
-    const configured = Object.keys(cleanedSecrets).filter(k => ALL_SECRET_FIELD_KEYS.has(k));
+    const configured = Object.keys(cleanedSecrets).filter((k): k is SecretFieldKey =>
+      ALL_SECRET_FIELD_KEYS.has(k)
+    );
 
     // 4. Remap field keys → env var names for encryptedSecrets storage.
     //    buildEnvVars/mergeEnvVarsWithSecrets expects env var names as keys.

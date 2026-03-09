@@ -30,5 +30,7 @@ export {
   getEntriesByCategory,
 } from './catalog';
 
+export type { SecretFieldKey } from './catalog';
+
 // Validation
 export { validateFieldValue } from './validation';

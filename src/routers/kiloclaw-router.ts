@@ -11,6 +11,7 @@ import {
   ALL_SECRET_FIELD_KEYS,
   FIELD_KEY_TO_ENTRY,
   validateFieldValue,
+  type SecretFieldKey,
 } from '@kilocode/kiloclaw-secret-catalog';
 import {
   KILOCLAW_API_URL,
@@ -296,24 +297,22 @@ export const kiloclawRouter = createTRPCRouter({
    * validates values against catalog patterns, encrypts, and forwards to worker.
    */
   patchSecrets: baseProcedure
-    .input(z.object({ secrets: z.record(z.string(), z.string().max(500).nullable()) }))
+    .input(
+      z.object({
+        secrets: z
+          .record(z.string(), z.string().max(500).nullable())
+          .refine(obj => Object.keys(obj).every(k => ALL_SECRET_FIELD_KEYS.has(k)), {
+            message: 'Unknown secret field key',
+          }),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      const { secrets } = input;
+      const secrets = input.secrets as Partial<Record<SecretFieldKey, string | null>>;
 
-      // 1. Validate all keys are known catalog field keys
-      for (const key of Object.keys(secrets)) {
-        if (!ALL_SECRET_FIELD_KEYS.has(key)) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `Unknown secret field key: ${key}`,
-          });
-        }
-      }
-
-      // 2. allFieldsRequired is enforced by the DO on post-merge state (not here),
+      // 1. allFieldsRequired is enforced by the DO on post-merge state (not here),
       //    so single-field rotations work when the other field is already stored.
 
-      // 3. Validate non-null values against catalog patterns + enforce per-field maxLength
+      // 2. Validate non-null values against catalog patterns + enforce per-field maxLength
       for (const [key, value] of Object.entries(secrets)) {
         if (value === null) continue;
 
@@ -336,15 +335,34 @@ export const kiloclawRouter = createTRPCRouter({
         }
       }
 
-      // 4. Encrypt non-null values
-      const encryptedPatch: Record<string, ReturnType<typeof encryptKiloClawSecret> | null> = {};
+      // 3. Encrypt non-null values
+      const encryptedPatch: Partial<
+        Record<SecretFieldKey, ReturnType<typeof encryptKiloClawSecret> | null>
+      > = {};
       for (const [key, value] of Object.entries(secrets)) {
-        encryptedPatch[key] = value === null ? null : encryptKiloClawSecret(value);
+        encryptedPatch[key as SecretFieldKey] =
+          value === null ? null : encryptKiloClawSecret(value);
       }
 
-      // 5. Forward to worker
+      // 4. Forward to worker — translate 4xx responses into TRPCErrors
       const client = new KiloClawInternalClient();
-      return client.patchSecrets(ctx.user.id, { secrets: encryptedPatch });
+      try {
+        return await client.patchSecrets(ctx.user.id, { secrets: encryptedPatch });
+      } catch (err) {
+        if (err instanceof KiloClawApiError && err.statusCode >= 400 && err.statusCode < 500) {
+          // Extract message from worker response body (JSON or plain text)
+          let message = `Secret patch failed (${err.statusCode})`;
+          try {
+            const parsed = JSON.parse(err.responseBody);
+            if (typeof parsed.error === 'string') message = parsed.error;
+            else if (typeof parsed.message === 'string') message = parsed.message;
+          } catch {
+            if (err.responseBody) message = err.responseBody;
+          }
+          throw new TRPCError({ code: 'BAD_REQUEST', message });
+        }
+        throw err;
+      }
     }),
 
   // User-facing (user client -- forwards user's short-lived JWT)

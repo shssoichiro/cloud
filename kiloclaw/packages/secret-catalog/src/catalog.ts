@@ -104,6 +104,9 @@ export const SECRET_CATALOG_MAP: ReadonlyMap<string, SecretCatalogEntry> = new M
   SECRET_CATALOG.map(entry => [entry.id, entry])
 );
 
+/** Union type of all secret field keys in the catalog */
+export type SecretFieldKey = (typeof SECRET_CATALOG_RAW)[number]['fields'][number]['key'];
+
 /** Set of all field keys across all entries */
 export const ALL_SECRET_FIELD_KEYS: ReadonlySet<string> = new Set(
   SECRET_CATALOG.flatMap(entry => entry.fields.map(field => field.key))
