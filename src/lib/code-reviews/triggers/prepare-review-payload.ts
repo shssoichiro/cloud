@@ -346,7 +346,7 @@ export async function prepareReviewPayload(
     // 5. Generate auth token for cloud agent with bot identifier
     const authToken = generateApiToken(user, { botId: 'reviewer' });
 
-    // 6. Generate dynamic review prompt (include reviewId for fix link and review state)
+    // 6. Generate dynamic review prompt
     const { prompt, version, source } = await generateReviewPrompt(
       agentConfig.config as CodeReviewAgentConfig,
       review.repo_full_name,
@@ -368,7 +368,7 @@ export async function prepareReviewPayload(
       promptLength: prompt.length,
     });
 
-    // 6. Prepare session input
+    // 7. Prepare session input
     // Note: cloud-agent automatically sets GH_TOKEN/GITLAB_TOKEN from token parameters
     const config = agentConfig.config as CodeReviewAgentConfig;
 
@@ -430,7 +430,7 @@ export async function prepareReviewPayload(
       });
     }
 
-    // 7. Build complete payload
+    // 8. Build complete payload
     const payload: CodeReviewPayload = {
       reviewId,
       authToken,
