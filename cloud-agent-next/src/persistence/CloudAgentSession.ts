@@ -105,7 +105,8 @@ export class CloudAgentSession extends DurableObject {
   private async enqueueCallbackNotification(
     executionId: ExecutionId,
     status: 'completed' | 'failed' | 'interrupted',
-    error?: string
+    error?: string,
+    gateResult?: 'pass' | 'fail'
   ): Promise<void> {
     const metadata = await this.getMetadata();
     const callbackQueue = (this.env as unknown as WorkerEnv).CALLBACK_QUEUE;
@@ -134,6 +135,7 @@ export class CloudAgentSession extends DurableObject {
         errorMessage: error,
         lastSeenBranch: metadata.upstreamBranch,
         kiloSessionId: metadata.kiloSessionId,
+        gateResult,
       },
     };
 
@@ -255,13 +257,15 @@ export class CloudAgentSession extends DurableObject {
         updateExecutionStatus: async (
           executionId: string,
           status: 'completed' | 'failed' | 'interrupted',
-          error?: string
+          error?: string,
+          gateResult?: 'pass' | 'fail'
         ) => {
           await this.updateExecutionStatus({
             executionId: executionId as ExecutionId,
             status,
             error,
             completedAt: Date.now(),
+            gateResult,
           });
         },
       };
@@ -1289,7 +1293,12 @@ export class CloudAgentSession extends DurableObject {
     const result = await this.executionQueries.updateStatus(params);
 
     if (result.ok && this.isTerminalStatus(params.status)) {
-      await this.enqueueCallbackNotification(params.executionId, params.status, params.error);
+      await this.enqueueCallbackNotification(
+        params.executionId,
+        params.status,
+        params.error,
+        params.gateResult
+      );
     }
 
     return result;
