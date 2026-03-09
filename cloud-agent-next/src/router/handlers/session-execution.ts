@@ -177,6 +177,7 @@ export function createSessionExecutionV2Handlers() {
               githubToken: input.githubToken,
               gitToken: input.gitToken,
             },
+            callbackTarget: input.callbackTarget,
           };
 
           const startResult = await withDORetry<

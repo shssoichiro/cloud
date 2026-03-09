@@ -622,6 +622,25 @@ export class CloudAgentSession extends DurableObject {
   }
 
   /**
+   * Update the callback target for this session.
+   * This allows redirecting completion callbacks to a new URL (e.g., for follow-up reviews).
+   */
+  private async updateCallbackTarget(callbackTarget: CallbackTarget): Promise<void> {
+    const metadata = await this.getMetadata();
+    if (!metadata) {
+      throw new Error('Cannot update callbackTarget: session metadata not found');
+    }
+
+    const updated = {
+      ...metadata,
+      callbackTarget,
+      version: Date.now(), // Bump version for cache invalidation
+    };
+
+    await this.updateMetadata(updated);
+  }
+
+  /**
    * Update the upstream branch for this session.
    * This allows capturing the branch after kilo execution without a full metadata write.
    */
@@ -1810,6 +1829,10 @@ export class CloudAgentSession extends DurableObject {
       if (request.tokenOverrides?.gitToken && metadata.gitUrl) {
         await this.updateGitToken(request.tokenOverrides.gitToken);
         metadata.gitToken = request.tokenOverrides.gitToken;
+      }
+      if (request.callbackTarget) {
+        await this.updateCallbackTarget(request.callbackTarget);
+        metadata.callbackTarget = request.callbackTarget;
       }
 
       const mode = (request.mode ?? metadata.mode ?? 'code') as ExecutionMode;

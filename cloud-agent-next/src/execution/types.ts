@@ -12,6 +12,7 @@ import type { AgentMode } from '../schema.js';
 import type { Images, EncryptedSecrets as SchemaEncryptedSecrets } from '../router/schemas.js';
 import type { EncryptedSecrets } from '../utils/encryption.js';
 import type { MCPServerConfig } from '../persistence/types.js';
+import type { CallbackTarget } from '../callbacks/types.js';
 
 // ---------------------------------------------------------------------------
 // Execution Modes
@@ -155,6 +156,7 @@ type FollowupExecutionRequest = BaseExecutionRequest & {
     githubToken?: string;
     gitToken?: string;
   };
+  callbackTarget?: CallbackTarget;
 };
 
 /**
