@@ -173,9 +173,13 @@ export const organizationReviewAgentRouter = createTRPCRouter({
         getBotUserId(input.organizationId, 'code-review'),
       ]);
       const flagDistinctId = botUserId ?? ctx.user.id;
+      const [isCloudAgentNextFlagEnabled, isPrGateFlagEnabled] = await Promise.all([
+        isFeatureFlagEnabled('code-review-cloud-agent-next', flagDistinctId),
+        isFeatureFlagEnabled('code-review-pr-gate', flagDistinctId),
+      ]);
       const isCloudAgentNextEnabled =
-        process.env.NODE_ENV === 'development' ||
-        (await isFeatureFlagEnabled('code-review-cloud-agent-next', flagDistinctId));
+        isCloudAgentNextFlagEnabled || process.env.NODE_ENV === 'development';
+      const isPrGateEnabled = isPrGateFlagEnabled || process.env.NODE_ENV === 'development';
 
       if (!config) {
         // Return default configuration
@@ -192,6 +196,7 @@ export const organizationReviewAgentRouter = createTRPCRouter({
           selectedRepositoryIds: [],
           manuallyAddedRepositories: [],
           isCloudAgentNextEnabled,
+          isPrGateEnabled,
         };
       }
 
@@ -209,6 +214,7 @@ export const organizationReviewAgentRouter = createTRPCRouter({
         selectedRepositoryIds: cfg.selected_repository_ids || [],
         manuallyAddedRepositories: cfg.manually_added_repositories || [],
         isCloudAgentNextEnabled,
+        isPrGateEnabled,
       };
     }),
 
