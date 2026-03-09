@@ -400,6 +400,9 @@ export async function POST(
             tags: { source: 'code-review-status-gate-check' },
             extra: { reviewId, status, checkRunId: String(review.check_run_id ?? '') },
           });
+          // Abort so the caller retries — once the DB moves to a terminal status
+          // the early-return above prevents any later attempt to update the gate.
+          throw gateCheckError;
         }
       }
     }
