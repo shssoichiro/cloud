@@ -4,18 +4,19 @@
  * KiloClaw Google Account Setup
  *
  * Docker-based tool that:
- * 1. Validates the user's KiloCode API key
- * 2. Runs `gws auth setup` to create an OAuth client in the user's Google Cloud project
- * 3. Runs `gws auth login` to complete the OAuth flow via localhost:8080 callback
- * 4. Reads the resulting credentials from ~/.config/gws/
- * 5. Encrypts them with the kiloclaw public key
- * 6. POSTs the encrypted bundle to the kilo.ai platform API
+ * 1. Validates the user's KiloCode API key against the kiloclaw worker
+ * 2. Fetches the worker's RSA public key for credential encryption
+ * 3. Runs `gws auth setup` to create an OAuth client in the user's Google Cloud project
+ * 4. Runs `gws auth login` to complete the OAuth flow via localhost:8080 callback
+ * 5. Reads the resulting credentials from ~/.config/gws/
+ * 6. Encrypts them with the worker's public key
+ * 7. POSTs the encrypted bundle to the kiloclaw worker (user-facing JWT auth)
  *
  * Usage:
  *   docker run -it -p 8080:8080 kilocode/google-setup --api-key=kilo_abc123
  */
 
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -28,13 +29,22 @@ const args = process.argv.slice(2);
 const apiKeyArg = args.find(a => a.startsWith('--api-key='));
 const apiKey = apiKeyArg?.split('=')[1];
 
-const platformUrl = args.find(a => a.startsWith('--platform-url='))?.split('=')[1]
-  ?? 'https://api.kilo.ai';
+// The kiloclaw worker URL (user-facing routes use Bearer JWT auth)
+const workerUrl =
+  args.find(a => a.startsWith('--worker-url='))?.split('=')[1] ?? 'https://claw.kilo.ai';
 
 if (!apiKey) {
-  console.error('Usage: docker run -it -p 8080:8080 kilocode/google-setup --api-key=<your-api-key>');
+  console.error(
+    'Usage: docker run -it -p 8080:8080 kilocode/google-setup --api-key=<your-api-key>'
+  );
   process.exit(1);
 }
+
+/** Helper: Bearer auth headers for user-facing worker routes. */
+const authHeaders = {
+  authorization: `Bearer ${apiKey}`,
+  'content-type': 'application/json',
+};
 
 // ---------------------------------------------------------------------------
 // Hardcoded scopes
@@ -48,36 +58,40 @@ const SCOPES = [
 ];
 
 // ---------------------------------------------------------------------------
-// Step 1: Validate API key
+// Step 1: Validate API key by calling a user-facing endpoint
 // ---------------------------------------------------------------------------
 
 console.log('Validating API key...');
 
-const validateRes = await fetch(`${platformUrl}/api/platform/status`, {
-  headers: {
-    'x-internal-api-key': apiKey,
-  },
+const validateRes = await fetch(`${workerUrl}/health`);
+if (!validateRes.ok) {
+  console.error('Cannot reach kiloclaw worker at', workerUrl);
+  process.exit(1);
+}
+
+// Verify the API key is a valid JWT by calling an authenticated endpoint
+const authCheckRes = await fetch(`${workerUrl}/api/admin/google-credentials`, {
+  method: 'DELETE',
+  headers: authHeaders,
 });
 
-if (!validateRes.ok) {
-  console.error('Invalid API key or cannot reach platform.');
+// 401/403 = bad key. Any other response (including 200/500) means the key is valid.
+if (authCheckRes.status === 401 || authCheckRes.status === 403) {
+  console.error('Invalid API key. Check your key and try again.');
   process.exit(1);
 }
 
 console.log('API key verified.');
 
 // ---------------------------------------------------------------------------
-// Step 2: Fetch public key for encryption
+// Step 2: Fetch public key for encryption (public endpoint, no auth needed)
 // ---------------------------------------------------------------------------
 
 console.log('Fetching encryption public key...');
 
-const pubKeyRes = await fetch(`${platformUrl}/api/platform/public-key`, {
-  headers: { 'x-internal-api-key': apiKey },
-});
-
+const pubKeyRes = await fetch(`${workerUrl}/public-key`);
 if (!pubKeyRes.ok) {
-  console.error('Failed to fetch public key from platform.');
+  console.error('Failed to fetch public key from worker.');
   process.exit(1);
 }
 
@@ -137,7 +151,7 @@ const credentials = fs.readFileSync(credentialsPath, 'utf8');
  * Encrypt a value using RSA+AES-256-GCM envelope encryption.
  * Matches the EncryptedEnvelope schema used by kiloclaw.
  */
-function encryptEnvelope(plaintext, publicKeyPem) {
+function encryptEnvelope(plaintext, pemKey) {
   const dek = crypto.randomBytes(32);
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-gcm', dek, iv);
@@ -146,7 +160,7 @@ function encryptEnvelope(plaintext, publicKeyPem) {
   const authTag = cipher.getAuthTag();
   const encryptedData = Buffer.concat([iv, encrypted, authTag]);
   const encryptedDEK = crypto.publicEncrypt(
-    { key: publicKeyPem, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
+    { key: pemKey, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
     dek
   );
   return {
@@ -165,21 +179,15 @@ const encryptedBundle = {
 };
 
 // ---------------------------------------------------------------------------
-// Step 7: POST to platform API
+// Step 7: POST to worker (user-facing, JWT auth resolves userId automatically)
 // ---------------------------------------------------------------------------
 
 console.log('Sending credentials to your kiloclaw instance...');
 
-const postRes = await fetch(`${platformUrl}/api/platform/google-credentials`, {
+const postRes = await fetch(`${workerUrl}/api/admin/google-credentials`, {
   method: 'POST',
-  headers: {
-    'content-type': 'application/json',
-    'x-internal-api-key': apiKey,
-  },
-  body: JSON.stringify({
-    userId: 'self', // The platform resolves the userId from the API key
-    googleCredentials: encryptedBundle,
-  }),
+  headers: authHeaders,
+  body: JSON.stringify({ googleCredentials: encryptedBundle }),
 });
 
 if (!postRes.ok) {

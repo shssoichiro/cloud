@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { isValidImageTag } from '../lib/image-tag-validation';
+import { GoogleCredentialsSchema } from '../schemas/instance-config';
 
 /**
  * API routes
@@ -59,6 +60,46 @@ adminApi.post('/gateway/restart', async c => {
     });
   } else {
     return c.json({ success: false, error: result.error }, 500);
+  }
+});
+
+// POST /api/admin/google-credentials - Store encrypted Google credentials
+adminApi.post('/google-credentials', async c => {
+  const stub = resolveStub(c);
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Malformed JSON body' }, 400);
+  }
+
+  const parsed = GoogleCredentialsSchema.safeParse(
+    typeof body === 'object' && body !== null && 'googleCredentials' in body
+      ? (body as Record<string, unknown>).googleCredentials
+      : body
+  );
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request', details: parsed.error.flatten().fieldErrors }, 400);
+  }
+
+  try {
+    const result = await stub.updateGoogleCredentials(parsed.data);
+    return c.json(result, 200);
+  } catch (err) {
+    console.error('[api] google-credentials failed:', err);
+    return c.json({ error: 'Failed to store Google credentials' }, 500);
+  }
+});
+
+// DELETE /api/admin/google-credentials - Clear Google credentials
+adminApi.delete('/google-credentials', async c => {
+  const stub = resolveStub(c);
+  try {
+    const result = await stub.clearGoogleCredentials();
+    return c.json(result, 200);
+  } catch (err) {
+    console.error('[api] google-credentials delete failed:', err);
+    return c.json({ error: 'Failed to clear Google credentials' }, 500);
   }
 });
 
