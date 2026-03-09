@@ -1420,11 +1420,11 @@ describe('updateChannels', () => {
     // Write via legacy path
     await instance.updateChannels({ telegramBotToken: fakeEnvelope });
 
-    // Both storage fields should be in sync
+    // channels uses field keys, encryptedSecrets uses env var names
     const channels = storage._store.get('channels') as Record<string, unknown>;
     const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
     expect(channels.telegramBotToken).toEqual(fakeEnvelope);
-    expect(secrets.telegramBotToken).toEqual(fakeEnvelope);
+    expect(secrets.TELEGRAM_BOT_TOKEN).toEqual(fakeEnvelope);
   });
 
   it('interleaving updateChannels and updateSecrets keeps storage in sync', async () => {
@@ -1435,20 +1435,20 @@ describe('updateChannels', () => {
     // Step 1: set telegram via updateSecrets (new path)
     await instance.updateSecrets({ telegramBotToken: fakeEnvelope });
 
-    // Step 2: set discord via updateChannels (legacy path)
+    // Step 2: set discord via updateChannels (legacy path, delegates to updateSecrets)
     const result = await instance.updateChannels({ discordBotToken: discordEnvelope });
 
     // Both should be present via legacy response
     expect(result.telegram).toBe(true);
     expect(result.discord).toBe(true);
 
-    // Both storage fields should have both keys
+    // channels uses field keys, encryptedSecrets uses env var names
     const channels = storage._store.get('channels') as Record<string, unknown>;
     const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
     expect(channels.telegramBotToken).toEqual(fakeEnvelope);
     expect(channels.discordBotToken).toEqual(discordEnvelope);
-    expect(secrets.telegramBotToken).toEqual(fakeEnvelope);
-    expect(secrets.discordBotToken).toEqual(discordEnvelope);
+    expect(secrets.TELEGRAM_BOT_TOKEN).toEqual(fakeEnvelope);
+    expect(secrets.DISCORD_BOT_TOKEN).toEqual(discordEnvelope);
   });
 });
 
@@ -1464,32 +1464,32 @@ describe('updateSecrets', () => {
     version: 1 as const,
   };
 
-  it('sets a channel secret and dual-writes to both channels and encryptedSecrets', async () => {
+  it('stores env var names in encryptedSecrets but field keys in channels', async () => {
     const { instance, storage } = createInstance();
     await seedProvisioned(storage);
 
     const result = await instance.updateSecrets({ telegramBotToken: fakeEnvelope });
 
     expect(result.configured).toContain('telegramBotToken');
-    // Dual-write: channels field should also have the token
+    // channels uses field keys (for decryptChannelTokens backward compat)
     const channels = storage._store.get('channels') as Record<string, unknown>;
     expect(channels.telegramBotToken).toEqual(fakeEnvelope);
-    // encryptedSecrets should also have it
+    // encryptedSecrets uses env var names (for buildEnvVars/mergeEnvVarsWithSecrets)
     const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
-    expect(secrets.telegramBotToken).toEqual(fakeEnvelope);
+    expect(secrets.TELEGRAM_BOT_TOKEN).toEqual(fakeEnvelope);
+    expect(secrets.telegramBotToken).toBeUndefined();
   });
 
   it('removes a secret when null is passed', async () => {
     const { instance, storage } = createInstance();
     await seedProvisioned(storage, {
       channels: { telegramBotToken: fakeEnvelope },
-      encryptedSecrets: { telegramBotToken: fakeEnvelope },
+      encryptedSecrets: { TELEGRAM_BOT_TOKEN: fakeEnvelope },
     });
 
     const result = await instance.updateSecrets({ telegramBotToken: null });
 
     expect(result.configured).not.toContain('telegramBotToken');
-    // Both fields should be null when all tokens are removed
     expect(storage._store.get('channels')).toBeNull();
     expect(storage._store.get('encryptedSecrets')).toBeNull();
   });
@@ -1499,7 +1499,7 @@ describe('updateSecrets', () => {
     const { instance, storage } = createInstance();
     await seedProvisioned(storage, {
       channels: { discordBotToken: discordEnvelope },
-      encryptedSecrets: { discordBotToken: discordEnvelope },
+      encryptedSecrets: { DISCORD_BOT_TOKEN: discordEnvelope },
     });
 
     const result = await instance.updateSecrets({ telegramBotToken: fakeEnvelope });
@@ -1509,6 +1509,9 @@ describe('updateSecrets', () => {
     const channels = storage._store.get('channels') as Record<string, unknown>;
     expect(channels.telegramBotToken).toEqual(fakeEnvelope);
     expect(channels.discordBotToken).toEqual(discordEnvelope);
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    expect(secrets.TELEGRAM_BOT_TOKEN).toEqual(fakeEnvelope);
+    expect(secrets.DISCORD_BOT_TOKEN).toEqual(discordEnvelope);
   });
 
   it('reads from legacy channels field when encryptedSecrets is empty', async () => {
@@ -1530,7 +1533,7 @@ describe('updateSecrets', () => {
     const { instance, storage } = createInstance();
     await seedProvisioned(storage, {
       channels: { telegramBotToken: fakeEnvelope },
-      encryptedSecrets: { telegramBotToken: fakeEnvelope },
+      encryptedSecrets: { TELEGRAM_BOT_TOKEN: fakeEnvelope },
     });
 
     const result = await instance.updateSecrets({ telegramBotToken: null });
@@ -1556,6 +1559,9 @@ describe('updateSecrets', () => {
     const channels = storage._store.get('channels') as Record<string, unknown>;
     expect(channels.slackBotToken).toEqual(slackBotEnvelope);
     expect(channels.slackAppToken).toEqual(slackAppEnvelope);
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    expect(secrets.SLACK_BOT_TOKEN).toEqual(slackBotEnvelope);
+    expect(secrets.SLACK_APP_TOKEN).toEqual(slackAppEnvelope);
   });
 
   it('clears both slack tokens simultaneously', async () => {
@@ -1564,7 +1570,7 @@ describe('updateSecrets', () => {
     const { instance, storage } = createInstance();
     await seedProvisioned(storage, {
       channels: { slackBotToken: slackBotEnvelope, slackAppToken: slackAppEnvelope },
-      encryptedSecrets: { slackBotToken: slackBotEnvelope, slackAppToken: slackAppEnvelope },
+      encryptedSecrets: { SLACK_BOT_TOKEN: slackBotEnvelope, SLACK_APP_TOKEN: slackAppEnvelope },
     });
 
     const result = await instance.updateSecrets({
@@ -1578,23 +1584,42 @@ describe('updateSecrets', () => {
     expect(storage._store.get('encryptedSecrets')).toBeNull();
   });
 
-  it('non-channel secrets go to encryptedSecrets but not channels', async () => {
-    // If a future catalog entry is category !== 'channel', it should
-    // only appear in encryptedSecrets, not in the legacy channels field.
-    // For now all entries are channels, so this test verifies the filtering
-    // logic by checking that only channel-category keys land in channels.
+  it('second updateSecrets call does not accumulate phantom entries', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    // First call: set telegram
+    await instance.updateSecrets({ telegramBotToken: fakeEnvelope });
+
+    // Second call: set discord — telegram should persist, no phantom keys
+    const discordEnvelope = { ...fakeEnvelope, encryptedData: 'discord-data' };
+    const result = await instance.updateSecrets({ discordBotToken: discordEnvelope });
+
+    expect(result.configured).toEqual(
+      expect.arrayContaining(['telegramBotToken', 'discordBotToken'])
+    );
+    expect(result.configured).toHaveLength(2);
+
+    // encryptedSecrets should have exactly 2 env var keys, no field key duplicates
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    const secretKeys = Object.keys(secrets).sort();
+    expect(secretKeys).toEqual(['DISCORD_BOT_TOKEN', 'TELEGRAM_BOT_TOKEN']);
+
+    // channels should have exactly 2 field keys
+    const channels = storage._store.get('channels') as Record<string, unknown>;
+    const channelKeys = Object.keys(channels).sort();
+    expect(channelKeys).toEqual(['discordBotToken', 'telegramBotToken']);
+  });
+
+  it('configured return uses field keys not env var names', async () => {
     const { instance, storage } = createInstance();
     await seedProvisioned(storage);
 
     const result = await instance.updateSecrets({ telegramBotToken: fakeEnvelope });
 
-    const channels = storage._store.get('channels') as Record<string, unknown>;
-    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
-    // Both should have it since telegram is a channel
-    expect(channels.telegramBotToken).toEqual(fakeEnvelope);
-    expect(secrets.telegramBotToken).toEqual(fakeEnvelope);
-    // channels should ONLY contain channel-category keys
-    expect(Object.keys(channels)).toEqual(['telegramBotToken']);
+    // Should return field keys, not env var names
+    expect(result.configured).toContain('telegramBotToken');
+    expect(result.configured).not.toContain('TELEGRAM_BOT_TOKEN');
   });
 });
 

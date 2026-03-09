@@ -4,6 +4,7 @@ import {
   SECRET_CATALOG_MAP,
   ALL_SECRET_FIELD_KEYS,
   FIELD_KEY_TO_ENV_VAR,
+  ENV_VAR_TO_FIELD_KEY,
   FIELD_KEY_TO_ENTRY,
   getEntriesByCategory,
 } from '../catalog.js';
@@ -118,6 +119,20 @@ describe('Secret Catalog', () => {
       expect(FIELD_KEY_TO_ENV_VAR.get('discordBotToken')).toBe('DISCORD_BOT_TOKEN');
       expect(FIELD_KEY_TO_ENV_VAR.get('slackBotToken')).toBe('SLACK_BOT_TOKEN');
       expect(FIELD_KEY_TO_ENV_VAR.get('slackAppToken')).toBe('SLACK_APP_TOKEN');
+    });
+
+    it('ENV_VAR_TO_FIELD_KEY is the exact reverse of FIELD_KEY_TO_ENV_VAR', () => {
+      expect(ENV_VAR_TO_FIELD_KEY.size).toBe(FIELD_KEY_TO_ENV_VAR.size);
+      for (const [fieldKey, envVar] of FIELD_KEY_TO_ENV_VAR) {
+        expect(ENV_VAR_TO_FIELD_KEY.get(envVar)).toBe(fieldKey);
+      }
+    });
+
+    it('ENV_VAR_TO_FIELD_KEY has correct reverse mappings', () => {
+      expect(ENV_VAR_TO_FIELD_KEY.get('TELEGRAM_BOT_TOKEN')).toBe('telegramBotToken');
+      expect(ENV_VAR_TO_FIELD_KEY.get('DISCORD_BOT_TOKEN')).toBe('discordBotToken');
+      expect(ENV_VAR_TO_FIELD_KEY.get('SLACK_BOT_TOKEN')).toBe('slackBotToken');
+      expect(ENV_VAR_TO_FIELD_KEY.get('SLACK_APP_TOKEN')).toBe('slackAppToken');
     });
   });
 

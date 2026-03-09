@@ -66,7 +66,11 @@ import {
   ControllerVersionResponseSchema,
   GatewayControllerError,
 } from './gateway-controller-types';
-import { SECRET_CATALOG } from '@kilocode/kiloclaw-secret-catalog';
+import {
+  SECRET_CATALOG,
+  FIELD_KEY_TO_ENV_VAR,
+  ENV_VAR_TO_FIELD_KEY,
+} from '@kilocode/kiloclaw-secret-catalog';
 import { parseRegions, shuffleRegions, deprioritizeRegion } from './regions';
 import {
   METADATA_RECOVERY_COOLDOWN_MS,
@@ -550,11 +554,17 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   ): Promise<{ configured: string[] }> {
     await this.loadState();
 
-    // 1. Read from both legacy channels + new encryptedSecrets
+    // 1. Read from both legacy channels + new encryptedSecrets into field-keyed working set.
+    //    encryptedSecrets stores env var names; reverse-map back to field keys.
     const currentSecrets: Record<string, EncryptedEnvelope | null> = {
       ...(this.channels ?? {}),
-      ...(this.encryptedSecrets ?? {}),
     };
+    if (this.encryptedSecrets) {
+      for (const [key, value] of Object.entries(this.encryptedSecrets)) {
+        const fieldKey = ENV_VAR_TO_FIELD_KEY.get(key) ?? key;
+        currentSecrets[fieldKey] = value;
+      }
+    }
 
     // 2. Apply patch (log operation + field key, NEVER log secret values)
     for (const [key, value] of Object.entries(patch)) {
@@ -589,18 +599,26 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         cleanedSecrets[key] = value;
       }
     }
-    const hasSecrets = Object.keys(cleanedSecrets).length > 0;
-    this.encryptedSecrets = hasSecrets ? cleanedSecrets : null;
+
+    // Return field keys before remapping to env var names
+    const configured = Object.keys(cleanedSecrets);
+
+    // 4. Remap field keys → env var names for encryptedSecrets storage.
+    //    buildEnvVars/mergeEnvVarsWithSecrets expects env var names as keys.
+    const remappedSecrets: Record<string, EncryptedEnvelope> = {};
+    for (const [key, value] of Object.entries(cleanedSecrets)) {
+      const envName = FIELD_KEY_TO_ENV_VAR.get(key) ?? key;
+      remappedSecrets[envName] = value;
+    }
+    const hasSecrets = Object.keys(remappedSecrets).length > 0;
+    this.encryptedSecrets = hasSecrets ? remappedSecrets : null;
 
     await this.ctx.storage.put({
       channels: this.channels,
       encryptedSecrets: this.encryptedSecrets,
     });
 
-    // Return the list of field keys that have a value set
-    return {
-      configured: Object.keys(cleanedSecrets),
-    };
+    return { configured };
   }
 
   /** KV cache key for pairing requests, scoped to the specific machine. */
