@@ -50,6 +50,7 @@ import type { CodeReviewAgentConfig } from '@/lib/agent-config/core/types';
 import { logExceptInTest, errorExceptInTest } from '@/lib/utils.server';
 import type { CodeReviewPlatform } from '../core/schemas';
 import { PLATFORM } from '@/lib/integrations/core/constants';
+import { isFeatureFlagEnabled } from '@/lib/posthog-feature-flags';
 
 export type PreparePayloadParams = {
   reviewId: string;
@@ -343,7 +344,12 @@ export async function prepareReviewPayload(
     // GitHub: uses githubRepo (owner/repo format) + githubToken
     // GitLab: uses gitUrl (full HTTPS URL) + gitToken
     const variant = config.thinking_effort ?? undefined;
-    const gateThreshold = config.gate_threshold ?? 'off';
+    // Defense-in-depth: only send gateThreshold to the agent when the PR gate flag is enabled.
+    // This prevents a stale non-'off' config from activating gating after the flag is turned off.
+    const isPrGateEnabled =
+      process.env.NODE_ENV === 'development' ||
+      (await isFeatureFlagEnabled('code-review-pr-gate', owner.userId));
+    const gateThreshold = isPrGateEnabled ? (config.gate_threshold ?? 'off') : 'off';
     const sessionInput: SessionInput =
       platform === PLATFORM.GITLAB
         ? {
