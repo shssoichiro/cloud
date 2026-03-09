@@ -19,6 +19,7 @@ import { codeReviewWorkerClient } from '@/lib/code-reviews/client/code-review-wo
 import { updateCheckRunId } from '@/lib/code-reviews/db/code-reviews';
 import { resolvePullRequestCheckoutRef } from './pull-request-checkout-ref';
 import { APP_URL } from '@/lib/constants';
+import { isFeatureFlagEnabled } from '@/lib/posthog-feature-flags';
 
 /**
  * GitHub Pull Request Event Handler
@@ -207,9 +208,13 @@ export async function handlePullRequestCodeReview(
 
     const [repoOwner, repoName] = repository.full_name.split('/');
 
-    // 7. Create GitHub Check Run (PR gate) — skip for lite (read-only) app
+    // 7. Create GitHub Check Run (PR gate) — skip for lite (read-only) app, skip when flag is off
     const appType = integration.github_app_type ?? 'standard';
-    if (appType !== 'lite') {
+    const isPrGateEnabled =
+      process.env.NODE_ENV === 'development' ||
+      (await isFeatureFlagEnabled('code-review-pr-gate', owner.userId));
+
+    if (appType !== 'lite' && isPrGateEnabled) {
       let checkRunId: number | undefined;
       try {
         const detailsUrl = `${APP_URL}/code-reviews/${reviewId}`;
