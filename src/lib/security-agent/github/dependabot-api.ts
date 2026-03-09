@@ -129,10 +129,12 @@ function isDependabotNotActionableMessage(message?: string): boolean {
   return DEPENDABOT_NOT_ACTIONABLE_MESSAGE_HINTS.some(hint => normalized.includes(hint));
 }
 
-function isDependabotUnavailableStatus(httpStatus?: number): boolean {
-  return (
-    httpStatus === 451 || (typeof httpStatus === 'number' && httpStatus >= 500 && httpStatus < 600)
-  );
+function isDependabotPermanentlyUnavailableStatus(httpStatus?: number): boolean {
+  // 451: "Unavailable for Legal Reasons" — repo is blocked and won't recover
+  // on its own.  5xx errors are intentionally excluded: they are transient
+  // GitHub outages and should bubble up as errors so last_synced_at is not
+  // advanced while a repo's data is stale.
+  return httpStatus === 451;
 }
 
 function classifyFetchAlertsError(
@@ -143,7 +145,7 @@ function classifyFetchAlertsError(
     return 'repo_not_found';
   }
 
-  if (isDependabotUnavailableStatus(httpStatus)) {
+  if (isDependabotPermanentlyUnavailableStatus(httpStatus)) {
     return 'alerts_unavailable';
   }
 
