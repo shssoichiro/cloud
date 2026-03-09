@@ -9,6 +9,7 @@ import {
   cleanupStaleWorkspaces,
   createSandboxUsageEvent,
   LOW_DISK_THRESHOLD_MB,
+  STALE_DIR_MIN_AGE_SECONDS,
 } from './workspace';
 import type { ExecutionSession, SandboxInstance } from './types';
 
@@ -584,12 +585,14 @@ describe('disk space checking', () => {
     });
 
     it('cleans up sessions with no running wrapper', async () => {
+      const oldMtime = String(Math.floor(Date.now() / 1000) - STALE_DIR_MIN_AGE_SECONDS - 60);
       mockSandboxExec
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: 'agent_stale-1111\nagent_current-aaaa\n',
           stderr: '',
         }) // ls sessions/
+        .mockResolvedValueOnce({ exitCode: 0, stdout: `${oldMtime}\n`, stderr: '' }) // stat agent_stale-1111
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }) // rm -rf workspace for stale session
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }); // rm -rf home for stale session
 
@@ -601,8 +604,9 @@ describe('disk space checking', () => {
       expect(mockListProcesses).toHaveBeenCalledTimes(1);
 
       const execCalls = mockSandboxExec.mock.calls.map((c: string[]) => c[0]);
-      expect(execCalls[1]).toContain("rm -rf '/workspace/org/user/sessions/agent_stale-1111'");
-      expect(execCalls[2]).toContain("rm -rf '/home/agent_stale-1111'");
+      expect(execCalls[1]).toContain('stat');
+      expect(execCalls[2]).toContain("rm -rf '/workspace/org/user/sessions/agent_stale-1111'");
+      expect(execCalls[3]).toContain("rm -rf '/home/agent_stale-1111'");
     });
 
     it('skips the current session directory', async () => {
@@ -621,11 +625,14 @@ describe('disk space checking', () => {
     });
 
     it('skips sessions that have a running wrapper', async () => {
-      mockSandboxExec.mockResolvedValueOnce({
-        exitCode: 0,
-        stdout: 'agent_active-bbbb\n',
-        stderr: '',
-      });
+      const oldMtime = String(Math.floor(Date.now() / 1000) - STALE_DIR_MIN_AGE_SECONDS - 60);
+      mockSandboxExec
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'agent_active-bbbb\n',
+          stderr: '',
+        }) // ls sessions/
+        .mockResolvedValueOnce({ exitCode: 0, stdout: `${oldMtime}\n`, stderr: '' }); // stat agent_active-bbbb
 
       mockListProcesses.mockResolvedValue([
         {
@@ -637,8 +644,8 @@ describe('disk space checking', () => {
 
       await cleanupStaleWorkspaces(fakeSandbox, '/workspace/org/user', 'agent_current-aaaa');
 
-      // Only the ls call — no rm calls
-      expect(mockSandboxExec).toHaveBeenCalledTimes(1);
+      // ls + stat — no rm calls
+      expect(mockSandboxExec).toHaveBeenCalledTimes(2);
     });
 
     it('returns early when sessions directory does not exist', async () => {
@@ -664,13 +671,15 @@ describe('disk space checking', () => {
     });
 
     it('continues cleaning remaining sessions when one throws', async () => {
+      const oldMtime = String(Math.floor(Date.now() / 1000) - STALE_DIR_MIN_AGE_SECONDS - 60);
       mockSandboxExec
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: 'agent_stale-aaaa\nagent_stale-bbbb\n',
           stderr: '',
         }) // ls
-        .mockRejectedValueOnce(new Error('exec threw during agent_stale-aaaa cleanup')) // throws during first session
+        .mockRejectedValueOnce(new Error('exec threw during agent_stale-aaaa stat')) // stat throws for first session
+        .mockResolvedValueOnce({ exitCode: 0, stdout: `${oldMtime}\n`, stderr: '' }) // stat agent_stale-bbbb
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }) // rm workspace agent_stale-bbbb
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }); // rm home agent_stale-bbbb
 
@@ -715,12 +724,14 @@ describe('disk space checking', () => {
     });
 
     it('skips directory entries that do not match the agent_ session ID format', async () => {
+      const oldMtime = String(Math.floor(Date.now() / 1000) - STALE_DIR_MIN_AGE_SECONDS - 60);
       mockSandboxExec
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: 'unexpected-dir\n.hidden\nlost+found\nagent_valid-1234\n',
           stderr: '',
         }) // ls
+        .mockResolvedValueOnce({ exitCode: 0, stdout: `${oldMtime}\n`, stderr: '' }) // stat agent_valid-1234
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }) // rm workspace agent_valid-1234
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }); // rm home agent_valid-1234
 
@@ -735,6 +746,80 @@ describe('disk space checking', () => {
       expect(execCalls.every(c => !c.includes('lost+found'))).toBe(true);
       // The valid session was cleaned up
       expect(execCalls.some(c => c.includes('agent_valid-1234'))).toBe(true);
+    });
+
+    it('skips directories younger than STALE_DIR_MIN_AGE_SECONDS', async () => {
+      const recentMtime = String(Math.floor(Date.now() / 1000) - 30); // 30 seconds ago
+      mockSandboxExec
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'agent_recent-1111\n',
+          stderr: '',
+        }) // ls sessions/
+        .mockResolvedValueOnce({ exitCode: 0, stdout: `${recentMtime}\n`, stderr: '' }); // stat
+
+      mockListProcesses.mockResolvedValue([]);
+
+      await cleanupStaleWorkspaces(fakeSandbox, '/workspace/org/user', 'agent_current-aaaa');
+
+      // ls + stat only — no rm calls
+      expect(mockSandboxExec).toHaveBeenCalledTimes(2);
+    });
+
+    it('cleans old directories but skips recent ones in the same run', async () => {
+      const oldMtime = String(Math.floor(Date.now() / 1000) - STALE_DIR_MIN_AGE_SECONDS - 60);
+      const recentMtime = String(Math.floor(Date.now() / 1000) - 30);
+      mockSandboxExec
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'agent_old-1111\nagent_recent-2222\n',
+          stderr: '',
+        }) // ls
+        .mockResolvedValueOnce({ exitCode: 0, stdout: `${oldMtime}\n`, stderr: '' }) // stat agent_old-1111
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }) // rm workspace agent_old-1111
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }) // rm home agent_old-1111
+        .mockResolvedValueOnce({ exitCode: 0, stdout: `${recentMtime}\n`, stderr: '' }); // stat agent_recent-2222
+
+      mockListProcesses.mockResolvedValue([]);
+
+      await cleanupStaleWorkspaces(fakeSandbox, '/workspace/org/user', 'agent_current-aaaa');
+
+      const execCalls = mockSandboxExec.mock.calls.map((c: string[]) => c[0]);
+      // Old session was cleaned
+      expect(
+        execCalls.some((c: string) =>
+          c.includes("rm -rf '/workspace/org/user/sessions/agent_old-1111'")
+        )
+      ).toBe(true);
+      // Recent session was NOT cleaned (no rm call containing agent_recent-2222)
+      expect(
+        execCalls.every((c: string) => !c.includes('rm') || !c.includes('agent_recent-2222'))
+      ).toBe(true);
+    });
+
+    it('proceeds with cleanup when stat fails', async () => {
+      mockSandboxExec
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'agent_stale-1111\n',
+          stderr: '',
+        }) // ls
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'stat: cannot stat' }) // stat fails
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }) // rm workspace
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }); // rm home
+
+      mockListProcesses.mockResolvedValue([]);
+
+      await cleanupStaleWorkspaces(fakeSandbox, '/workspace/org/user', 'agent_current-aaaa');
+
+      // ls + stat + rm workspace + rm home
+      expect(mockSandboxExec).toHaveBeenCalledTimes(4);
+      const execCalls = mockSandboxExec.mock.calls.map((c: string[]) => c[0]);
+      expect(
+        execCalls.some((c: string) =>
+          c.includes("rm -rf '/workspace/org/user/sessions/agent_stale-1111'")
+        )
+      ).toBe(true);
     });
   });
 
@@ -753,6 +838,7 @@ describe('disk space checking', () => {
     });
 
     it('runs cleanup when disk space is low', async () => {
+      const oldMtime = String(Math.floor(Date.now() / 1000) - STALE_DIR_MIN_AGE_SECONDS - 60);
       // df returns low disk (1024 MB avail, 10000 MB total)
       mockSandboxExec
         .mockResolvedValueOnce({
@@ -765,6 +851,7 @@ describe('disk space checking', () => {
           stdout: 'agent_stale-1111\nagent_current-aaaa\n',
           stderr: '',
         }) // ls sessions/ (cleanupStaleWorkspaces)
+        .mockResolvedValueOnce({ exitCode: 0, stdout: `${oldMtime}\n`, stderr: '' }) // stat agent_stale-1111
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }) // rm workspace
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }); // rm home
 
@@ -776,8 +863,10 @@ describe('disk space checking', () => {
       expect(mockSandboxExec.mock.calls[0][0]).toContain('df -B1');
       // ls was called to find sessions
       expect(mockSandboxExec.mock.calls[1][0]).toContain('ls -1');
+      // stat was called for the stale session
+      expect(mockSandboxExec.mock.calls[2][0]).toContain('stat');
       // stale session was cleaned
-      expect(mockSandboxExec.mock.calls[2][0]).toContain('agent_stale-1111');
+      expect(mockSandboxExec.mock.calls[3][0]).toContain('agent_stale-1111');
     });
 
     it('skips cleanup when disk space is adequate', async () => {

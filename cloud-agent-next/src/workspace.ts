@@ -248,6 +248,9 @@ export async function cleanupStaleWorkspaces(
     return;
   }
 
+  // Get current epoch once so we can age-check directories without re-shelling per candidate
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
   let cleaned = 0;
   let skipped = 0;
 
@@ -258,6 +261,25 @@ export async function cleanupStaleWorkspaces(
     }
 
     try {
+      // Skip directories younger than STALE_DIR_MIN_AGE_SECONDS to avoid deleting
+      // sessions that are mid-setup (cloning, running setup commands, etc.) and
+      // haven't started their wrapper process yet.
+      const workspacePath = `${baseWorkspacePath}/sessions/${candidateSessionId}`;
+      const statResult = await sandbox.exec(`stat -c %Y '${workspacePath}'`);
+      if (statResult.exitCode === 0 && statResult.stdout) {
+        const mtimeSeconds = Number.parseInt(statResult.stdout.trim(), 10);
+        if (Number.isFinite(mtimeSeconds)) {
+          const ageSeconds = nowSeconds - mtimeSeconds;
+          if (ageSeconds < STALE_DIR_MIN_AGE_SECONDS) {
+            logger
+              .withFields({ candidateSessionId, ageSeconds })
+              .info('Skipping session: directory too recent');
+            skipped++;
+            continue;
+          }
+        }
+      }
+
       const wrapperInfo = findWrapperForSessionInProcesses(processes, candidateSessionId);
       if (wrapperInfo !== null) {
         logger.withFields({ candidateSessionId }).info('Skipping session: wrapper is running');
@@ -265,7 +287,6 @@ export async function cleanupStaleWorkspaces(
         continue;
       }
 
-      const workspacePath = `${baseWorkspacePath}/sessions/${candidateSessionId}`;
       const sessionHome = getSessionHomePath(candidateSessionId);
       logger
         .withFields({ candidateSessionId, workspacePath, sessionHome })
@@ -292,6 +313,7 @@ export type GitAuthorConfig = {
 };
 
 export const LOW_DISK_THRESHOLD_MB = 2048; // 2GB
+export const STALE_DIR_MIN_AGE_SECONDS = 600; // 10 minutes — protect sessions mid-setup
 
 /**
  * Result of disk space check with structured fields.
