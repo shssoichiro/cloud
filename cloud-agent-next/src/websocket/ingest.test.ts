@@ -30,6 +30,7 @@ function createFakeDOContext(): IngestDOContext {
     updateKiloSessionId: vi.fn().mockResolvedValue(undefined),
     updateUpstreamBranch: vi.fn().mockResolvedValue(undefined),
     clearActiveExecution: vi.fn().mockResolvedValue(undefined),
+    getActiveExecutionId: vi.fn().mockResolvedValue(null),
     getExecution: vi.fn().mockResolvedValue(null),
     transitionToRunning: vi.fn().mockResolvedValue(true),
     updateHeartbeat: vi.fn().mockResolvedValue(undefined),

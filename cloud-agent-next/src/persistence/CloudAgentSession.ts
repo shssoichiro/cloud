@@ -244,6 +244,7 @@ export class CloudAgentSession extends DurableObject {
         updateKiloSessionId: (id: string) => this.updateKiloSessionId(id),
         updateUpstreamBranch: (branch: string) => this.updateUpstreamBranch(branch),
         clearActiveExecution: () => this.clearActiveExecution(),
+        getActiveExecutionId: () => this.executionQueries.getActiveExecutionId(),
         cancelDisconnectGrace: () => this.cancelDisconnectGrace(),
         getExecution: async (executionId: string) => {
           const execution = await this.executionQueries.get(executionId as ExecutionId);
@@ -1339,6 +1340,10 @@ export class CloudAgentSession extends DurableObject {
     // already failed the execution while a grace period was pending.
     await this.cancelDisconnectGrace();
 
+    // Snapshot active execution before updateStatus clears it — we need this to
+    // decide whether to clean up the interrupt flag afterward.
+    const wasActive = (await this.executionQueries.getActiveExecutionId()) === executionId;
+
     // 1. Update status (enqueues callback notification on terminal)
     const statusResult = await this.updateExecutionStatus({
       executionId,
@@ -1354,12 +1359,17 @@ export class CloudAgentSession extends DurableObject {
       return false;
     }
 
-    // 2. Clear active execution (idempotent safety net — updateStatus clears it
-    //    internally for the active execution, but another may have been set)
-    await this.executionQueries.clearActiveExecution();
-
-    // 3. Clear interrupt flag
-    await this.executionQueries.clearInterrupt();
+    // 2. Clear active execution + interrupt only if this was the active execution.
+    //    updateStatus already clears active_execution_id internally when it matches,
+    //    so the clear here is a safety net. We skip both clears when this execution
+    //    wasn't active to avoid clobbering a newer execution that started in between.
+    if (wasActive) {
+      const activeId = await this.executionQueries.getActiveExecutionId();
+      if (activeId === executionId) {
+        await this.executionQueries.clearActiveExecution();
+      }
+      await this.executionQueries.clearInterrupt();
+    }
 
     // 4. Broadcast to /stream clients
     const sessionId = await this.requireSessionId();
@@ -2070,6 +2080,10 @@ export class CloudAgentSession extends DurableObject {
     const sessionId = await this.resolveSessionId();
     logger.withFields({ sessionId, executionId, status, error }).info('onExecutionComplete called');
 
+    // Snapshot active execution before updateStatus clears it — we need this to
+    // decide whether to clean up the interrupt flag afterward.
+    const wasActive = (await this.executionQueries.getActiveExecutionId()) === executionId;
+
     // Update execution status
     const updateResult = await this.updateExecutionStatus({
       executionId,
@@ -2084,15 +2098,17 @@ export class CloudAgentSession extends DurableObject {
         .warn('Failed to update execution status');
     }
 
-    // Check if this was the active execution
-    const activeExecutionId = await this.executionQueries.getActiveExecutionId();
-    if (activeExecutionId === executionId) {
-      // Clear the active execution
-      await this.executionQueries.clearActiveExecution();
+    // Clear active execution + interrupt only if this was the active execution.
+    // updateStatus already clears active_execution_id internally when it matches,
+    // so the clear here is a safety net. We skip both clears when this execution
+    // wasn't active to avoid clobbering a newer execution that started in between.
+    if (wasActive) {
+      const activeExecutionId = await this.executionQueries.getActiveExecutionId();
+      if (activeExecutionId === executionId) {
+        await this.executionQueries.clearActiveExecution();
+      }
+      await this.executionQueries.clearInterrupt();
     }
-
-    // Clear any interrupt flag that may have been set
-    await this.executionQueries.clearInterrupt();
 
     logger.withFields({ sessionId, executionId }).info('Execution complete - session is idle');
   }

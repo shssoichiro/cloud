@@ -63,6 +63,7 @@ const createExecutionLifecycleContext = (doContext: IngestDOContext) => ({
     err?: string
   ) => doContext.updateExecutionStatus(id, status, err),
   clearActiveExecution: () => doContext.clearActiveExecution(),
+  getActiveExecutionId: () => doContext.getActiveExecutionId(),
   logger: console,
 });
 
@@ -114,6 +115,8 @@ export type IngestDOContext = {
   updateUpstreamBranch: (branch: string) => Promise<void>;
   /** Clear the active execution when done */
   clearActiveExecution: () => Promise<void>;
+  /** Get the currently active execution ID (if any) */
+  getActiveExecutionId: () => Promise<string | null>;
   /** Get execution data for validation (including ingestToken) */
   getExecution: (executionId: string) => Promise<ExecutionData | null>;
   /** Transition execution status to 'running' when wrapper connects */
