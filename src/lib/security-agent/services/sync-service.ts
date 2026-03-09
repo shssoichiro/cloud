@@ -416,15 +416,16 @@ export async function getEnabledSecurityReviewConfigs(): Promise<EnabledSecurity
 
     let selectedRepos: string[];
     let missingSelectedRepoCount = 0;
-    if (
-      securityConfig.repository_selection_mode === 'selected' &&
-      securityConfig.selected_repository_ids &&
-      securityConfig.selected_repository_ids.length > 0
-    ) {
-      const selectedIds = new Set(securityConfig.selected_repository_ids);
-      const accessibleIds = new Set(allRepositories.map(r => r.id));
-      selectedRepos = allRepositories.filter(r => selectedIds.has(r.id)).map(r => r.full_name);
-      missingSelectedRepoCount = [...selectedIds].filter(id => !accessibleIds.has(id)).length;
+    if (securityConfig.repository_selection_mode === 'selected') {
+      const selectedIds = new Set(securityConfig.selected_repository_ids ?? []);
+      if (selectedIds.size > 0) {
+        const accessibleIds = new Set(allRepositories.map(r => r.id));
+        selectedRepos = allRepositories.filter(r => selectedIds.has(r.id)).map(r => r.full_name);
+        missingSelectedRepoCount = [...selectedIds].filter(id => !accessibleIds.has(id)).length;
+      } else {
+        // Mode is 'selected' but no repos are configured — don't fall through to 'all'
+        selectedRepos = [];
+      }
     } else {
       selectedRepos = allRepositories.map(r => r.full_name);
     }
