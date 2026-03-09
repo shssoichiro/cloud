@@ -125,15 +125,17 @@ type SecurityReviewOwner =
 type SyncResult = {
   synced: number;
   errors: number;
-  /** Repos where alerts were disabled (skipped, not a sync failure) */
+  /** Repos where Dependabot alerts are permanently disabled (safe to skip) */
   skipped: number;
+  /** Repos that returned 404 or are access-blocked (deleted/transferred/inaccessible) */
   staleRepos: string[];
 };
 
 type FetchAlertsResult =
   | { status: 'success'; alerts: DependabotAlertRaw[] }
   | { status: 'repo_not_found' }
-  | { status: 'alerts_disabled' };
+  | { status: 'alerts_disabled' }
+  | { status: 'access_blocked' };
 
 function isOrgOwner(
   owner: SecurityReviewOwner
@@ -280,8 +282,17 @@ async function fetchAllDependabotAlerts(
       return { status: 'repo_not_found' };
     }
 
+    // 451 "Unavailable for Legal Reasons" — repo is blocked, won't recover.
+    if (response.status === 451) {
+      return { status: 'access_blocked' };
+    }
+
     if (!response.ok) {
       const body = await response.text();
+
+      if (response.status === 403 && body.includes('repository access blocked')) {
+        return { status: 'access_blocked' };
+      }
 
       if (
         response.status === 403 &&
@@ -728,11 +739,11 @@ export async function syncOwner(params: {
     });
   }
 
-  // Only advance owner-level freshness when no repo had a real failure.
-  // Stale repos (deleted/transferred) block the update because they were
-  // selected for sync but never refreshed.  Skipped repos (Dependabot
-  // disabled) do NOT block — that's a permanent repo-level setting, and
-  // blocking here would leave the timestamp stuck forever.
+  // Only advance owner-level freshness when every repo was actually synced.
+  // Stale repos (deleted/transferred/access-blocked) block the update because
+  // they were selected for sync but never refreshed.  Skipped repos
+  // (Dependabot permanently disabled) do NOT block — that's a permanent
+  // repo-level setting, and blocking here would leave the timestamp stuck.
   if (totalResult.errors === 0 && totalResult.staleRepos.length === 0) {
     try {
       await database
@@ -815,6 +826,12 @@ async function syncRepo(params: {
   if (fetchResult.status === 'alerts_disabled') {
     console.info(`Dependabot alerts disabled for ${repoFullName}, skipping`);
     result.skipped = 1;
+    return result;
+  }
+
+  if (fetchResult.status === 'access_blocked') {
+    console.warn(`Repository ${repoFullName} access blocked, marking as stale`);
+    result.staleRepos.push(repoFullName);
     return result;
   }
 

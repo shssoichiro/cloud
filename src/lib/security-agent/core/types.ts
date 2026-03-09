@@ -144,9 +144,9 @@ export type SyncResult = {
   created: number;
   updated: number;
   errors: number;
-  /** Repos where alerts were unavailable (disabled / insufficient permissions) */
+  /** Repos where Dependabot alerts are permanently disabled (safe to skip) */
   skipped: number;
-  /** Repos that returned 404 from GitHub (deleted/transferred) */
+  /** Repos that returned 404 or are access-blocked (deleted/transferred/inaccessible) */
   staleRepos: string[];
 };
 

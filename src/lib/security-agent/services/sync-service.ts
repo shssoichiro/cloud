@@ -111,9 +111,15 @@ export async function syncDependabotAlertsForRepo(params: {
       return result;
     }
 
-    if (fetchResult.status === 'alerts_unavailable') {
-      warn(`Dependabot alerts unavailable for ${repoFullName}, skipping`);
+    if (fetchResult.status === 'alerts_disabled') {
+      warn(`Dependabot alerts disabled for ${repoFullName}, skipping`);
       result.skipped = 1;
+      return result;
+    }
+
+    if (fetchResult.status === 'access_blocked') {
+      warn(`Repository ${repoFullName} access blocked, marking as stale`);
+      result.staleRepos.push(repoFullName);
       return result;
     }
 
@@ -291,11 +297,11 @@ export async function syncAllReposForOwner(params: {
     throw firstError;
   }
 
-  // Only advance owner-level freshness when no repo had a real failure.
-  // Stale repos (deleted/transferred) block the update because they were
-  // selected for sync but never refreshed.  Skipped repos (Dependabot
-  // disabled) do NOT block — that's a permanent repo-level setting, and
-  // blocking here would leave the timestamp stuck forever.
+  // Only advance owner-level freshness when every repo was actually synced.
+  // Stale repos (deleted/transferred/access-blocked) block the update because
+  // they were selected for sync but never refreshed.  Skipped repos
+  // (Dependabot permanently disabled) do NOT block — that's a permanent
+  // repo-level setting, and blocking here would leave the timestamp stuck.
   if (totalResult.errors === 0 && totalResult.staleRepos.length === 0) {
     await updateLastSyncedAt(owner);
   }
