@@ -250,14 +250,9 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   // Use new shared helper for fraud & project headers
   const { fraudHeaders, projectId } = extractFraudAndProjectHeaders(request);
   const taskId = extractHeaderAndLimitLength(request, 'x-kilocode-taskid') ?? undefined;
-  // Extract only the provider routing config that getProvider actually needs.
-  // Responses API bodies do not carry an OpenRouter provider config.
-  const providerRoutingContext = {
-    provider: parsedRequest.kind === 'chat_completions' ? parsedRequest.body.provider : undefined,
-  };
   const { provider, userByok, customLlm } = await getProvider(
     originalModelIdLowerCased,
-    providerRoutingContext,
+    parsedRequest.body,
     user,
     organizationId,
     taskId
