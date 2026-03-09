@@ -15,7 +15,6 @@ import {
   cloneGitHubRepo,
   cloneGitRepo,
   cleanupWorkspace,
-  getBaseWorkspacePath,
   getSessionHomePath,
   getSessionWorkspacePath,
   manageBranch,
