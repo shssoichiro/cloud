@@ -45,6 +45,7 @@ import { codeReviewWorkerClient } from '@/lib/code-reviews/client/code-review-wo
 import { tryDispatchPendingReviews } from '@/lib/code-reviews/dispatch/dispatch-pending-reviews';
 import { getBotUserId } from '@/lib/bot-users/bot-user-service';
 import type { CloudAgentCodeReview } from '@kilocode/db/schema';
+import { isFeatureFlagEnabled } from '@/lib/posthog-feature-flags';
 
 /**
  * Re-creates the PR gate check (GitHub Check Run / GitLab commit status)
@@ -451,15 +452,7 @@ export const codeReviewRouter = createTRPCRouter({
         // Reset the review for retry
         await resetCodeReviewForRetry(input.reviewId);
 
-        // Re-create PR gate check so status callbacks can update it
-        try {
-          await recreatePRGateCheck(review);
-        } catch (gateError) {
-          // Non-blocking — the review still retries even if the gate check fails
-          logExceptInTest('[retrigger] Failed to re-create PR gate check:', gateError);
-        }
-
-        // Build owner object for dispatch.
+        // Build owner object for dispatch (and flag evaluation).
         // For org reviews, use the bot user ID so feature flags (e.g. code-review-cloud-agent-next)
         // evaluate consistently regardless of which human triggers the retrigger.
         let owner: Owner;
@@ -472,6 +465,20 @@ export const codeReviewRouter = createTRPCRouter({
           };
         } else {
           owner = { type: 'user', id: review.owned_by_user_id as string, userId: ctx.user.id };
+        }
+
+        // Re-create PR gate check so status callbacks can update it (only when flag is enabled)
+        const isPrGateEnabled =
+          process.env.NODE_ENV === 'development' ||
+          (await isFeatureFlagEnabled('code-review-pr-gate', owner.userId));
+
+        if (isPrGateEnabled) {
+          try {
+            await recreatePRGateCheck(review);
+          } catch (gateError) {
+            // Non-blocking — the review still retries even if the gate check fails
+            logExceptInTest('[retrigger] Failed to re-create PR gate check:', gateError);
+          }
         }
 
         // Try to dispatch the review
