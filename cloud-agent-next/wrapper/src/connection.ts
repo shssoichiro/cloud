@@ -65,9 +65,6 @@ type WebSocketCtor = new (
   options?: { headers?: Record<string, string> } | string | string[]
 ) => WebSocket;
 
-/** DO sends this close code to signal execution is done — don't reconnect */
-const CLOSE_CODE_EXECUTION_DONE = 4000;
-
 /** Maximum number of reconnection attempts before giving up.
  *  3 attempts ≈ 7s total (1+2+4), fitting within the DO's 10s grace period. */
 const MAX_RECONNECT_ATTEMPTS = 3;
@@ -203,13 +200,6 @@ export function createConnectionManager(
         if (closedByUs) {
           // Expected close (during drain/shutdown) — don't reconnect
           closedByUs = false;
-          return;
-        }
-
-        if (event.code === CLOSE_CODE_EXECUTION_DONE) {
-          // DO says execution is done — don't reconnect
-          logToFile('ingest WS closed by DO (execution done) — not reconnecting');
-          callbacks.onDisconnect('ingest websocket closed (execution done)');
           return;
         }
 

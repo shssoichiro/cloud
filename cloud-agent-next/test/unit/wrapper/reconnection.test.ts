@@ -304,24 +304,6 @@ describe('ingest WS reconnection', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test: close code 4000 (execution done) — no reconnection
-  // -------------------------------------------------------------------------
-
-  it('does not reconnect on close code 4000 (execution done)', async () => {
-    const manager = createManager();
-    const ws = await openConnection(manager);
-
-    ws.simulateClose(4000);
-
-    expect(callbacks.onDisconnect).toHaveBeenCalledWith('ingest websocket closed (execution done)');
-    expect(manager.isReconnecting()).toBe(false);
-
-    // Verify no reconnection attempts
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(MockWebSocket.instances).toHaveLength(1);
-  });
-
-  // -------------------------------------------------------------------------
   // Test: events are buffered during reconnection and flushed on reconnect
   // -------------------------------------------------------------------------
 
