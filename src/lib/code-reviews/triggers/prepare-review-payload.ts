@@ -36,10 +36,12 @@ import type {
   GitLabDiffContext,
 } from '../prompts/generate-prompt';
 import { getIntegrationById } from '@/lib/integrations/db/platform-integrations';
-import { getCodeReviewById } from '../db/code-reviews';
+import { getCodeReviewById, findPreviousCompletedReview } from '../db/code-reviews';
+import { isFeatureFlagEnabled } from '@/lib/posthog-feature-flags';
 import {
   DEFAULT_CODE_REVIEW_MODEL,
   DEFAULT_CODE_REVIEW_MODE,
+  FEATURE_FLAG_INCREMENTAL_REVIEW,
   isActiveReviewPromo,
   REVIEW_PROMO_START,
   REVIEW_PROMO_END,
@@ -311,18 +313,50 @@ export async function prepareReviewPayload(
       }
     }
 
-    // 4. Generate auth token for cloud agent with bot identifier
+    // 4. Check for previous completed review (incremental review optimization)
+    let previousHeadSha: string | null = null;
+    const incrementalEnabled = await isFeatureFlagEnabled(FEATURE_FLAG_INCREMENTAL_REVIEW);
+
+    if (incrementalEnabled) {
+      try {
+        const previousReview = await findPreviousCompletedReview(
+          review.repo_full_name,
+          review.pr_number,
+          review.head_sha
+        );
+        previousHeadSha = previousReview?.head_sha ?? null;
+
+        if (previousHeadSha) {
+          logExceptInTest('[prepareReviewPayload] Found previous completed review for incremental mode', {
+            reviewId,
+            previousHeadSha: previousHeadSha.substring(0, 8),
+            currentHeadSha: review.head_sha.substring(0, 8),
+          });
+        }
+      } catch (error) {
+        // Non-critical - fall back to full review
+        logExceptInTest('[prepareReviewPayload] Failed to fetch previous review, falling back to full review:', {
+          reviewId,
+          error,
+        });
+      }
+    }
+
+    // 5. Generate auth token for cloud agent with bot identifier
     const authToken = generateApiToken(user, { botId: 'reviewer' });
 
-    // 5. Generate dynamic review prompt (include reviewId for fix link and review state)
+    // 6. Generate dynamic review prompt (include reviewId for fix link and review state)
     const { prompt, version, source } = await generateReviewPrompt(
       agentConfig.config as CodeReviewAgentConfig,
       review.repo_full_name,
       review.pr_number,
-      reviewId,
-      existingReviewState,
-      platform,
-      gitlabContext
+      {
+        reviewId,
+        existingReviewState,
+        platform,
+        gitlabContext,
+        previousHeadSha,
+      }
     );
 
     logExceptInTest('[prepareReviewPayload] Generated prompt:', {
