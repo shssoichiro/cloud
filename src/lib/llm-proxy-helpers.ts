@@ -22,7 +22,7 @@ import type {
 import type {
   OpenRouterChatCompletionRequest,
   OpenRouterProviderConfig,
-  OpenRouterResponsesRequest,
+  GatewayResponsesRequest,
 } from '@/lib/providers/openrouter/types';
 import { getFraudDetectionHeaders } from '@/lib/utils';
 import { normalizeProjectId } from '@/lib/normalizeProjectId';
@@ -124,7 +124,7 @@ function byokErrorMessage(status: number): string | undefined {
   return byokErrorMessages[status];
 }
 
-function estimateTokenCount(request: OpenRouterChatCompletionRequest | OpenRouterResponsesRequest) {
+function estimateTokenCount(request: OpenRouterChatCompletionRequest | GatewayResponsesRequest) {
   const maxTokens =
     'messages' in request
       ? (request.max_completion_tokens ?? request.max_tokens ?? 0)
@@ -139,7 +139,7 @@ export async function makeErrorReadable({
   isUserByok,
 }: {
   requestedModel: string;
-  request: OpenRouterChatCompletionRequest | OpenRouterResponsesRequest;
+  request: OpenRouterChatCompletionRequest | GatewayResponsesRequest;
   response: Response;
   isUserByok: boolean;
 }) {

@@ -4,8 +4,6 @@ import type { AnthropicProviderOptions } from '@ai-sdk/anthropic';
 import type { ReasoningDetailUnion } from '@/lib/custom-llm/reasoning-details';
 import type { AwsCredentials } from '@/lib/providers/openrouter/inference-provider-id';
 
-export type OpenRouterResponsesRequest = OpenAI.Responses.ResponseCreateParams;
-
 // Base types for OpenRouter API that don't depend on other lib files
 // This breaks circular dependencies with mistral.ts, minimax.ts, etc.
 
@@ -49,17 +47,27 @@ type OpenCodeSpecificRequestProperties = {
   reasoningEffort?: string;
 };
 
+export type SharedGatewayRequestProperties = {
+  // https://openrouter.ai/docs/features/provider-routing#requiring-providers-to-comply-with-data-policies
+  provider?: OpenRouterProviderConfig;
+  providerOptions?: VercelProviderConfig;
+
+  // OpenRouter specific field we do not support
+  // https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request#request.body.models
+  models?: string[];
+};
+
+export type GatewayResponsesRequest = SharedGatewayRequestProperties &
+  OpenAI.Responses.ResponseCreateParams;
+
 /**
  * Approximately OpenRouter API request type. Actually based on OpenAI's, but the differences aren't huge.
  */
 export type OpenRouterChatCompletionRequest = OpenAI.Chat.ChatCompletionCreateParams &
-  OpenCodeSpecificRequestProperties & {
+  OpenCodeSpecificRequestProperties &
+  SharedGatewayRequestProperties & {
     max_tokens?: number;
     transforms?: string[];
-
-    // https://openrouter.ai/docs/features/provider-routing#requiring-providers-to-comply-with-data-policies
-    provider?: OpenRouterProviderConfig;
-    providerOptions?: VercelProviderConfig;
 
     // https://openrouter.ai/docs/use-cases/reasoning-tokens#controlling-reasoning-tokens
     reasoning?: OpenRouterReasoningConfig;
@@ -68,10 +76,6 @@ export type OpenRouterChatCompletionRequest = OpenAI.Chat.ChatCompletionCreatePa
     reasoning_split?: boolean;
 
     thinking?: { type?: 'enabled' | 'disabled' };
-
-    // OpenRouter specific field we do not support
-    // https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request#request.body.models
-    models?: string[];
   };
 
 export type MessageWithReasoning = {
@@ -88,7 +92,7 @@ export type MessageWithReasoning = {
  */
 export type ParsedProxyRequest =
   | { kind: 'chat_completions'; body: OpenRouterChatCompletionRequest }
-  | { kind: 'responses'; body: OpenRouterResponsesRequest };
+  | { kind: 'responses'; body: GatewayResponsesRequest };
 
 export type OpenRouterGeneration = {
   data: {

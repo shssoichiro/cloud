@@ -10,7 +10,7 @@ import {
 import { validateFeatureHeader, FEATURE_HEADER } from '@/lib/feature-detection';
 import type {
   OpenRouterChatCompletionRequest,
-  OpenRouterResponsesRequest,
+  GatewayResponsesRequest,
   ParsedProxyRequest,
 } from '@/lib/providers/openrouter/types';
 import { applyProviderSpecificLogic, getProvider, openRouterRequest } from '@/lib/providers';
@@ -110,10 +110,9 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
       const body: OpenRouterChatCompletionRequest = JSON.parse(requestBodyText);
       // Inject or merge stream_options.include_usage = true
       body.stream_options = { ...(body.stream_options || {}), include_usage: true };
-      delete body.models; // OpenRouter specific field we do not support
       parsedRequest = { kind: 'chat_completions', body };
     } else {
-      const body: OpenRouterResponsesRequest = JSON.parse(requestBodyText);
+      const body: GatewayResponsesRequest = JSON.parse(requestBodyText);
       parsedRequest = { kind: 'responses', body };
     }
   } catch (e) {
@@ -124,6 +123,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     return invalidRequestResponse();
   }
 
+  delete parsedRequest.body.models; // OpenRouter specific field we do not support
   if (
     typeof parsedRequest.body.model !== 'string' ||
     parsedRequest.body.model.trim().length === 0
@@ -573,7 +573,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
 // Responses API helpers
 // ---------------------------------------------------------------------------
 
-function extractResponsesPromptInfo(body: OpenRouterResponsesRequest): PromptInfo {
+function extractResponsesPromptInfo(body: GatewayResponsesRequest): PromptInfo {
   const instructions = body.instructions ?? '';
   const input = typeof body.input === 'string' ? body.input : '';
   return {
@@ -583,7 +583,7 @@ function extractResponsesPromptInfo(body: OpenRouterResponsesRequest): PromptInf
   };
 }
 
-function estimateResponsesTokens(body: OpenRouterResponsesRequest): {
+function estimateResponsesTokens(body: GatewayResponsesRequest): {
   estimatedInputTokens: number;
   estimatedOutputTokens: number;
 } {
