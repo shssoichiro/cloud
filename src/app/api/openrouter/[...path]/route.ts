@@ -246,6 +246,17 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     user = maybeUser;
   }
 
+  if (parsedRequest.kind === 'responses' && !user.is_admin) {
+    return NextResponse.json(
+      {
+        error: {
+          message: 'The Responses API is experimental and not yet available to all users.',
+        },
+      },
+      { status: 403 }
+    );
+  }
+
   // Log to free_model_usage for rate limiting (at request start, before processing)
   if (isKiloFreeModel(originalModelIdLowerCased)) {
     await logFreeModelRequest(
@@ -274,6 +285,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   );
 
   // Start abuse classification early (non-blocking) - we'll await it before creating usage context
+  // TODO: abuse classification for Responses API
   const classifyPromise =
     parsedRequest.kind === 'chat_completions'
       ? classifyAbuse(request, parsedRequest.body, {
