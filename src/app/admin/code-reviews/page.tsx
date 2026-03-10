@@ -7,6 +7,7 @@ import { BreadcrumbItem, BreadcrumbPage } from '@/components/ui/breadcrumb';
 import { CodeReviewStats } from '@/app/admin/components/CodeReviewStats';
 import { CodeReviewDailyChart } from '@/app/admin/components/CodeReviewDailyChart';
 import { CodeReviewErrorAnalysis } from '@/app/admin/components/CodeReviewErrorAnalysis';
+import { CodeReviewPerformanceChart } from '@/app/admin/components/CodeReviewPerformanceChart';
 import { CodeReviewUserSegmentation } from '@/app/admin/components/CodeReviewUserSegmentation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,7 @@ import { RefreshCw, Download, X, Search, User, Building2 } from 'lucide-react';
 import {
   useCodeReviewOverviewStats,
   useCodeReviewDailyStats,
+  useCodeReviewPerformanceStats,
   useCodeReviewErrorAnalysis,
   useCodeReviewUserSegmentation,
   useSearchUsers,
@@ -102,15 +104,17 @@ export default function CodeReviewsPage() {
   // Queries
   const overviewQuery = useCodeReviewOverviewStats(filterParams);
   const dailyQuery = useCodeReviewDailyStats(filterParams);
+  const performanceQuery = useCodeReviewPerformanceStats(filterParams);
   const errorQuery = useCodeReviewErrorAnalysis(filterParams);
   const segmentationQuery = useCodeReviewUserSegmentation(filterParams);
 
   const handleRefresh = useCallback(() => {
     void overviewQuery.refetch();
     void dailyQuery.refetch();
+    void performanceQuery.refetch();
     void errorQuery.refetch();
     void segmentationQuery.refetch();
-  }, [overviewQuery, dailyQuery, errorQuery, segmentationQuery]);
+  }, [overviewQuery, dailyQuery, performanceQuery, errorQuery, segmentationQuery]);
 
   // Handle selecting a user from search
   const handleSelectUser = (user: SelectedUser) => {
@@ -170,10 +174,11 @@ export default function CodeReviewsPage() {
     }
   }, [trpcClient, filterParams, startDate, endDate, isExporting]);
 
-  const isLoading = overviewQuery.isLoading || dailyQuery.isLoading;
+  const isLoading = overviewQuery.isLoading || dailyQuery.isLoading || performanceQuery.isLoading;
   const isRefreshing =
     overviewQuery.isFetching ||
     dailyQuery.isFetching ||
+    performanceQuery.isFetching ||
     errorQuery.isFetching ||
     segmentationQuery.isFetching;
 
@@ -425,6 +430,14 @@ export default function CodeReviewsPage() {
 
             {/* Daily Chart */}
             {dailyQuery.data && <CodeReviewDailyChart data={dailyQuery.data} />}
+
+            {/* Performance Trend */}
+            {performanceQuery.data && (
+              <CodeReviewPerformanceChart
+                data={performanceQuery.data}
+                agentVersion={agentVersion}
+              />
+            )}
 
             {/* User Segmentation */}
             {segmentationQuery.data && (

@@ -28,6 +28,14 @@ export function useCodeReviewDailyStats(params: FilterParams) {
   });
 }
 
+export function useCodeReviewPerformanceStats(params: FilterParams) {
+  const trpc = useTRPC();
+  return useQuery({
+    ...trpc.admin.codeReviews.getPerformanceStats.queryOptions(params),
+    enabled: Boolean(params.startDate && params.endDate),
+  });
+}
+
 export function useCodeReviewErrorAnalysis(params: FilterParams) {
   const trpc = useTRPC();
   return useQuery({
