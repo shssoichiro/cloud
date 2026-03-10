@@ -80,17 +80,20 @@ cp kiloclaw/.dev.vars.example kiloclaw/.dev.vars
 #    KILOCLAW_INTERNAL_API_SECRET. If you haven't run it yet, see
 #    the root DEVELOPMENT.md for Next.js setup.
 
-# 5. Run database migrations (from monorepo root)
+# 5. Start the local database (from monorepo root)
+docker compose -f dev/docker-compose.yml up -d
+
+# 6. Run database migrations (from monorepo root)
 pnpm drizzle migrate
 
-# 6. Start the tunnel (separate terminal)
+# 7. Start the tunnel (separate terminal)
 cloudflared tunnel --url http://localhost:3000
 # Copy the tunnel URL into KILOCODE_API_BASE_URL in .dev.vars
 
-# 7. Start Next.js (separate terminal, from monorepo root)
+# 8. Start Next.js (separate terminal, from monorepo root)
 pnpm dev
 
-# 8. Start the KiloClaw worker (separate terminal, from kiloclaw/)
+# 9. Start the KiloClaw worker (separate terminal, from kiloclaw/)
 pnpm run dev
 ```
 
@@ -226,6 +229,8 @@ it "doesn't recognize the app." Workarounds:
 
 ### `scripts/push-dev.sh`
 
+Run from the `kiloclaw/` directory:
+
 ```bash
 ./scripts/push-dev.sh
 ```
@@ -279,7 +284,7 @@ Kilo gateway.
 
 ### Access
 
-Type `kilo` on any Kilo page (not in a search box, just on the page itself)
+Type `kilospeed` (or `ks`) on any Kilo page (not in a search box, just on the page itself)
 to reveal the admin panel link. Or access it via the account icon (top-right)
 → dropdown → admin panel.
 
