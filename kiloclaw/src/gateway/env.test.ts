@@ -374,7 +374,10 @@ describe('buildEnvVars', () => {
 
   it('every DEFAULT_INSTANCE_FEATURES entry has a FEATURE_TO_ENV_VAR mapping', () => {
     for (const feature of DEFAULT_INSTANCE_FEATURES) {
-      expect(FEATURE_TO_ENV_VAR[feature], `Missing FEATURE_TO_ENV_VAR mapping for "${feature}"`).toBeDefined();
+      expect(
+        FEATURE_TO_ENV_VAR[feature],
+        `Missing FEATURE_TO_ENV_VAR mapping for "${feature}"`
+      ).toBeDefined();
     }
   });
 });

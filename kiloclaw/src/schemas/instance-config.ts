@@ -28,10 +28,7 @@ export type MachineSize = z.infer<typeof MachineSizeSchema>;
 const envVarNameSchema = z
   .string()
   .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Must be a valid shell identifier')
-  .refine(
-    s => !s.startsWith('KILOCLAW_'),
-    'Uses reserved prefix (KILOCLAW_*)'
-  );
+  .refine(s => !s.startsWith('KILOCLAW_'), 'Uses reserved prefix (KILOCLAW_*)');
 
 export const InstanceConfigSchema = z.object({
   envVars: z.record(envVarNameSchema, z.string()).optional(),

@@ -437,7 +437,11 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
           pendingDestroyVolumeId: null,
           pendingPostgresMarkOnFinalize: false,
         })
-      : storageUpdate({ ...configFields, ...versionFields, instanceFeatures: this.instanceFeatures });
+      : storageUpdate({
+          ...configFields,
+          ...versionFields,
+          instanceFeatures: this.instanceFeatures,
+        });
 
     await this.ctx.storage.put(update);
 
