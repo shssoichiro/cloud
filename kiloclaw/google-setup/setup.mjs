@@ -7,19 +7,19 @@
  * 1. Validates the user's KiloCode API key against the kiloclaw worker
  * 2. Fetches the worker's RSA public key for credential encryption
  * 3. Runs `gws auth setup` to create an OAuth client in the user's Google Cloud project
- * 4. Runs `gws auth login` to complete the OAuth flow via localhost:8080 callback
- * 5. Reads the resulting credentials from ~/.config/gws/
- * 6. Encrypts them with the worker's public key
- * 7. POSTs the encrypted bundle to the kiloclaw worker (user-facing JWT auth)
+ * 4. Runs our own OAuth flow (localhost callback) to get a refresh token
+ * 5. Encrypts the client_secret + credentials with the worker's public key
+ * 6. POSTs the encrypted bundle to the kiloclaw worker (user-facing JWT auth)
  *
  * Usage:
- *   docker run -it -p 8080:8080 kilocode/google-setup --api-key=kilo_abc123
+ *   docker run -it --network host kilocode/google-setup --api-key=kilo_abc123
  */
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import http from 'node:http';
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -29,25 +29,23 @@ const args = process.argv.slice(2);
 const apiKeyArg = args.find(a => a.startsWith('--api-key='));
 const apiKey = apiKeyArg?.split('=')[1];
 
-// The kiloclaw worker URL (user-facing routes use Bearer JWT auth)
 const workerUrl =
   args.find(a => a.startsWith('--worker-url='))?.split('=')[1] ?? 'https://claw.kilo.ai';
 
 if (!apiKey) {
   console.error(
-    'Usage: docker run -it -p 8080:8080 kilocode/google-setup --api-key=<your-api-key>'
+    'Usage: docker run -it --network host kilocode/google-setup --api-key=<your-api-key>'
   );
   process.exit(1);
 }
 
-/** Helper: Bearer auth headers for user-facing worker routes. */
 const authHeaders = {
   authorization: `Bearer ${apiKey}`,
   'content-type': 'application/json',
 };
 
 // ---------------------------------------------------------------------------
-// Hardcoded scopes
+// Scopes
 // ---------------------------------------------------------------------------
 
 const SCOPES = [
@@ -58,7 +56,7 @@ const SCOPES = [
 ];
 
 // ---------------------------------------------------------------------------
-// Step 1: Validate API key by calling a user-facing endpoint
+// Step 1: Validate API key
 // ---------------------------------------------------------------------------
 
 console.log('Validating API key...');
@@ -69,12 +67,10 @@ if (!validateRes.ok) {
   process.exit(1);
 }
 
-// Verify the API key is a valid JWT by calling a read-only authenticated endpoint
 const authCheckRes = await fetch(`${workerUrl}/api/admin/storage`, {
   headers: authHeaders,
 });
 
-// 401/403 = bad key. Any other response (including 410/500) means the key is valid.
 if (authCheckRes.status === 401 || authCheckRes.status === 403) {
   console.error('Invalid API key. Check your key and try again.');
   process.exit(1);
@@ -83,7 +79,7 @@ if (authCheckRes.status === 401 || authCheckRes.status === 403) {
 console.log('API key verified.');
 
 // ---------------------------------------------------------------------------
-// Step 2: Fetch public key for encryption (public endpoint, no auth needed)
+// Step 2: Fetch public key for encryption
 // ---------------------------------------------------------------------------
 
 console.log('Fetching encryption public key...');
@@ -97,13 +93,15 @@ if (!pubKeyRes.ok) {
 const { publicKey: publicKeyPem } = await pubKeyRes.json();
 
 // ---------------------------------------------------------------------------
-// Step 3: Run gws auth setup
+// Step 3: Run gws auth setup (project + OAuth client only, no login)
 // ---------------------------------------------------------------------------
 
 console.log('Setting up Google OAuth client...');
 console.log('Follow the prompts to create an OAuth client in your Google Cloud project.\n');
 
 try {
+  // Don't pass --login: we handle OAuth ourselves to avoid gws's encrypted credential store.
+  // When prompted "Run gws auth login now? [Y/n]", type 'n'.
   execFileSync('gws', ['auth', 'setup'], { stdio: 'inherit' });
 } catch {
   console.error('\nFailed to set up OAuth client. Please try again.');
@@ -111,53 +109,118 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Step 4: Run gws auth login
-// ---------------------------------------------------------------------------
-
-console.log('\nStarting OAuth login flow...');
-console.log('Your browser will open for Google sign-in.\n');
-
-try {
-  execFileSync('gws', ['auth', 'login', '--scopes', SCOPES.join(',')], {
-    stdio: 'inherit',
-  });
-} catch {
-  console.error('\nOAuth login failed. Please try again.');
-  process.exit(1);
-}
-
-// ---------------------------------------------------------------------------
-// Step 5: Read credentials from ~/.config/gws/
+// Step 4: Read client_secret.json and run our own OAuth flow
 // ---------------------------------------------------------------------------
 
 const gwsDir = path.join(process.env.HOME ?? '/root', '.config', 'gws');
 const clientSecretPath = path.join(gwsDir, 'client_secret.json');
-const credentialsPath = path.join(gwsDir, 'credentials.json');
 
-if (!fs.existsSync(clientSecretPath) || !fs.existsSync(credentialsPath)) {
-  console.error('Credential files not found. The OAuth flow may not have completed.');
+if (!fs.existsSync(clientSecretPath)) {
+  console.error('client_secret.json not found. The setup step may not have completed.');
   process.exit(1);
 }
 
-const clientSecret = fs.readFileSync(clientSecretPath, 'utf8');
-const credentials = fs.readFileSync(credentialsPath, 'utf8');
+const clientSecretJson = fs.readFileSync(clientSecretPath, 'utf8');
+const clientConfig = JSON.parse(clientSecretJson);
+const { client_id, client_secret } = clientConfig.installed || clientConfig.web || {};
+
+if (!client_id || !client_secret) {
+  console.error('Invalid client_secret.json format.');
+  process.exit(1);
+}
+
+// Start a local HTTP server for the OAuth callback
+const { code, redirectUri } = await new Promise((resolve, reject) => {
+  let callbackPort;
+
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, `http://localhost`);
+    const code = url.searchParams.get('code');
+    const error = url.searchParams.get('error');
+
+    if (error) {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<h1>Authorization failed</h1><p>You can close this tab.</p>');
+      server.close();
+      reject(new Error(`OAuth error: ${error}`));
+      return;
+    }
+
+    if (code) {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<h1>Authorization successful!</h1><p>You can close this tab.</p>');
+      server.close();
+      resolve({ code, redirectUri: `http://localhost:${callbackPort}` });
+    }
+  });
+
+  server.listen(0, () => {
+    callbackPort = server.address().port;
+    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    authUrl.searchParams.set('client_id', client_id);
+    authUrl.searchParams.set('redirect_uri', `http://localhost:${callbackPort}`);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('scope', SCOPES.join(' '));
+    authUrl.searchParams.set('access_type', 'offline');
+    authUrl.searchParams.set('prompt', 'consent');
+
+    console.log('\nOpen this URL in your browser to authorize:\n');
+    console.log(`  ${authUrl.toString()}\n`);
+    console.log(`Waiting for OAuth callback on port ${callbackPort}...`);
+  });
+
+  const timer = setTimeout(() => {
+    server.close();
+    reject(new Error('OAuth flow timed out (5 minutes)'));
+  }, 5 * 60 * 1000);
+  timer.unref();
+});
+
+// Exchange authorization code for tokens
+console.log('Exchanging authorization code for tokens...');
+
+const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+  method: 'POST',
+  headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams({
+    code,
+    client_id,
+    client_secret,
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code',
+  }),
+});
+
+if (!tokenRes.ok) {
+  const err = await tokenRes.text();
+  console.error('Token exchange failed:', err);
+  process.exit(1);
+}
+
+const tokens = await tokenRes.json();
+// Build a credentials object similar to what gws stores
+const credentialsObj = {
+  ...tokens,
+  client_id,
+  client_secret,
+  scopes: SCOPES,
+};
+const credentialsJson = JSON.stringify(credentialsObj);
+
+console.log('OAuth tokens obtained.');
 
 // ---------------------------------------------------------------------------
-// Step 6: Encrypt credentials
+// Step 5: Encrypt credentials with worker's public key
 // ---------------------------------------------------------------------------
 
-/**
- * Encrypt a value using RSA+AES-256-GCM envelope encryption.
- * Matches the EncryptedEnvelope schema used by kiloclaw.
- */
 function encryptEnvelope(plaintext, pemKey) {
   const dek = crypto.randomBytes(32);
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-gcm', dek, iv);
   let encrypted = cipher.update(plaintext, 'utf8');
   encrypted = Buffer.concat([encrypted, cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  const encryptedData = Buffer.concat([iv, encrypted, authTag]);
+  const tag = cipher.getAuthTag();
+  const encryptedData = Buffer.concat([iv, encrypted, tag]);
   const encryptedDEK = crypto.publicEncrypt(
     { key: pemKey, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
     dek
@@ -173,12 +236,12 @@ function encryptEnvelope(plaintext, pemKey) {
 console.log('Encrypting credentials...');
 
 const encryptedBundle = {
-  clientSecret: encryptEnvelope(clientSecret, publicKeyPem),
-  credentials: encryptEnvelope(credentials, publicKeyPem),
+  clientSecret: encryptEnvelope(clientSecretJson, publicKeyPem),
+  credentials: encryptEnvelope(credentialsJson, publicKeyPem),
 };
 
 // ---------------------------------------------------------------------------
-// Step 7: POST to worker (user-facing, JWT auth resolves userId automatically)
+// Step 6: POST to worker
 // ---------------------------------------------------------------------------
 
 console.log('Sending credentials to your kiloclaw instance...');
