@@ -90,8 +90,8 @@ RUN cd /tmp/controller-build \
     && bun install --frozen-lockfile \
     && CONTROLLER_VERSION="$(date -u +'%Y.%-m.%-d')" \
     && bun build src/index.ts --outfile=/usr/local/bin/kiloclaw-controller.js --target=node --minify \
-       --define "KILOCLAW_CONTROLLER_VERSION='\"${CONTROLLER_VERSION}\"'" \
-       --define "KILOCLAW_CONTROLLER_COMMIT='\"${CONTROLLER_COMMIT}\"'" \
+       --define "KILOCLAW_CONTROLLER_VERSION=\"${CONTROLLER_VERSION}\"" \
+       --define "KILOCLAW_CONTROLLER_COMMIT=\"${CONTROLLER_COMMIT}\"" \
     && rm -rf /tmp/controller-build
 
 # Create OpenClaw directories
