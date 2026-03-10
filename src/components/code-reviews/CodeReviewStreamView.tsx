@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Terminal, CheckCircle2, XCircle } from 'lucide-react';
+import { AlertCircle, Loader2, Terminal, CheckCircle2, XCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTRPC } from '@/lib/trpc/utils';
 import {
@@ -193,7 +193,12 @@ export function CodeReviewStreamView({ reviewId, onComplete }: CodeReviewStreamV
 
   // Mark as complete if the review is already in a terminal state
   useEffect(() => {
-    if (reviewStatus === 'completed' || reviewStatus === 'failed' || reviewStatus === 'cancelled') {
+    if (
+      reviewStatus === 'completed' ||
+      reviewStatus === 'failed' ||
+      reviewStatus === 'cancelled' ||
+      reviewStatus === 'interrupted'
+    ) {
       setIsComplete(true);
       if (reviewStatus === 'completed') {
         onComplete?.();
@@ -413,6 +418,11 @@ export function CodeReviewStreamView({ reviewId, onComplete }: CodeReviewStreamV
               <Badge variant="secondary" className="gap-1.5">
                 <XCircle className="h-3 w-3" />
                 Cancelled
+              </Badge>
+            ) : reviewStatus === 'interrupted' ? (
+              <Badge variant="secondary" className="gap-1.5">
+                <AlertCircle className="h-3 w-3" />
+                Interrupted
               </Badge>
             ) : (
               <Badge variant="default" className="gap-1.5 bg-emerald-500 hover:bg-emerald-600">
