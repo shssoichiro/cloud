@@ -139,6 +139,7 @@ export function CodeReviewDetailClient({ reviewId }: CodeReviewDetailClientProps
     label: review.status,
   };
   const StatusIcon = statusInfo.icon;
+  const canStream = ['running', 'queued'].includes(status);
   const canRetry = ['failed', 'cancelled', 'interrupted'].includes(status);
   const canCancel = ['pending', 'queued', 'running'].includes(status);
   const prLabel = review.platform === 'gitlab' ? 'MR' : 'PR';
@@ -307,14 +308,16 @@ export function CodeReviewDetailClient({ reviewId }: CodeReviewDetailClientProps
       </Card>
 
       {/* Session log / live stream */}
-      <CodeReviewStreamView
-        reviewId={reviewId}
-        onComplete={() => {
-          void queryClient.invalidateQueries({
-            queryKey: trpc.codeReviews.get.queryKey({ reviewId }),
-          });
-        }}
-      />
+      {canStream && (
+        <CodeReviewStreamView
+          reviewId={reviewId}
+          onComplete={() => {
+            void queryClient.invalidateQueries({
+              queryKey: trpc.codeReviews.get.queryKey({ reviewId }),
+            });
+          }}
+        />
+      )}
     </PageContainer>
   );
 }
