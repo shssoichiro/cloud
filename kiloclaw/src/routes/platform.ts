@@ -14,6 +14,7 @@ import {
   DestroyRequestSchema,
   ChannelsPatchSchema,
   GoogleCredentialsSchema,
+  SecretsPatchSchema,
 } from '../schemas/instance-config';
 import {
   ImageVersionEntrySchema,
@@ -79,6 +80,7 @@ const SAFE_ERROR_PREFIXES = [
   'Instance is not ', // e.g. "Instance is not running", "Instance is not provisioned"
   'User already has an ', // duplicate provision
   'Gateway controller ', // already sanitized at DO level
+  'Invalid secret patch: ', // catalog validation (allFieldsRequired, etc.)
 ];
 
 function sanitizeError(err: unknown, operation: string): { message: string; status: number } {
@@ -252,6 +254,26 @@ platform.delete('/google-credentials', async c => {
     return c.json(updated, 200);
   } catch (err) {
     const { message, status } = sanitizeError(err, 'google-credentials delete');
+    return jsonError(message, status);
+  }
+});
+
+// PATCH /api/platform/secrets
+platform.patch('/secrets', async c => {
+  const result = await parseBody(c, SecretsPatchSchema);
+  if ('error' in result) return result.error;
+
+  const { userId, secrets } = result.data;
+
+  try {
+    const updated = await withDORetry(
+      instanceStubFactory(c.env, userId),
+      stub => stub.updateSecrets(secrets),
+      'updateSecrets'
+    );
+    return c.json(updated, 200);
+  } catch (err) {
+    const { message, status } = sanitizeError(err, 'secrets patch');
     return jsonError(message, status);
   }
 });
