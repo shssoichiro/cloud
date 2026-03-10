@@ -1622,10 +1622,9 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       try {
         await fly.stopMachineAndWait(flyConfig, this.flyMachineId);
       } catch (stopErr) {
-        console.warn(
-          '[DO] restartGateway: stop timed out, will update in-place:',
-          stopErr instanceof Error ? stopErr.message : String(stopErr)
-        );
+        const isTimeout = stopErr instanceof fly.FlyApiError && stopErr.status === 408;
+        if (!isTimeout) throw stopErr;
+        console.warn('[DO] restartGateway: stop timed out, will update in-place:', stopErr.message);
       }
 
       const { envVars, minSecretsVersion } = await this.buildUserEnvVars();
