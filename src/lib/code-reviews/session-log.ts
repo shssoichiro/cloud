@@ -131,7 +131,10 @@ export function v2SnapshotToLogEntries(snapshot: SessionSnapshot): SessionLogEnt
 export function v1BlobToLogEntries(rawMessages: unknown): SessionLogEntry[] {
   if (!Array.isArray(rawMessages)) return [];
 
-  const cloudMessages = convertToCloudMessages(rawMessages as Array<Record<string, unknown>>);
+  const validMessages = rawMessages.filter(
+    (m): m is Record<string, unknown> => m !== null && typeof m === 'object'
+  );
+  const cloudMessages = convertToCloudMessages(validMessages);
   const entries: SessionLogEntry[] = [];
 
   for (const msg of cloudMessages) {
