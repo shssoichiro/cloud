@@ -903,6 +903,52 @@ describe('WrapperClient', () => {
 
       expect(session.startProcess).toHaveBeenCalledTimes(1);
     });
+
+    it('surfaces fatal bun SIGILL even when the file check rejects', async () => {
+      const session = createMockSession(createCurlError(7, 'Connection refused'));
+      (session.exec as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+        if (cmd.startsWith('bun --version')) {
+          return Promise.resolve({ exitCode: 132, stderr: '' });
+        }
+        if (cmd.startsWith('test -f')) {
+          return Promise.reject(new Error('sandbox timeout'));
+        }
+        return Promise.resolve(createCurlError(7, 'Connection refused'));
+      });
+
+      const client = new WrapperClient({ session, port: defaultPort });
+
+      await expect(
+        client.ensureRunning({
+          sessionId: 'test-session',
+          kiloServerPort: 4600,
+          workspacePath: '/workspace/test',
+        })
+      ).rejects.toThrow(/SIGILL/);
+    });
+
+    it('surfaces missing wrapper even when the bun check rejects', async () => {
+      const session = createMockSession(createCurlError(7, 'Connection refused'));
+      (session.exec as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+        if (cmd.startsWith('bun --version')) {
+          return Promise.reject(new Error('sandbox timeout'));
+        }
+        if (cmd.startsWith('test -f')) {
+          return Promise.resolve({ exitCode: 1, stdout: '' });
+        }
+        return Promise.resolve(createCurlError(7, 'Connection refused'));
+      });
+
+      const client = new WrapperClient({ session, port: defaultPort });
+
+      await expect(
+        client.ensureRunning({
+          sessionId: 'test-session',
+          kiloServerPort: 4600,
+          workspacePath: '/workspace/test',
+        })
+      ).rejects.toThrow(/not found in container/);
+    });
   });
 
   // -------------------------------------------------------------------------
