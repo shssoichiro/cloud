@@ -116,6 +116,28 @@ export const adminCodeReviewsRouter = createTRPCRouter({
     const terminalCount =
       completedCount + failedCount + interruptedCount + cancelledCount + insufficientCreditsCount;
 
+    // Per-version breakdown (only when viewing all versions)
+    const baseConditions = [
+      gte(cloud_agent_code_reviews.created_at, startDate),
+      lt(cloud_agent_code_reviews.created_at, endDate),
+      ownershipFilter,
+    ].filter(Boolean) as SQL[];
+
+    const versionBreakdown =
+      !agentVersion || agentVersion === 'all'
+        ? await db
+            .select({
+              agent_version: sql<string>`COALESCE(${cloud_agent_code_reviews.agent_version}, 'unknown')`,
+              total: sql<number>`COUNT(*)`,
+              completed: sql<number>`COUNT(*) FILTER (WHERE ${cloud_agent_code_reviews.status} = 'completed')`,
+              failed: sql<number>`COUNT(*) FILTER (WHERE ${cloud_agent_code_reviews.status} = 'failed' AND ${excludeInsufficientCreditsError})`,
+              avg_duration_seconds: sql<number>`AVG(EXTRACT(EPOCH FROM (${cloud_agent_code_reviews.completed_at}::timestamp - ${cloud_agent_code_reviews.started_at}::timestamp))) FILTER (WHERE ${cloud_agent_code_reviews.completed_at} IS NOT NULL AND ${cloud_agent_code_reviews.started_at} IS NOT NULL)`,
+            })
+            .from(cloud_agent_code_reviews)
+            .where(and(...baseConditions))
+            .groupBy(cloud_agent_code_reviews.agent_version)
+        : undefined;
+
     return {
       totalReviews: total,
       completedCount,
@@ -130,6 +152,13 @@ export const adminCodeReviewsRouter = createTRPCRouter({
       // Note: cancelled and insufficient credits are neutral (not success, not failure)
       failureRate: terminalCount > 0 ? ((failedCount + interruptedCount) / terminalCount) * 100 : 0,
       avgDurationSeconds: Number(stats.avg_duration_seconds) || 0,
+      versionBreakdown: versionBreakdown?.map(row => ({
+        agentVersion: row.agent_version,
+        total: Number(row.total) || 0,
+        completed: Number(row.completed) || 0,
+        failed: Number(row.failed) || 0,
+        avgDurationSeconds: Number(row.avg_duration_seconds) || 0,
+      })),
     };
   }),
 
