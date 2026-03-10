@@ -23,5 +23,5 @@ export { createNotFoundHandler } from './not-found-handler.js';
 
 export type { Owner, MCPServerConfig } from './types.js';
 
-export { verifyKiloToken, kiloTokenPayload } from './kilo-token.js';
-export type { KiloTokenPayload } from './kilo-token.js';
+export { signKiloToken, verifyKiloToken, kiloTokenPayload } from './kilo-token.js';
+export type { KiloTokenPayload, SignKiloTokenExtra } from './kilo-token.js';

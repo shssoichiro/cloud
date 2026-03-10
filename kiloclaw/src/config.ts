@@ -25,6 +25,9 @@ export const KILOCLAW_AUTH_COOKIE_MAX_AGE = 60 * 60 * 24;
 /** Expected JWT token version -- must match cloud's JWT_TOKEN_VERSION */
 export const KILO_TOKEN_VERSION = 3;
 
+/** API key max age for gateway credentials minted by the worker */
+export const KILOCODE_API_KEY_EXPIRY_SECONDS = 30 * 24 * 60 * 60;
+
 /** Default Fly Machine guest spec (shared-cpu-2x, 3GB) */
 export const DEFAULT_MACHINE_GUEST = {
   cpus: 2,
