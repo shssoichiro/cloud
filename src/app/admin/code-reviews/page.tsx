@@ -31,6 +31,7 @@ const breadcrumbs = (
 
 type RangeType = '7d' | '30d' | '90d';
 type OwnershipType = 'all' | 'personal' | 'organization';
+type AgentVersionType = 'all' | 'v1' | 'v2';
 
 type SelectedUser = {
   id: string;
@@ -54,6 +55,7 @@ export default function CodeReviewsPage() {
 
   // Filter state
   const [ownershipType, setOwnershipType] = useState<OwnershipType>('all');
+  const [agentVersion, setAgentVersion] = useState<AgentVersionType>('all');
   const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<SelectedOrg | null>(null);
 
@@ -92,8 +94,9 @@ export default function CodeReviewsPage() {
       userId: selectedUser?.id,
       organizationId: selectedOrg?.id,
       ownershipType: selectedUser || selectedOrg ? undefined : ownershipType,
+      agentVersion,
     }),
-    [startDate, endDate, selectedUser, selectedOrg, ownershipType]
+    [startDate, endDate, selectedUser, selectedOrg, ownershipType, agentVersion]
   );
 
   // Queries
@@ -142,11 +145,13 @@ export default function CodeReviewsPage() {
     setSelectedUser(null);
     setSelectedOrg(null);
     setOwnershipType('all');
+    setAgentVersion('all');
     setUserSearchQuery('');
     setOrgSearchQuery('');
   };
 
-  const hasActiveFilter = selectedUser || selectedOrg || ownershipType !== 'all';
+  const hasActiveFilter =
+    selectedUser || selectedOrg || ownershipType !== 'all' || agentVersion !== 'all';
 
   // Handle CSV export
   const handleExport = useCallback(async () => {
@@ -246,6 +251,24 @@ export default function CodeReviewsPage() {
                   className="h-4 w-4"
                 />
                 {type === 'all' ? 'All' : type === 'personal' ? 'Personal' : 'Organizations'}
+              </label>
+            ))}
+          </div>
+
+          {/* Agent Version Filter */}
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="text-sm font-medium">Agent Version:</span>
+            {(['all', 'v1', 'v2'] as AgentVersionType[]).map(version => (
+              <label key={version} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="agentVersion"
+                  value={version}
+                  checked={agentVersion === version}
+                  onChange={() => setAgentVersion(version)}
+                  className="h-4 w-4"
+                />
+                {version === 'all' ? 'All Versions' : version.toUpperCase()}
               </label>
             ))}
           </div>

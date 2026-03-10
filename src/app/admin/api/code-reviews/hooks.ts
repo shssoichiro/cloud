@@ -9,6 +9,7 @@ export type FilterParams = {
   userId?: string;
   organizationId?: string;
   ownershipType?: 'all' | 'personal' | 'organization';
+  agentVersion?: 'all' | 'v1' | 'v2';
 };
 
 export function useCodeReviewOverviewStats(params: FilterParams) {
