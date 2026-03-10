@@ -46,7 +46,9 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export function CodeReviewErrorAnalysis({ data }: { data: ErrorAnalysisData }) {
   const totalCategoryErrors = data.categories.reduce((sum, cat) => sum + cat.count, 0);
-  const totalDetailErrors = data.details.reduce((sum, error) => sum + error.count, 0);
+  // Use category totals (uncapped) as the denominator so percentages are accurate
+  // even when the detail list is truncated to top 50.
+  const totalErrors = totalCategoryErrors;
   const maxCategoryCount = Math.max(...data.categories.map(c => c.count), 1);
 
   if (data.details.length === 0) {
@@ -125,7 +127,7 @@ export function CodeReviewErrorAnalysis({ data }: { data: ErrorAnalysisData }) {
                   </TableCell>
                   <TableCell className="text-right font-medium">{error.count}</TableCell>
                   <TableCell className="text-muted-foreground text-right">
-                    {((error.count / totalDetailErrors) * 100).toFixed(1)}%
+                    {((error.count / totalErrors) * 100).toFixed(1)}%
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">
                     {formatDate(error.firstOccurrence)}
