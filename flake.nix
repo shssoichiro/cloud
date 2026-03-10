@@ -36,6 +36,7 @@
             postgresql_18
             wrangler
             nodePackages.vercel
+            flyctl
           ];
         };
     in
