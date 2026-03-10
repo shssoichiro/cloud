@@ -2772,7 +2772,9 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     }
   }
 
-  private async mintFreshApiKey(secret: string): Promise<{ token: string; expiresAt: string } | null> {
+  private async mintFreshApiKey(
+    secret: string
+  ): Promise<{ token: string; expiresAt: string } | null> {
     const connectionString = this.env.HYPERDRIVE?.connectionString;
     if (!this.userId || !connectionString) {
       return null;

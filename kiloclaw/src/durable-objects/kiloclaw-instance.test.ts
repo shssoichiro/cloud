@@ -822,12 +822,14 @@ describe('status guards', () => {
 describe('buildUserEnvVars API key refresh', () => {
   async function callBuildUserEnvVars(instance: KiloClawInstance) {
     await (instance as unknown as { loadState: () => Promise<void> }).loadState();
-    return await (instance as unknown as {
-      buildUserEnvVars: () => Promise<{
-        envVars: Record<string, string>;
-        minSecretsVersion: number;
-      }>;
-    }).buildUserEnvVars();
+    return await (
+      instance as unknown as {
+        buildUserEnvVars: () => Promise<{
+          envVars: Record<string, string>;
+          minSecretsVersion: number;
+        }>;
+      }
+    ).buildUserEnvVars();
   }
 
   beforeEach(() => {
@@ -933,9 +935,7 @@ describe('buildUserEnvVars API key refresh', () => {
       kilocodeApiKey: 'stored-key',
       kilocodeApiKeyExpiresAt: '2026-01-01T00:00:00.000Z',
     });
-    (db.findPepperByUserId as Mock).mockImplementationOnce(
-      () => new Promise(() => undefined)
-    );
+    (db.findPepperByUserId as Mock).mockImplementationOnce(() => new Promise(() => undefined));
 
     const buildPromise = callBuildUserEnvVars(instance);
     await vi.advanceTimersByTimeAsync(5_000);
