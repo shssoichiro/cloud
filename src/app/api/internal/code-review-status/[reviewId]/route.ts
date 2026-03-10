@@ -18,7 +18,12 @@
 
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { updateCodeReviewStatus, getCodeReviewById } from '@/lib/code-reviews/db/code-reviews';
+import {
+  updateCodeReviewStatus,
+  updateCodeReviewUsage,
+  getCodeReviewById,
+  getSessionUsageFromBilling,
+} from '@/lib/code-reviews/db/code-reviews';
 import { tryDispatchPendingReviews } from '@/lib/code-reviews/dispatch/dispatch-pending-reviews';
 import { getBotUserId } from '@/lib/bot-users/bot-user-service';
 import { logExceptInTest, errorExceptInTest } from '@/lib/utils.server';
@@ -111,25 +116,62 @@ function normalizePayload(raw: StatusUpdatePayload): {
 }
 
 /**
- * Read a review's usage data, polling with exponential backoff if not yet available.
- * Handles the race between the orchestrator's usage report and the cloud agent's completion callback.
+ * Read a review's usage data.
+ *
+ * For v1 (SSE) reviews the orchestrator writes usage to the record just
+ * before the completion callback, so a short poll handles the race.
+ * For v2 (cloud-agent-next) the orchestrator never writes usage — we
+ * skip the poll and go straight to the billing tables.
+ *
+ * When the billing fallback is used we also back-fill the code_reviews
+ * record so later reads (e.g. admin panel) don't repeat the aggregation.
  */
 async function getReviewUsageData(reviewId: string) {
-  const MAX_RETRIES = 3;
-  const BASE_DELAY_MS = 200;
-
   let review = await getCodeReviewById(reviewId);
 
-  for (let attempt = 0; attempt < MAX_RETRIES && review && !review.model; attempt++) {
-    await new Promise(resolve => setTimeout(resolve, BASE_DELAY_MS * 2 ** attempt));
-    review = await getCodeReviewById(reviewId);
+  // v1 only: poll briefly — usage may arrive from the orchestrator
+  // right before the callback. v2 never writes usage to the record,
+  // so polling would just waste ~1.4s for nothing.
+  if (review && !review.model && review.agent_version !== 'v2') {
+    const MAX_RETRIES = 3;
+    const BASE_DELAY_MS = 200;
+    for (let attempt = 0; attempt < MAX_RETRIES && review && !review.model; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, BASE_DELAY_MS * 2 ** attempt));
+      review = await getCodeReviewById(reviewId);
+    }
   }
 
-  return {
-    model: review?.model ?? null,
-    tokensIn: review?.total_tokens_in ?? null,
-    tokensOut: review?.total_tokens_out ?? null,
-  };
+  if (review?.model) {
+    return {
+      model: review.model,
+      tokensIn: review.total_tokens_in ?? null,
+      tokensOut: review.total_tokens_out ?? null,
+    };
+  }
+
+  // Fallback: aggregate from billing tables (covers v2 / cloud-agent-next reviews)
+  if (review?.cli_session_id && review.created_at) {
+    const billing = await getSessionUsageFromBilling(review.cli_session_id, review.created_at);
+    if (billing) {
+      // Back-fill the code_reviews record so we don't repeat this aggregation
+      updateCodeReviewUsage(reviewId, {
+        model: billing.model,
+        totalTokensIn: billing.totalTokensIn,
+        totalTokensOut: billing.totalTokensOut,
+        totalCostMusd: billing.totalCostMusd,
+      }).catch(err => {
+        logExceptInTest('[code-review-status] Failed to back-fill usage from billing', err);
+      });
+
+      return {
+        model: billing.model,
+        tokensIn: billing.totalTokensIn,
+        tokensOut: billing.totalTokensOut,
+      };
+    }
+  }
+
+  return { model: null, tokensIn: null, tokensOut: null };
 }
 
 /**

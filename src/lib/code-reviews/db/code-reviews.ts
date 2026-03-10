@@ -6,8 +6,12 @@
  */
 
 import { db } from '@/lib/drizzle';
-import { cloud_agent_code_reviews } from '@kilocode/db/schema';
-import { eq, and, desc, count, ne, inArray } from 'drizzle-orm';
+import {
+  cloud_agent_code_reviews,
+  microdollar_usage,
+  microdollar_usage_metadata,
+} from '@kilocode/db/schema';
+import { eq, and, desc, count, ne, inArray, sql, sum, gte } from 'drizzle-orm';
 import { captureException } from '@sentry/nextjs';
 import type { CreateReviewParams, CodeReviewStatus, ListReviewsParams, Owner } from '../core';
 import type { CloudAgentCodeReview } from '@kilocode/db/schema';
@@ -477,5 +481,80 @@ export async function userOwnsReview(reviewId: string, userId: string): Promise<
       extra: { reviewId, userId },
     });
     throw error;
+  }
+}
+
+/**
+ * Result of aggregating billing usage for a session.
+ */
+export type SessionUsageSummary = {
+  model: string;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  totalCostMusd: number;
+};
+
+/**
+ * Aggregates LLM usage from the billing tables for a given kilo session ID.
+ *
+ * This is the fallback path for v2 (cloud-agent-next) reviews where the
+ * orchestrator does not accumulate usage from SSE events.  The billing
+ * system (processUsage → microdollar_usage) already records per-request
+ * usage keyed by session_id, so we aggregate here.
+ *
+ * The `reviewCreatedAt` lower bound lets Postgres use the existing
+ * `idx_microdollar_usage_metadata_created_at` index instead of seq-scanning
+ * the full table (~469 M rows). Billing rows cannot exist before the review.
+ */
+export async function getSessionUsageFromBilling(
+  cliSessionId: string,
+  reviewCreatedAt: string
+): Promise<SessionUsageSummary | null> {
+  try {
+    const joinCondition = eq(microdollar_usage.id, microdollar_usage_metadata.id);
+    const sessionFilter = and(
+      eq(microdollar_usage_metadata.session_id, cliSessionId),
+      gte(microdollar_usage_metadata.created_at, reviewCreatedAt)
+    );
+
+    // 1. Session-wide totals (all models combined)
+    const [totals] = await db
+      .select({
+        totalTokensIn: sum(microdollar_usage.input_tokens).mapWith(Number),
+        totalTokensOut: sum(microdollar_usage.output_tokens).mapWith(Number),
+        totalCostMusd: sum(microdollar_usage.cost).mapWith(Number),
+      })
+      .from(microdollar_usage)
+      .innerJoin(microdollar_usage_metadata, joinCondition)
+      .where(sessionFilter);
+
+    if (totals?.totalTokensIn == null) return null;
+
+    // 2. Pick the model with the most tokens (the primary review model)
+    const [topModel] = await db
+      .select({ model: microdollar_usage.model })
+      .from(microdollar_usage)
+      .innerJoin(microdollar_usage_metadata, joinCondition)
+      .where(sessionFilter)
+      .groupBy(microdollar_usage.model)
+      .orderBy(
+        sql`sum(${microdollar_usage.input_tokens} + ${microdollar_usage.output_tokens}) desc`
+      )
+      .limit(1);
+
+    if (!topModel?.model) return null;
+
+    return {
+      model: topModel.model,
+      totalTokensIn: totals.totalTokensIn,
+      totalTokensOut: totals.totalTokensOut ?? 0,
+      totalCostMusd: totals.totalCostMusd ?? 0,
+    };
+  } catch (error) {
+    captureException(error, {
+      tags: { operation: 'getSessionUsageFromBilling' },
+      extra: { cliSessionId },
+    });
+    return null;
   }
 }
