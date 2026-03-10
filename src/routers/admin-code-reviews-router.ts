@@ -328,13 +328,7 @@ export const adminCodeReviewsRouter = createTRPCRouter({
             kilocode_users,
             eq(cloud_agent_code_reviews.owned_by_user_id, kilocode_users.id)
           )
-          .where(
-            and(
-              isNotNull(cloud_agent_code_reviews.owned_by_user_id),
-              gte(cloud_agent_code_reviews.created_at, startDate),
-              lt(cloud_agent_code_reviews.created_at, endDate)
-            )
-          )
+          .where(and(isNotNull(cloud_agent_code_reviews.owned_by_user_id), ...baseConditions))
           .groupBy(
             cloud_agent_code_reviews.owned_by_user_id,
             kilocode_users.google_user_email,
@@ -360,11 +354,7 @@ export const adminCodeReviewsRouter = createTRPCRouter({
             eq(cloud_agent_code_reviews.owned_by_organization_id, organizations.id)
           )
           .where(
-            and(
-              isNotNull(cloud_agent_code_reviews.owned_by_organization_id),
-              gte(cloud_agent_code_reviews.created_at, startDate),
-              lt(cloud_agent_code_reviews.created_at, endDate)
-            )
+            and(isNotNull(cloud_agent_code_reviews.owned_by_organization_id), ...baseConditions)
           )
           .groupBy(
             cloud_agent_code_reviews.owned_by_organization_id,
