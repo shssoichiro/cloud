@@ -20,6 +20,7 @@ import {
 import { useTRPC } from '@/lib/trpc/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow, format } from 'date-fns';
+import { TRPCClientError } from '@trpc/client';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -109,8 +110,7 @@ export function CodeReviewDetailClient({ reviewId }: CodeReviewDetailClientProps
   }
 
   if (error || !data?.success) {
-    // tRPC NOT_FOUND errors surface as TRPCClientError
-    if (error?.message === 'Code review not found') {
+    if (error instanceof TRPCClientError && error.data?.code === 'NOT_FOUND') {
       return notFound();
     }
     return (
