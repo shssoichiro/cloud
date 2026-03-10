@@ -502,40 +502,51 @@ export type SessionUsageSummary = {
  * system (processUsage → microdollar_usage) already records per-request
  * usage keyed by session_id, so we aggregate here.
  *
- * Returns the model with the highest token volume (the primary review model)
- * along with totals across all LLM calls in the session.
+ * Uses two queries:
+ * 1. Session-wide totals (tokens + cost across all models)
+ * 2. The model with the most tokens (the primary review model name)
+ *
+ * This avoids undercounting when a session uses more than one model.
  */
 export async function getSessionUsageFromBilling(
   cliSessionId: string
 ): Promise<SessionUsageSummary | null> {
   try {
-    const rows = await db
+    const sessionFilter = eq(microdollar_usage_metadata.session_id, cliSessionId);
+    const joinCondition = eq(microdollar_usage.id, microdollar_usage_metadata.id);
+
+    // 1. Session-wide totals (all models combined)
+    const [totals] = await db
       .select({
-        model: microdollar_usage.model,
         totalTokensIn: sum(microdollar_usage.input_tokens).mapWith(Number),
         totalTokensOut: sum(microdollar_usage.output_tokens).mapWith(Number),
         totalCostMusd: sum(microdollar_usage.cost).mapWith(Number),
       })
       .from(microdollar_usage)
-      .innerJoin(
-        microdollar_usage_metadata,
-        eq(microdollar_usage.id, microdollar_usage_metadata.id)
-      )
-      .where(eq(microdollar_usage_metadata.session_id, cliSessionId))
+      .innerJoin(microdollar_usage_metadata, joinCondition)
+      .where(sessionFilter);
+
+    if (totals?.totalTokensIn == null) return null;
+
+    // 2. Pick the model with the most tokens (the primary review model)
+    const [topModel] = await db
+      .select({ model: microdollar_usage.model })
+      .from(microdollar_usage)
+      .innerJoin(microdollar_usage_metadata, joinCondition)
+      .where(sessionFilter)
       .groupBy(microdollar_usage.model)
       .orderBy(
         sql`sum(${microdollar_usage.input_tokens} + ${microdollar_usage.output_tokens}) desc`
       )
       .limit(1);
 
-    const row = rows[0];
-    if (!row?.model || row.totalTokensIn == null) return null;
+    if (!topModel?.model) return null;
 
     return {
-      model: row.model,
-      totalTokensIn: row.totalTokensIn,
-      totalTokensOut: row.totalTokensOut ?? 0,
-      totalCostMusd: row.totalCostMusd ?? 0,
+      model: topModel.model,
+      totalTokensIn: totals.totalTokensIn,
+      totalTokensOut: totals.totalTokensOut ?? 0,
+      totalCostMusd: totals.totalCostMusd ?? 0,
     };
   } catch (error) {
     captureException(error, {
