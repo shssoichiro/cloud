@@ -8,7 +8,7 @@ import {
   organizations,
 } from '@kilocode/db/schema';
 import * as z from 'zod';
-import { sql, and, gte, lt, eq, isNotNull, desc, ilike, or, type SQL } from 'drizzle-orm';
+import { sql, and, gte, lt, eq, isNotNull, isNull, desc, ilike, or, type SQL } from 'drizzle-orm';
 import {
   REVIEW_PROMO_MODEL,
   REVIEW_PROMO_START,
@@ -85,6 +85,13 @@ function buildOwnershipFilter(
 /** Returns a SQL condition filtering by agent_version, or undefined for 'all'. */
 function buildAgentVersionFilter(agentVersion?: 'all' | 'v1' | 'v2'): SQL | undefined {
   if (!agentVersion || agentVersion === 'all') return undefined;
+  // NULL agent_version is treated as 'v1' (schema default + existing normalization)
+  if (agentVersion === 'v1') {
+    return or(
+      eq(cloud_agent_code_reviews.agent_version, 'v1'),
+      isNull(cloud_agent_code_reviews.agent_version)
+    );
+  }
   return eq(cloud_agent_code_reviews.agent_version, agentVersion);
 }
 
