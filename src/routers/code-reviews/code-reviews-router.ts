@@ -45,7 +45,14 @@ import { codeReviewWorkerClient } from '@/lib/code-reviews/client/code-review-wo
 import { tryDispatchPendingReviews } from '@/lib/code-reviews/dispatch/dispatch-pending-reviews';
 import { getBotUserId } from '@/lib/bot-users/bot-user-service';
 import type { CloudAgentCodeReview } from '@kilocode/db/schema';
+import { cliSessions, cli_sessions_v2 } from '@kilocode/db/schema';
 import { isFeatureFlagEnabled } from '@/lib/posthog-feature-flags';
+import { isNewSession } from '@/lib/cloud-agent/session-type';
+import { fetchSessionSnapshot } from '@/lib/session-ingest-client';
+import { getBlobContent } from '@/lib/r2/cli-sessions';
+import { db } from '@/lib/drizzle';
+import { eq } from 'drizzle-orm';
+import { v2SnapshotToLogEntries, v1BlobToLogEntries } from '@/lib/code-reviews/session-log';
 
 /**
  * Re-creates the PR gate check (GitHub Check Run / GitLab commit status)
@@ -605,6 +612,104 @@ export const codeReviewRouter = createTRPCRouter({
         }
         return failureResult(
           error instanceof Error ? error.message : 'Failed to get review stream info'
+        );
+      }
+    }),
+
+  /**
+   * Get historical session messages for a completed code review.
+   * Fetches from session-ingest (v2) or R2 blob storage (v1) and returns
+   * pre-formatted log entries for the terminal view.
+   */
+  getSessionMessages: baseProcedure
+    .input(
+      z.object({
+        reviewId: z.string().uuid(),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      try {
+        const review = await getCodeReviewById(input.reviewId);
+
+        if (!review) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Code review not found',
+          });
+        }
+
+        // Authorization check based on owner type
+        if (review.owned_by_organization_id) {
+          await ensureOrganizationAccess(ctx, review.owned_by_organization_id);
+        } else if (review.owned_by_user_id) {
+          if (review.owned_by_user_id !== ctx.user.id) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: 'You do not have access to this code review',
+            });
+          }
+        } else {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Invalid review ownership data',
+          });
+        }
+
+        const cliSessionId = review.cli_session_id;
+        if (!cliSessionId) {
+          return successResult({ entries: [] });
+        }
+
+        // V2 sessions (ses_* prefix): fetch from session-ingest worker
+        if (isNewSession(cliSessionId)) {
+          const [session] = await db
+            .select({ kilo_user_id: cli_sessions_v2.kilo_user_id })
+            .from(cli_sessions_v2)
+            .where(eq(cli_sessions_v2.session_id, cliSessionId))
+            .limit(1);
+
+          if (!session) {
+            return successResult({ entries: [] });
+          }
+
+          let snapshot;
+          try {
+            snapshot = await fetchSessionSnapshot(cliSessionId, session.kilo_user_id);
+          } catch (snapshotError) {
+            // Network errors (e.g. session-ingest worker unreachable) should not
+            // bubble up as a hard failure â return empty entries instead.
+            logExceptInTest(
+              `[getSessionMessages] Failed to fetch session snapshot for ${cliSessionId}:`,
+              snapshotError
+            );
+            return successResult({ entries: [] });
+          }
+          if (!snapshot) {
+            return successResult({ entries: [] });
+          }
+
+          return successResult({ entries: v2SnapshotToLogEntries(snapshot) });
+        }
+
+        // V1 sessions (UUID): fetch from R2 blob storage
+        const [session] = await db
+          .select({ ui_messages_blob_url: cliSessions.ui_messages_blob_url })
+          .from(cliSessions)
+          .where(eq(cliSessions.session_id, cliSessionId))
+          .limit(1);
+
+        if (!session?.ui_messages_blob_url) {
+          return successResult({ entries: [] });
+        }
+
+        const blobContent = await getBlobContent(session.ui_messages_blob_url);
+        return successResult({ entries: v1BlobToLogEntries(blobContent) });
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        return failureResult(
+          error instanceof Error ? error.message : 'Failed to get session messages'
         );
       }
     }),
