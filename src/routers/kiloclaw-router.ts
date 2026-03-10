@@ -464,8 +464,10 @@ export const kiloclawRouter = createTRPCRouter({
 
   getGoogleSetupCommand: baseProcedure.query(({ ctx }) => {
     const apiKey = generateApiToken(ctx.user);
+    const isDev = process.env.NODE_ENV === 'development';
+    const workerFlag = isDev ? ' --worker-url=http://localhost:8795' : '';
     return {
-      command: `docker run -it --network host ghcr.io/kilo-org/google-setup --api-key="${apiKey}"`,
+      command: `docker run -it --network host ghcr.io/kilo-org/google-setup --api-key="${apiKey}"${workerFlag}`,
     };
   }),
 
