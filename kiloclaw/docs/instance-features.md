@@ -21,8 +21,8 @@ DO (source of truth) → buildEnvVars() → config.env → Fly machine → start
 
 ## Current flags
 
-| Feature name | Env var | Description |
-|---|---|---|
+| Feature name        | Env var                      | Description                                                                                                                                                                                              |
+| ------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm-global-prefix` | `KILOCLAW_NPM_GLOBAL_PREFIX` | Redirects `npm install -g` to `/root/.npm-global` (persistent volume) instead of `/usr/local` (image layer, lost on restart). PATH is set in the Dockerfile; `NPM_CONFIG_PREFIX` is exported at runtime. |
 
 ## Adding a new flag
