@@ -59,7 +59,7 @@ export function v2SnapshotToLogEntries(snapshot: SessionSnapshot): SessionLogEnt
       const partType = p.type as string | undefined;
 
       if (partType === 'tool') {
-        const toolName = p.name as string | undefined;
+        const toolName = (p.tool as string | undefined) ?? (p.name as string | undefined);
         const state = p.state as Record<string, unknown> | undefined;
         const status = state?.status as string | undefined;
         const input = state?.input as Record<string, unknown> | undefined;
