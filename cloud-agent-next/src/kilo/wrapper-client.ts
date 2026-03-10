@@ -130,6 +130,83 @@ export class WrapperClient {
   private readonly port: number;
   private readonly baseUrl: string;
 
+  private async runPreflightChecks(options: {
+    wrapperPath: string;
+    workspacePath: string;
+  }): Promise<void> {
+    const { wrapperPath, workspacePath } = options;
+
+    // Verify bun runtime and wrapper binary before the full start+waitForPort loop.
+    // A fast `bun --version` catches SIGILL (exit 132) on hosts whose CPU lacks
+    // required instructions, missing/corrupt binaries, etc. We also verify the
+    // wrapper script exists.
+    try {
+      const [bunResult, fileResult] = await Promise.allSettled([
+        this.session.exec('bun --version', { timeout: 5_000 }),
+        this.session.exec(`test -f ${wrapperPath} && echo ok`, {
+          timeout: 5_000,
+          cwd: workspacePath,
+        }),
+      ]);
+
+      if (bunResult.status === 'fulfilled' && bunResult.value.exitCode !== 0) {
+        const detail =
+          bunResult.value.exitCode === 132
+            ? 'SIGILL -- bun binary incompatible with host CPU'
+            : `exit code ${bunResult.value.exitCode}`;
+        throw new WrapperNotReadyError(
+          `Wrapper pre-flight failed: bun runtime is broken (${detail}). stderr: ${bunResult.value.stderr?.trim() ?? '(empty)'}`
+        );
+      }
+
+      if (fileResult.status === 'fulfilled' && !fileResult.value.stdout?.includes('ok')) {
+        throw new WrapperNotReadyError(
+          `Wrapper pre-flight failed: ${wrapperPath} not found in container`
+        );
+      }
+
+      if (bunResult.status === 'rejected' && fileResult.status === 'rejected') {
+        logger.warn('WrapperClient: pre-flight check failed to execute, proceeding anyway', {
+          bunError:
+            bunResult.reason instanceof Error ? bunResult.reason.message : String(bunResult.reason),
+          fileError:
+            fileResult.reason instanceof Error
+              ? fileResult.reason.message
+              : String(fileResult.reason),
+        });
+        return;
+      }
+
+      if (bunResult.status === 'rejected') {
+        logger.warn('WrapperClient: bun pre-flight exec failed, proceeding anyway', {
+          error:
+            bunResult.reason instanceof Error ? bunResult.reason.message : String(bunResult.reason),
+        });
+      }
+
+      if (fileResult.status === 'rejected') {
+        logger.warn('WrapperClient: file pre-flight exec failed, proceeding anyway', {
+          error:
+            fileResult.reason instanceof Error
+              ? fileResult.reason.message
+              : String(fileResult.reason),
+        });
+      }
+
+      if (bunResult.status === 'fulfilled') {
+        logger.debug('WrapperClient: pre-flight passed', {
+          bunVersion: bunResult.value.stdout?.trim(),
+        });
+      }
+    } catch (error) {
+      if (error instanceof WrapperNotReadyError) throw error;
+
+      logger.warn('WrapperClient: pre-flight check failed unexpectedly, proceeding anyway', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   constructor(options: WrapperClientOptions) {
     this.session = options.session;
     this.port = options.port;
@@ -244,78 +321,7 @@ export class WrapperClient {
       logger.debug('WrapperClient: wrapper not running, starting...');
     }
 
-    // Pre-flight: verify bun runtime and wrapper binary are functional before
-    // committing to the full start+waitForPort loop.  A fast `bun --version`
-    // catches SIGILL (exit 132) on hosts whose CPU lacks required instructions,
-    // missing/corrupt binaries, etc.  We also verify the wrapper script exists.
-    try {
-      const [bunResult, fileResult] = await Promise.allSettled([
-        this.session.exec('bun --version', { timeout: 5_000 }),
-        this.session.exec(`test -f ${wrapperPath} && echo ok`, {
-          timeout: 5_000,
-          cwd: workspacePath,
-        }),
-      ]);
-
-      // Check for fatal bun failures even if the other probe rejected
-      if (bunResult.status === 'fulfilled' && bunResult.value.exitCode !== 0) {
-        const detail =
-          bunResult.value.exitCode === 132
-            ? 'SIGILL â bun binary incompatible with host CPU'
-            : `exit code ${bunResult.value.exitCode}`;
-        throw new WrapperNotReadyError(
-          `Wrapper pre-flight failed: bun runtime is broken (${detail}). stderr: ${bunResult.value.stderr?.trim() ?? '(empty)'}`
-        );
-      }
-
-      if (fileResult.status === 'fulfilled' && !fileResult.value.stdout?.includes('ok')) {
-        throw new WrapperNotReadyError(
-          `Wrapper pre-flight failed: ${wrapperPath} not found in container`
-        );
-      }
-
-      // If both rejected, the exec transport itself is broken — warn but proceed
-      if (bunResult.status === 'rejected' && fileResult.status === 'rejected') {
-        logger.warn('WrapperClient: pre-flight check failed to execute, proceeding anyway', {
-          bunError:
-            bunResult.reason instanceof Error ? bunResult.reason.message : String(bunResult.reason),
-          fileError:
-            fileResult.reason instanceof Error
-              ? fileResult.reason.message
-              : String(fileResult.reason),
-        });
-      } else {
-        // At least one succeeded — if the other rejected, log it but don't block
-        if (bunResult.status === 'rejected') {
-          logger.warn('WrapperClient: bun pre-flight exec failed, proceeding anyway', {
-            error:
-              bunResult.reason instanceof Error
-                ? bunResult.reason.message
-                : String(bunResult.reason),
-          });
-        }
-        if (fileResult.status === 'rejected') {
-          logger.warn('WrapperClient: file pre-flight exec failed, proceeding anyway', {
-            error:
-              fileResult.reason instanceof Error
-                ? fileResult.reason.message
-                : String(fileResult.reason),
-          });
-        }
-
-        if (bunResult.status === 'fulfilled') {
-          logger.debug('WrapperClient: pre-flight passed', {
-            bunVersion: bunResult.value.stdout?.trim(),
-          });
-        }
-      }
-    } catch (error) {
-      if (error instanceof WrapperNotReadyError) throw error;
-      // Unexpected error — log but don't block
-      logger.warn('WrapperClient: pre-flight check failed unexpectedly, proceeding anyway', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    await this.runPreflightChecks({ wrapperPath, workspacePath });
 
     // Start the wrapper process using startProcess so it's trackable via listProcesses()
     // The command includes a session marker so we can find this wrapper later

@@ -894,7 +894,7 @@ describe('WrapperClient', () => {
 
       const client = new WrapperClient({ session, port: defaultPort });
 
-      // Should not throw ÃÃÂ¢ pre-flight failure is non-blocking
+      // Should not throw; pre-flight failure is non-blocking
       await client.ensureRunning({
         sessionId: 'test-session',
         kiloServerPort: 4600,
