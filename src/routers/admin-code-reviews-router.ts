@@ -402,6 +402,7 @@ export const adminCodeReviewsRouter = createTRPCRouter({
     const agentVersionFilter = buildAgentVersionFilter(agentVersion);
 
     const conditions = [
+      eq(cloud_agent_code_reviews.status, 'completed'),
       gte(cloud_agent_code_reviews.created_at, startDate),
       lt(cloud_agent_code_reviews.created_at, endDate),
       isNotNull(cloud_agent_code_reviews.completed_at),
