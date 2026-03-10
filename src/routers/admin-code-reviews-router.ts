@@ -354,6 +354,50 @@ export const adminCodeReviewsRouter = createTRPCRouter({
     };
   }),
 
+  // Get daily performance percentiles (execution time = completed_at - started_at)
+  getPerformanceStats: adminProcedure.input(FilterSchema).query(async ({ input }) => {
+    const { startDate, endDate, userId, organizationId, ownershipType, agentVersion } = input;
+    const ownershipFilter = buildOwnershipFilter(userId, organizationId, ownershipType);
+    const agentVersionFilter = buildAgentVersionFilter(agentVersion);
+
+    const conditions = [
+      gte(cloud_agent_code_reviews.created_at, startDate),
+      lt(cloud_agent_code_reviews.created_at, endDate),
+      isNotNull(cloud_agent_code_reviews.completed_at),
+      isNotNull(cloud_agent_code_reviews.started_at),
+      ownershipFilter,
+      agentVersionFilter,
+    ].filter(Boolean) as SQL[];
+
+    const durationExpr = sql`EXTRACT(EPOCH FROM (${cloud_agent_code_reviews.completed_at}::timestamp - ${cloud_agent_code_reviews.started_at}::timestamp))`;
+
+    const result = await db
+      .select({
+        day: sql<string>`DATE_TRUNC('day', ${cloud_agent_code_reviews.created_at})::date::text`,
+        agent_version: sql<string>`COALESCE(${cloud_agent_code_reviews.agent_version}, 'unknown')`,
+        avg_seconds: sql<number>`AVG(${durationExpr})`,
+        p50_seconds: sql<number>`percentile_cont(0.5) WITHIN GROUP (ORDER BY ${durationExpr})`,
+        p90_seconds: sql<number>`percentile_cont(0.9) WITHIN GROUP (ORDER BY ${durationExpr})`,
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(cloud_agent_code_reviews)
+      .where(and(...conditions))
+      .groupBy(
+        sql`DATE_TRUNC('day', ${cloud_agent_code_reviews.created_at})`,
+        cloud_agent_code_reviews.agent_version
+      )
+      .orderBy(sql`DATE_TRUNC('day', ${cloud_agent_code_reviews.created_at})`);
+
+    return result.map(row => ({
+      day: row.day,
+      agentVersion: row.agent_version,
+      avgSeconds: Number(row.avg_seconds) || 0,
+      p50Seconds: Number(row.p50_seconds) || 0,
+      p90Seconds: Number(row.p90_seconds) || 0,
+      count: Number(row.count) || 0,
+    }));
+  }),
+
   // Get CSV export data
   getExportData: adminProcedure.input(FilterSchema).query(async ({ input }) => {
     const { startDate, endDate, userId, organizationId, ownershipType, agentVersion } = input;
