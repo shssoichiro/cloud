@@ -50,11 +50,11 @@ async function createKeyringEntry(
   const services = mapScopesToServices(scopes);
 
   const payload = JSON.stringify({
-    RefreshToken: refreshToken,
-    Services: services,
+    refresh_token: refreshToken,
+    services: services,
     // gog stores only full OAuth scopes, not OIDC shorthand like 'openid'/'email'
-    Scopes: scopes.filter(s => s.startsWith('https://')),
-    CreatedAt: new Date().toISOString(),
+    scopes: scopes.filter(s => s.startsWith('https://')),
+    created_at: new Date().toISOString(),
   });
 
   const encoder = new TextEncoder();
