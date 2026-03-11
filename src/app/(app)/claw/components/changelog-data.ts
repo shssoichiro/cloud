@@ -11,13 +11,6 @@ export type ChangelogEntry = {
 // Newest entries first. Developers add new entries to the top of this array.
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
-    date: '2026-03-11',
-    description:
-      'Added Google Workspace CLI (gws) to the default image. Agents can use gws for Google Workspace API access when a Google account is connected.',
-    category: 'feature',
-    deployHint: 'redeploy_required',
-  },
-  {
     date: '2026-03-10',
     description:
       'New instances now redirect pip and uv package installs to the persistent volume so packages survive restarts. pip uses /root/.pip-global via PYTHONUSERBASE; uv uses /root/.uv for tools and cache. uv is now pre-installed in the base image. Only applies to newly provisioned instances.',
