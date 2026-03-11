@@ -10,7 +10,8 @@ export async function getRewardfulReferral(): Promise<string | undefined> {
     const jar = await cookies();
     const value = jar.get(REWARDFUL_COOKIE)?.value;
     return value && UUID_RE.test(value) ? value : undefined;
-  } catch {
+  } catch (error) {
+    console.warn('Failed to read rewardful referral cookie', error);
     return undefined;
   }
 }
