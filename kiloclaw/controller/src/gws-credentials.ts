@@ -95,7 +95,7 @@ export function installGwsSkills(): void {
     // Marker not found — proceed with install
   }
 
-  const cmd = 'npx -y skills add https://github.com/googleworkspace/cli --yes --global';
+  const cmd = 'npx -y skills@1.4.4 add https://github.com/googleworkspace/cli --yes --global';
   console.log('[gws] Installing agent skills in background...');
   exec(cmd, (error, _stdout, stderr) => {
     if (error) {

@@ -140,7 +140,7 @@ describe('writeGwsCredentials', () => {
     );
 
     expect(exec).toHaveBeenCalledWith(
-      'npx -y skills add https://github.com/googleworkspace/cli --yes --global',
+      'npx -y skills@1.4.4 add https://github.com/googleworkspace/cli --yes --global',
       expect.any(Function)
     );
   });
@@ -167,7 +167,7 @@ describe('installGwsSkills', () => {
     installGwsSkills();
 
     expect(exec).toHaveBeenCalledWith(
-      'npx -y skills add https://github.com/googleworkspace/cli --yes --global',
+      'npx -y skills@1.4.4 add https://github.com/googleworkspace/cli --yes --global',
       expect.any(Function)
     );
   });
