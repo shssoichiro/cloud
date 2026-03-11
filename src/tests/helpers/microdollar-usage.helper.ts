@@ -89,6 +89,7 @@ export function createMockUsageContext(
   prior_microdollar_usage: number
 ): MicrodollarUsageContext {
   return {
+    api_kind: 'chat_completions',
     kiloUserId,
     fraudHeaders: EmptyFraudDetectionHeaders,
     provider: 'openrouter',

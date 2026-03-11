@@ -7,6 +7,7 @@ import { createTimer } from '@/lib/timer';
 import type { OpenAI } from 'openai';
 import { createParser, type EventSourceMessage } from 'eventsource-parser';
 import type {
+  GatewayApiKind,
   GatewayResponsesRequest,
   OpenRouterChatCompletionRequest,
   OpenRouterGeneration,
@@ -167,6 +168,7 @@ export type PromptInfo = {
 };
 
 export type MicrodollarUsageContext = {
+  api_kind: GatewayApiKind;
   kiloUserId: string;
   fraudHeaders: FraudDetectionHeaders;
   organizationId?: Organization['id'];

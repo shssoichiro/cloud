@@ -327,6 +327,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
       : extractResponsesPromptInfo(parsedRequest.body);
 
   const usageContext: MicrodollarUsageContext = {
+    api_kind: parsedRequest.kind,
     kiloUserId: user.id,
     provider: provider.id,
     requested_model: originalModelIdLowerCased,
