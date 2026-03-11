@@ -1936,6 +1936,122 @@ describe('cli-sessions-router', () => {
           })
         ).rejects.toThrow('Session not found');
       });
+
+      it('should throw NOT_FOUND when session belongs to a different user (personal trigger)', async () => {
+        // Session is created by regularUser (via beforeEach), but otherUser tries to share it
+        // otherUser needs their own trigger to pass verifyWebhookTriggerAccess
+        const [otherProfile] = await db
+          .insert(agent_environment_profiles)
+          .values({
+            owned_by_user_id: otherUser.id,
+            name: 'other-user-share-profile',
+          })
+          .returning({ id: agent_environment_profiles.id });
+
+        const otherTriggerId = 'test-trigger-share-other-user';
+        const [otherTrigger] = await db
+          .insert(cloud_agent_webhook_triggers)
+          .values({
+            trigger_id: otherTriggerId,
+            user_id: otherUser.id,
+            github_repo: 'test/other-repo',
+            profile_id: otherProfile.id,
+          })
+          .returning({ id: cloud_agent_webhook_triggers.id });
+
+        try {
+          const caller = await createCallerForUser(otherUser.id);
+          await expect(
+            caller.cliSessions.shareForWebhookTrigger({
+              kilo_session_id: v1SessionId,
+              trigger_id: otherTriggerId,
+            })
+          ).rejects.toThrow('Session not found');
+        } finally {
+          await db
+            .delete(cloud_agent_webhook_triggers)
+            .where(eq(cloud_agent_webhook_triggers.id, otherTrigger.id));
+          await db
+            .delete(agent_environment_profiles)
+            .where(eq(agent_environment_profiles.id, otherProfile.id));
+        }
+      });
+
+      it('should throw NOT_FOUND when session belongs to a different org (org trigger)', async () => {
+        // Create a session belonging to testOrganization
+        const [orgSession] = await db
+          .insert(cliSessions)
+          .values({
+            kilo_user_id: regularUser.id,
+            title: 'Org Session',
+            created_on_platform: 'vscode',
+            organization_id: testOrganization.id,
+          })
+          .returning({ session_id: cliSessions.session_id });
+
+        // Create a second org and an org trigger for it
+        const [otherOrg] = await db
+          .insert(organizations)
+          .values({
+            name: 'Other Org for Share Test',
+            created_by_kilo_user_id: regularUser.id,
+          })
+          .returning();
+
+        await db.insert(organization_memberships).values({
+          organization_id: otherOrg.id,
+          kilo_user_id: regularUser.id,
+          role: 'owner',
+        });
+
+        const [otherProfile] = await db
+          .insert(agent_environment_profiles)
+          .values({
+            name: 'other-org-share-profile',
+            owned_by_organization_id: otherOrg.id,
+          })
+          .returning({ id: agent_environment_profiles.id });
+
+        const otherOrgTriggerId = 'test-trigger-share-other-org';
+        const [otherOrgTrigger] = await db
+          .insert(cloud_agent_webhook_triggers)
+          .values({
+            trigger_id: otherOrgTriggerId,
+            organization_id: otherOrg.id,
+            github_repo: 'test/other-org-repo',
+            profile_id: otherProfile.id,
+          })
+          .returning({ id: cloud_agent_webhook_triggers.id });
+
+        try {
+          const caller = await createCallerForUser(regularUser.id);
+          // Try to share orgSession (belongs to testOrganization) via otherOrg's trigger
+          await expect(
+            caller.cliSessions.shareForWebhookTrigger({
+              kilo_session_id: orgSession.session_id,
+              trigger_id: otherOrgTriggerId,
+              organization_id: otherOrg.id,
+            })
+          ).rejects.toThrow('Session not found');
+        } finally {
+          await db
+            .delete(cloud_agent_webhook_triggers)
+            .where(eq(cloud_agent_webhook_triggers.id, otherOrgTrigger.id));
+          await db
+            .delete(agent_environment_profiles)
+            .where(eq(agent_environment_profiles.id, otherProfile.id));
+          await db
+            .delete(organization_memberships)
+            .where(
+              and(
+                eq(organization_memberships.organization_id, otherOrg.id),
+                eq(organization_memberships.kilo_user_id, regularUser.id)
+              )
+            );
+          await db.delete(cliSessions).where(eq(cliSessions.session_id, orgSession.session_id));
+          await db.delete(organizations).where(eq(organizations.id, otherOrg.id));
+        }
+      });
     });
 
     it('should throw NOT_FOUND for non-existent trigger', async () => {

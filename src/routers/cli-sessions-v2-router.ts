@@ -419,13 +419,16 @@ export const cliSessionsV2Router = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await verifyWebhookTriggerAccess(ctx, input.trigger_id, input.organization_id);
 
+      // For org triggers, verify the session belongs to the same org.
+      // For personal triggers, verify the session belongs to the requesting user.
+      const ownerCondition = input.organization_id
+        ? eq(cli_sessions_v2.organization_id, input.organization_id)
+        : eq(cli_sessions_v2.kilo_user_id, ctx.user.id);
+
       const [session] = await db
-        .select({
-          kilo_user_id: cli_sessions_v2.kilo_user_id,
-          organization_id: cli_sessions_v2.organization_id,
-        })
+        .select({ kilo_user_id: cli_sessions_v2.kilo_user_id })
         .from(cli_sessions_v2)
-        .where(eq(cli_sessions_v2.session_id, input.kilo_session_id))
+        .where(and(eq(cli_sessions_v2.session_id, input.kilo_session_id), ownerCondition))
         .limit(1);
 
       if (!session) {
@@ -433,24 +436,6 @@ export const cliSessionsV2Router = createTRPCRouter({
           code: 'NOT_FOUND',
           message: 'Session not found',
         });
-      }
-
-      // For org triggers, verify the session belongs to the same org.
-      // For personal triggers, verify the session belongs to the requesting user.
-      if (input.organization_id) {
-        if (session.organization_id !== input.organization_id) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Session not found',
-          });
-        }
-      } else {
-        if (session.kilo_user_id !== ctx.user.id) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Session not found',
-          });
-        }
       }
 
       if (!SESSION_INGEST_WORKER_URL) {
