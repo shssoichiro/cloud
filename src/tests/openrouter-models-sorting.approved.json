@@ -46,7 +46,7 @@
       "id": "kilo-auto/balanced",
       "name": "Kilo Auto Balanced",
       "created": 0,
-      "description": "Automatically routes your request to a balanced mix of price and performance.",
+      "description": "Automatically routes your request for a balanced mix of price and performance.",
       "architecture": {
         "input_modalities": [
           "text"
