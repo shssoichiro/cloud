@@ -362,6 +362,27 @@ try {
 
 console.log(`\nAuthenticated as: ${userEmail}`);
 
+// Verify the account was actually stored before tarballing
+console.log('Verifying credentials...');
+try {
+  const authList = execFileSync('gog', ['auth', 'list', '--json'], {
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: gogEnv,
+  }).trim();
+  const accounts = JSON.parse(authList);
+  const found = Array.isArray(accounts) && accounts.some(a => a.email === userEmail || a.account === userEmail);
+  if (!found) {
+    throw new Error(`Account ${userEmail} not found in gog auth list`);
+  }
+  console.log('Credentials verified.\n');
+} catch (err) {
+  console.error('Credential verification failed — the OAuth flow may not have completed correctly.');
+  console.error(err.message);
+  console.error('Please re-run the setup and try again.');
+  process.exit(1);
+}
+
 // ---------------------------------------------------------------------------
 // Step 6: Create config tarball, encrypt, and POST
 // ---------------------------------------------------------------------------
