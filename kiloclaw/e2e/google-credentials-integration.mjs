@@ -6,7 +6,7 @@
  *   1. Local Postgres running (postgres://postgres:postgres@localhost:5432/postgres)
  *   2. kiloclaw worker running locally (pnpm start → localhost:8795)
  *
- * The test creates a temporary user in the DB for JWT auth tests, and cleans up after.
+ * The test reads secrets from kiloclaw/.dev.vars so it works without manual env setup.
  *
  * Usage:
  *   node kiloclaw/e2e/google-credentials-integration.mjs
@@ -15,10 +15,36 @@
 
 import { SignJWT } from 'jose';
 import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ---------------------------------------------------------------------------
+// Load secrets from .dev.vars (same file wrangler uses)
+// ---------------------------------------------------------------------------
+
+function loadDevVars() {
+  const devVarsPath = path.resolve(__dirname, '../.dev.vars');
+  const vars = {};
+  try {
+    const content = fs.readFileSync(devVarsPath, 'utf8');
+    for (const line of content.split('\n')) {
+      const match = line.match(/^(\w+)="(.*)"/);
+      if (match) vars[match[1]] = match[2];
+    }
+  } catch {
+    console.warn('Could not read .dev.vars — using env overrides or defaults');
+  }
+  return vars;
+}
+
+const devVars = loadDevVars();
 
 const WORKER_URL = process.env.WORKER_URL ?? 'http://localhost:8795';
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET ?? 'dev-internal-secret';
-const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET ?? 'dev-secret-change-me';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET ?? devVars.INTERNAL_API_SECRET ?? 'dev-internal-secret';
+const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET ?? devVars.NEXTAUTH_SECRET ?? 'dev-secret-change-me';
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/postgres';
 const USER_ID = `test-google-creds-${Date.now()}`;
 
@@ -142,6 +168,23 @@ function checkDbConnection() {
 }
 
 // ---------------------------------------------------------------------------
+// Generate JWT (needed for both public-key and admin routes)
+// ---------------------------------------------------------------------------
+
+async function generateJwt(userId) {
+  return new SignJWT({
+    kiloUserId: userId,
+    apiTokenPepper: null, // matches NULL in DB
+    version: 3,
+    env: 'development',
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('5m')
+    .setIssuedAt()
+    .sign(new TextEncoder().encode(NEXTAUTH_SECRET));
+}
+
+// ---------------------------------------------------------------------------
 // Preflight
 // ---------------------------------------------------------------------------
 
@@ -174,15 +217,21 @@ if (checkDbConnection()) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Public key endpoint
+// 1. Public key endpoint (requires JWT auth at /api/admin/public-key)
 // ---------------------------------------------------------------------------
 
 bold('1. Public key endpoint');
 
-const pubKeyRes = await fetch(`${WORKER_URL}/public-key`);
-const pubKeyJson = pubKeyRes.ok ? await pubKeyRes.json() : {};
-assertNotEmpty('GET /public-key returns a key', pubKeyJson.publicKey);
-assertEq('Public key is valid PEM', true, pubKeyJson.publicKey?.includes('BEGIN PUBLIC KEY'));
+if (dbConnected) {
+  JWT = await generateJwt(USER_ID);
+
+  const { status: pubKeyStatus, json: pubKeyJson } = await jwtGet('/api/admin/public-key');
+  assertEq('GET /api/admin/public-key returns 200', 200, pubKeyStatus);
+  assertNotEmpty('Response contains a public key', pubKeyJson?.publicKey);
+  assertEq('Public key is valid PEM', true, pubKeyJson?.publicKey?.includes('BEGIN PUBLIC KEY'));
+} else {
+  bold('1. Public key endpoint — SKIPPED (no DB for JWT)');
+}
 
 // ---------------------------------------------------------------------------
 // 2. Provision a test instance
@@ -255,17 +304,7 @@ assertEq('GET status shows googleConnected=false', false, statusAfterClear?.goog
 if (dbConnected) {
   bold('5. User-facing routes (JWT auth)');
 
-  JWT = await new SignJWT({
-    kiloUserId: USER_ID,
-    apiTokenPepper: null, // matches NULL in DB
-    version: 3,
-    env: 'development',
-  })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('5m')
-    .setIssuedAt()
-    .sign(new TextEncoder().encode(NEXTAUTH_SECRET));
-
+  // JWT already generated in section 1
   assertNotEmpty('JWT generated', JWT);
 
   // Auth check — GET /api/admin/google-credentials returns 200 with googleConnected status
