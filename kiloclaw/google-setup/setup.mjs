@@ -69,8 +69,7 @@ if (!validateRes.ok) {
   process.exit(1);
 }
 
-// Validate auth by hitting an admin endpoint — the JWT middleware runs before any handler.
-// GET /api/admin/google-credentials is not defined, so it returns 404/405 after auth passes,
+// Validate auth by checking Google credentials status — returns 200 if auth passes,
 // or 401/403 if the key is invalid.
 const authCheckRes = await fetch(`${workerUrl}/api/admin/google-credentials`, {
   headers: authHeaders,
@@ -167,6 +166,7 @@ const { code, redirectUri } = await new Promise((resolve, reject) => {
     const error = url.searchParams.get('error');
 
     if (error) {
+      clearTimeout(timer);
       res.writeHead(200, { 'content-type': 'text/html' });
       res.end('<h1>Authorization failed</h1><p>You can close this tab.</p>');
       server.close();
@@ -175,6 +175,7 @@ const { code, redirectUri } = await new Promise((resolve, reject) => {
     }
 
     if (code) {
+      clearTimeout(timer);
       res.writeHead(200, { 'content-type': 'text/html' });
       res.end('<h1>Authorization successful!</h1><p>You can close this tab.</p>');
       server.close();
@@ -186,6 +187,8 @@ const { code, redirectUri } = await new Promise((resolve, reject) => {
     res.writeHead(404);
     res.end();
   });
+
+  let timer;
 
   server.listen(0, () => {
     callbackPort = server.address().port;
@@ -202,7 +205,7 @@ const { code, redirectUri } = await new Promise((resolve, reject) => {
     console.log(`Waiting for OAuth callback on port ${callbackPort}...`);
   });
 
-  const timer = setTimeout(() => {
+  timer = setTimeout(() => {
     server.close();
     reject(new Error('OAuth flow timed out (5 minutes)'));
   }, 5 * 60 * 1000);

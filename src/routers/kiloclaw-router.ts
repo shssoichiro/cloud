@@ -464,8 +464,9 @@ export const kiloclawRouter = createTRPCRouter({
 
   getGoogleSetupCommand: baseProcedure.query(({ ctx }) => {
     // Short-lived token — the user should run the setup command promptly.
+    // Regenerated on each page load, so 1 hour is sufficient.
     const apiKey = generateApiToken(ctx.user, undefined, {
-      expiresIn: TOKEN_EXPIRY.thirtyDays,
+      expiresIn: TOKEN_EXPIRY.oneHour,
     });
     const isDev = process.env.NODE_ENV === 'development';
     const workerFlag = isDev ? ' --worker-url=http://localhost:8795' : '';

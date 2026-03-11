@@ -63,6 +63,18 @@ adminApi.post('/gateway/restart', async c => {
   }
 });
 
+// GET /api/admin/google-credentials - Check Google connection status
+adminApi.get('/google-credentials', async c => {
+  const stub = resolveStub(c);
+  try {
+    const status = await stub.getStatus();
+    return c.json({ googleConnected: status.googleConnected ?? false }, 200);
+  } catch (err) {
+    console.error('[api] google-credentials status failed:', err);
+    return c.json({ error: 'Failed to check Google credentials status' }, 500);
+  }
+});
+
 // POST /api/admin/google-credentials - Store encrypted Google credentials
 adminApi.post('/google-credentials', async c => {
   const stub = resolveStub(c);

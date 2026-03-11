@@ -2,9 +2,26 @@ import { describe, it, expect, vi } from 'vitest';
 import path from 'node:path';
 import { writeGwsCredentials, installGwsSkills, type GwsCredentialsDeps } from './gws-credentials';
 
+import fs from 'node:fs';
+
 vi.mock('node:child_process', () => ({
   exec: vi.fn((_cmd: string, cb: (err: Error | null) => void) => cb(null)),
 }));
+
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      // Default: marker file not found (ENOENT) — so installGwsSkills proceeds
+      accessSync: vi.fn(() => {
+        throw new Error('ENOENT');
+      }),
+      writeFileSync: vi.fn(),
+    },
+  };
+});
 
 function mockDeps() {
   return {
@@ -124,9 +141,12 @@ describe('writeGwsCredentials', () => {
 });
 
 describe('installGwsSkills', () => {
-  it('runs npx skills add command', async () => {
+  it('runs npx skills add command when marker file is absent', async () => {
     const { exec } = await import('node:child_process');
     (exec as unknown as ReturnType<typeof vi.fn>).mockClear();
+    vi.mocked(fs.accessSync).mockImplementation(() => {
+      throw new Error('ENOENT');
+    });
 
     installGwsSkills();
 
@@ -134,5 +154,15 @@ describe('installGwsSkills', () => {
       'npx -y skills add https://github.com/googleworkspace/cli --yes --global',
       expect.any(Function)
     );
+  });
+
+  it('skips install when marker file exists', async () => {
+    const { exec } = await import('node:child_process');
+    (exec as unknown as ReturnType<typeof vi.fn>).mockClear();
+    vi.mocked(fs.accessSync).mockImplementation(() => undefined);
+
+    installGwsSkills();
+
+    expect(exec).not.toHaveBeenCalled();
   });
 });

@@ -73,8 +73,18 @@ export function writeGwsCredentials(
 /**
  * Install gws agent skills for OpenClaw via the `skills` CLI.
  * Runs in the background — logs outcome but never blocks startup.
+ * Skips if skills are already installed (marker file check).
  */
 export function installGwsSkills(): void {
+  const markerFile = path.join(GWS_CONFIG_DIR, '.skills-installed');
+  try {
+    fs.accessSync(markerFile);
+    console.log('[gws] Agent skills already installed, skipping');
+    return;
+  } catch {
+    // Marker not found — proceed with install
+  }
+
   const cmd = 'npx -y skills add https://github.com/googleworkspace/cli --yes --global';
   console.log('[gws] Installing agent skills in background...');
   exec(cmd, (error, _stdout, stderr) => {
@@ -82,6 +92,11 @@ export function installGwsSkills(): void {
       console.error('[gws] Failed to install agent skills:', stderr || error.message);
     } else {
       console.log('[gws] Agent skills installed successfully');
+      try {
+        fs.writeFileSync(markerFile, new Date().toISOString(), { mode: 0o600 });
+      } catch {
+        // Non-fatal — will retry next startup
+      }
     }
   });
 }

@@ -23,7 +23,7 @@ RUN npm install -g @googleworkspace/cli
 
 WORKDIR /app
 COPY package.json ./
-RUN npm install --production
+RUN npm install --omit=dev
 COPY setup.mjs ./
 
 ENTRYPOINT ["node", "setup.mjs"]
