@@ -11,6 +11,7 @@ import { calverAtLeast, cleanVersion } from '@/lib/kiloclaw/version';
 import type { useKiloClawMutations } from '@/hooks/useKiloClaw';
 import { useControllerVersion, useKiloClawConfig, useKiloClawMyPin } from '@/hooks/useKiloClaw';
 import { useDefaultModelSelection } from '../hooks/useDefaultModelSelection';
+import { getSettingsModelOptions } from './modelSupport';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,73 +26,55 @@ import { VersionPinCard } from './VersionPinCard';
 
 type ClawMutations = ReturnType<typeof useKiloClawMutations>;
 
-/**
- * Models available via the kilocode gateway's baked-in catalog in openclaw.
- * Only these models are selectable as the default until openclaw supports
- * dynamic model discovery from the gateway's /models endpoint.
- */
-export const KILOCODE_CATALOG_IDS = new Set([
-  'anthropic/claude-opus-4.6',
-  'z-ai/glm-5:free',
-  'minimax/minimax-m2.5:free',
-  'anthropic/claude-sonnet-4.5',
-  'openai/gpt-5.2',
-  'google/gemini-3-pro-preview',
-  'google/gemini-3-flash-preview',
-  'x-ai/grok-code-fast-1',
-  'moonshotai/kimi-k2.5',
-]);
-
-/**
- * Maps a catalog entry ID to whether the entry is "configured" based on
- * the channel status from the config endpoint. The config endpoint returns
- * per-field booleans (telegram, discord, slackBot, slackApp) rather than
- * per-entry booleans, so we need this bridge mapping.
- *
- * IMPORTANT: This switch must be updated when new channel entries are added
- * to the secret catalog. Unknown entry IDs silently return false ("Not configured").
- * The proper fix is to make the config endpoint return per-entry-id status
- * derived from the catalog, eliminating this manual mapping.
- */
-function isEntryConfigured(
-  entryId: string,
-  channelStatus: { telegram: boolean; discord: boolean; slackBot: boolean; slackApp: boolean }
-): boolean {
-  switch (entryId) {
-    case 'telegram':
-      return channelStatus.telegram;
-    case 'discord':
-      return channelStatus.discord;
-    case 'slack':
-      return channelStatus.slackBot && channelStatus.slackApp;
-    default:
-      return false;
-  }
-}
-
 export function SettingsTab({
   status,
   mutations,
-  onChannelsChanged,
-  dirtyChannels,
+  onSecretsChanged,
+  dirtySecrets,
 }: {
   status: KiloClawDashboardStatus;
   mutations: ClawMutations;
-  onChannelsChanged?: (channelType: string) => void;
-  dirtyChannels: Set<string>;
+  onSecretsChanged?: (entryId: string) => void;
+  dirtySecrets: Set<string>;
 }) {
   const posthog = usePostHog();
   const { data: config } = useKiloClawConfig();
   const { data: modelsData, isLoading: isLoadingModels } = useOpenRouterModels();
+  const isRunning = status.status === 'running';
+  const {
+    data: controllerVersion,
+    isLoading: isLoadingControllerVersion,
+    isError: isControllerVersionError,
+  } = useControllerVersion(isRunning);
+  const { data: myPin } = useKiloClawMyPin();
   const [confirmDestroy, setConfirmDestroy] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const trackedVersion = cleanVersion(status.openclawVersion);
+  const runningVersion = cleanVersion(controllerVersion?.openclawVersion);
+  const hasModelSelectionError = isRunning && isControllerVersionError;
+  const modelSelectionError = hasModelSelectionError
+    ? 'Failed to load the running OpenClaw version. Retry before changing the default model.'
+    : undefined;
+  const isLoadingModelSelection = isLoadingModels || (isRunning && isLoadingControllerVersion);
 
   const modelOptions = useMemo<ModelOption[]>(
     () =>
-      (modelsData?.data || [])
-        .filter(model => KILOCODE_CATALOG_IDS.has(model.id))
-        .map(model => ({ id: model.id, name: model.name })),
-    [modelsData]
+      getSettingsModelOptions({
+        models: (modelsData?.data || []).map(model => ({ id: model.id, name: model.name })),
+        trackedOpenClawVersion: trackedVersion,
+        runningOpenClawVersion: runningVersion,
+        isRunning,
+        isLoadingRunningVersion: isLoadingControllerVersion,
+        hasRunningVersionError: hasModelSelectionError,
+      }),
+    [
+      hasModelSelectionError,
+      isLoadingControllerVersion,
+      isRunning,
+      modelsData,
+      runningVersion,
+      trackedVersion,
+    ]
   );
 
   const { selectedModel, setSelectedModel } = useDefaultModelSelection(
@@ -101,23 +84,20 @@ export function SettingsTab({
 
   const isSaving = mutations.patchConfig.isPending;
   const isDestroying = status.status === 'destroying';
-  const isRunning = status.status === 'running';
-  const { data: controllerVersion } = useControllerVersion(isRunning);
-  const { data: myPin } = useKiloClawMyPin();
   const supportsConfigRestore = calverAtLeast(
     cleanVersion(controllerVersion?.version),
     '2026.2.26'
   );
 
-  const channelStatus = config?.channels ?? {
-    telegram: false,
-    discord: false,
-    slackBot: false,
-    slackApp: false,
-  };
+  const configuredSecrets = config?.configuredSecrets ?? {};
 
   function handleSave() {
-    if (isLoadingModels) {
+    if (hasModelSelectionError) {
+      toast.error(modelSelectionError);
+      return;
+    }
+
+    if (isLoadingModelSelection) {
       toast.error('Models are still loading; try again in a moment.');
       return;
     }
@@ -139,8 +119,6 @@ export function SettingsTab({
   }
 
   // Determine if running version differs from tracked version
-  const trackedVersion = cleanVersion(status.openclawVersion);
-  const runningVersion = cleanVersion(controllerVersion?.openclawVersion);
   // Old image: the DO returns null when the controller lacks /_kilo/version,
   // and the platform route converts that to { version: null, commit: null }.
   const needsImageUpgrade = isRunning && controllerVersion && !controllerVersion.version;
@@ -266,12 +244,13 @@ export function SettingsTab({
             models={modelOptions}
             value={selectedModel}
             onValueChange={setSelectedModel}
-            isLoading={isLoadingModels}
-            disabled={isSaving || isLoadingModels}
+            error={modelSelectionError}
+            isLoading={isLoadingModelSelection}
+            disabled={isSaving || isLoadingModelSelection || hasModelSelectionError}
           />
 
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={handleSave} disabled={isSaving}>
+            <Button size="sm" onClick={handleSave} disabled={isSaving || hasModelSelectionError}>
               <Save className="h-4 w-4" />
               {isSaving ? 'Saving...' : 'Save'}
             </Button>
@@ -299,10 +278,10 @@ export function SettingsTab({
             <SecretEntrySection
               key={entry.id}
               entry={entry}
-              configured={isEntryConfigured(entry.id, channelStatus)}
+              configured={configuredSecrets[entry.id] ?? false}
               mutations={mutations}
-              onSecretsChanged={onChannelsChanged}
-              isDirty={dirtyChannels.has(entry.id)}
+              onSecretsChanged={onSecretsChanged}
+              isDirty={dirtySecrets.has(entry.id)}
             />
           ))}
         </div>
