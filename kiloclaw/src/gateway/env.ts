@@ -1,3 +1,4 @@
+import { ALL_SECRET_ENV_VARS } from '@kilocode/kiloclaw-secret-catalog';
 import type { KiloClawEnv } from '../types';
 import type { EncryptedEnvelope, EncryptedChannelTokens } from '../schemas/instance-config';
 import { deriveGatewayToken } from '../auth/gateway-token';
@@ -14,6 +15,17 @@ export type UserConfig = {
   kilocodeApiKey?: string | null;
   kilocodeDefaultModel?: string | null;
   channels?: EncryptedChannelTokens;
+  instanceFeatures?: string[];
+};
+
+/**
+ * Maps instance feature flag names to container environment variables.
+ * Each feature becomes a KILOCLAW_* env var set to "true" when enabled.
+ */
+export const FEATURE_TO_ENV_VAR: Record<string, string> = {
+  'npm-global-prefix': 'KILOCLAW_NPM_GLOBAL_PREFIX',
+  'pip-global-prefix': 'KILOCLAW_PIP_GLOBAL_PREFIX',
+  'uv-global-prefix': 'KILOCLAW_UV_GLOBAL_PREFIX',
 };
 
 /**
@@ -30,14 +42,13 @@ export type EnvVarsBuild = {
 /**
  * Env var names that are always classified as sensitive.
  * Values for these keys go into the `sensitive` bucket.
+ *
+ * Derived from the secret catalog to automatically include all channel/secret env vars.
  */
 const SENSITIVE_KEYS = new Set([
   'KILOCODE_API_KEY',
   'OPENCLAW_GATEWAY_TOKEN',
-  'TELEGRAM_BOT_TOKEN',
-  'DISCORD_BOT_TOKEN',
-  'SLACK_BOT_TOKEN',
-  'SLACK_APP_TOKEN',
+  ...ALL_SECRET_ENV_VARS,
 ]);
 
 /**
@@ -49,6 +60,7 @@ const SENSITIVE_KEYS = new Set([
  * 3. User-provided encrypted secrets (override env vars on conflict)
  * 4. Decrypted channel tokens (mapped to container env var names)
  * 5. Reserved system vars (cannot be overridden by any user config)
+ * 6. Instance feature flags (cannot be overridden by any user config)
  *
  * Returns a split result: non-sensitive vars in `env`, sensitive vars in `sensitive`.
  * User-provided plaintext env vars go to `env` unless they match SENSITIVE_KEYS.
@@ -77,21 +89,37 @@ export async function buildEnvVars(
 
   // Layer 2 + 3: User env vars merged with decrypted secrets.
   if (userConfig) {
-    // Validate user-provided env var names
-    if (userConfig.envVars) {
-      for (const name of Object.keys(userConfig.envVars)) {
-        validateUserEnvVarName(name);
+    // Validate user-provided env var names. Invalid names are dropped with a
+    // warning rather than throwing, so a stale reserved-prefix var stored before
+    // the prefix was blocked doesn't prevent the instance from starting.
+    const cleanedEnvVars = userConfig.envVars ? { ...userConfig.envVars } : undefined;
+    const cleanedSecrets = userConfig.encryptedSecrets
+      ? { ...userConfig.encryptedSecrets }
+      : undefined;
+    if (cleanedEnvVars) {
+      for (const name of Object.keys(cleanedEnvVars)) {
+        try {
+          validateUserEnvVarName(name);
+        } catch {
+          console.warn(`Dropping invalid env var "${name}": uses reserved prefix`);
+          delete cleanedEnvVars[name];
+        }
       }
     }
-    if (userConfig.encryptedSecrets) {
-      for (const name of Object.keys(userConfig.encryptedSecrets)) {
-        validateUserEnvVarName(name);
+    if (cleanedSecrets) {
+      for (const name of Object.keys(cleanedSecrets)) {
+        try {
+          validateUserEnvVarName(name);
+        } catch {
+          console.warn(`Dropping invalid encrypted secret "${name}": uses reserved prefix`);
+          delete cleanedSecrets[name];
+        }
       }
     }
 
     const userEnv = mergeEnvVarsWithSecrets(
-      userConfig.envVars,
-      userConfig.encryptedSecrets,
+      cleanedEnvVars,
+      cleanedSecrets,
       env.AGENT_ENV_VARS_PRIVATE_KEY
     );
 
@@ -133,6 +161,15 @@ export async function buildEnvVars(
   // Layer 5: Reserved system vars (cannot be overridden by any user config)
   sensitive.OPENCLAW_GATEWAY_TOKEN = await deriveGatewayToken(sandboxId, gatewayTokenSecret);
   plainEnv.AUTO_APPROVE_DEVICES = 'true';
+
+  // Instance feature flags → env vars (non-sensitive, not user-overridable).
+  // Applied after user env vars so users cannot suppress features via envVars config.
+  if (userConfig?.instanceFeatures) {
+    for (const feature of userConfig.instanceFeatures) {
+      const envVar = FEATURE_TO_ENV_VAR[feature];
+      if (envVar) plainEnv[envVar] = 'true';
+    }
+  }
 
   return { env: plainEnv, sensitive };
 }

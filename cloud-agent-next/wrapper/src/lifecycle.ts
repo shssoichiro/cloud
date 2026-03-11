@@ -144,6 +144,10 @@ export function createLifecycleManager(
     // Only check when has job context
     if (!state.hasJob) return;
 
+    // Skip SSE health checks while the ingest WS is reconnecting — the SSE stream
+    // is still alive, we just can't relay events until the WS reconnects.
+    if (connectionManager.isReconnecting()) return;
+
     const now = Date.now();
 
     // Check SSE inactivity while active (inflight > 0)
@@ -247,6 +251,13 @@ export function createLifecycleManager(
   async function runPostCompletionTasks(): Promise<void> {
     const job = state.currentJob;
     if (!job) return;
+
+    // Skip post-completion tasks when aborted — the execution already failed
+    // (e.g. disconnect, fatal error) so auto-commit/condense on partial work is unsafe
+    if (isAborted) {
+      logToFile('skipping post-completion tasks — execution was aborted');
+      return;
+    }
 
     // Run auto-commit if enabled
     if (config.autoCommit) {

@@ -22,13 +22,15 @@
  */
 
 import { DurableObject } from 'cloudflare:workers';
+import { signKiloToken, withTimeout } from '@kilocode/worker-utils';
 import type { KiloClawEnv } from '../types';
 import { sandboxIdFromUserId } from '../auth/sandbox-id';
 import { deriveGatewayToken } from '../auth/gateway-token';
-import { getWorkerDb, getActiveInstance, markInstanceDestroyed } from '../db';
+import { findPepperByUserId, getWorkerDb, getActiveInstance, markInstanceDestroyed } from '../db';
 import { buildEnvVars } from '../gateway/env';
 import {
   PersistedStateSchema,
+  DEFAULT_INSTANCE_FEATURES,
   type InstanceConfig,
   type PersistedState,
   type EncryptedEnvelope,
@@ -48,6 +50,7 @@ import {
   HEALTH_PROBE_INTERVAL_MS,
   STALE_PROVISION_THRESHOLD_MS,
   OPENCLAW_BUILTIN_DEFAULT_MODEL,
+  KILOCODE_API_KEY_EXPIRY_SECONDS,
 } from '../config';
 import type { FlyClientConfig } from '../fly/client';
 import type { FlyMachineConfig, FlyVolumeSnapshot } from '../fly/types';
@@ -66,6 +69,18 @@ import {
   ControllerVersionResponseSchema,
   GatewayControllerError,
 } from './gateway-controller-types';
+import {
+  SECRET_CATALOG,
+  FIELD_KEY_TO_ENV_VAR,
+  ENV_VAR_TO_FIELD_KEY,
+  ALL_SECRET_FIELD_KEYS,
+  type SecretFieldKey,
+} from '@kilocode/kiloclaw-secret-catalog';
+
+/** Channel env var names — used to exclude channel secrets from secretCount (they have their own channelCount). */
+const CHANNEL_ENV_VARS = new Set(
+  SECRET_CATALOG.filter(e => e.category === 'channel').flatMap(e => e.fields.map(f => f.envVar))
+);
 import { parseRegions, shuffleRegions, deprioritizeRegion } from './regions';
 import {
   METADATA_RECOVERY_COOLDOWN_MS,
@@ -101,6 +116,8 @@ const STORAGE_KEYS = Object.keys(PersistedStateSchema.shape);
 function storageUpdate(update: Partial<PersistedState>): Partial<PersistedState> {
   return update;
 }
+
+const MINT_TIMEOUT_MS = 5_000;
 
 // ============================================================================
 // Structured reconciliation logging
@@ -175,6 +192,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   private lastDestroyErrorMessage: string | null = null;
   private lastDestroyErrorAt: number | null = null;
   private lastBoundMachineRecoveryAt: number | null = null;
+  private instanceFeatures: string[] = [];
 
   // In-memory only (not persisted to SQLite) — throttles live Fly checks in getStatus()
   private lastLiveCheckAt: number | null = null;
@@ -221,6 +239,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       this.lastDestroyErrorMessage = s.lastDestroyErrorMessage;
       this.lastDestroyErrorAt = s.lastDestroyErrorAt;
       this.lastBoundMachineRecoveryAt = s.lastBoundMachineRecoveryAt;
+      this.instanceFeatures = s.instanceFeatures;
     } else {
       const hasAnyData = entries.size > 0;
       if (hasAnyData) {
@@ -400,10 +419,16 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       trackedImageDigest: this.trackedImageDigest,
     };
 
+    // Set default instance features on first provision; preserve existing on re-provision.
+    if (isNew) {
+      this.instanceFeatures = [...DEFAULT_INSTANCE_FEATURES];
+    }
+
     const update = isNew
       ? storageUpdate({
           ...configFields,
           ...versionFields,
+          instanceFeatures: this.instanceFeatures,
           provisionedAt: Date.now(),
           lastStartedAt: null,
           lastStoppedAt: null,
@@ -416,7 +441,11 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
           pendingDestroyVolumeId: null,
           pendingPostgresMarkOnFinalize: false,
         })
-      : storageUpdate({ ...configFields, ...versionFields });
+      : storageUpdate({
+          ...configFields,
+          ...versionFields,
+          instanceFeatures: this.instanceFeatures,
+        });
 
     await this.ctx.storage.put(update);
 
@@ -518,49 +547,128 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     slackBot: boolean;
     slackApp: boolean;
   }> {
-    await this.loadState();
-
-    const merged = this.channels ? { ...this.channels } : {};
-
-    if (patch.telegramBotToken !== undefined) {
-      if (patch.telegramBotToken === null) {
-        delete merged.telegramBotToken;
-      } else {
-        merged.telegramBotToken = patch.telegramBotToken;
-      }
-    }
-    if (patch.discordBotToken !== undefined) {
-      if (patch.discordBotToken === null) {
-        delete merged.discordBotToken;
-      } else {
-        merged.discordBotToken = patch.discordBotToken;
-      }
-    }
-    if (patch.slackBotToken !== undefined) {
-      if (patch.slackBotToken === null) {
-        delete merged.slackBotToken;
-      } else {
-        merged.slackBotToken = patch.slackBotToken;
-      }
-    }
-    if (patch.slackAppToken !== undefined) {
-      if (patch.slackAppToken === null) {
-        delete merged.slackAppToken;
-      } else {
-        merged.slackAppToken = patch.slackAppToken;
+    // Delegate to updateSecrets so both storage fields stay in sync.
+    // Only forward keys that were explicitly provided in the patch.
+    const secretsPatch: Record<string, EncryptedEnvelope | null> = {};
+    for (const [key, value] of Object.entries(patch)) {
+      if (value !== undefined) {
+        secretsPatch[key] = value;
       }
     }
 
-    const hasAny = Object.values(merged).some(Boolean);
-    this.channels = hasAny ? merged : null;
-    await this.ctx.storage.put({ channels: this.channels });
+    const { configured } = await this.updateSecrets(secretsPatch);
 
     return {
-      telegram: !!this.channels?.telegramBotToken,
-      discord: !!this.channels?.discordBotToken,
-      slackBot: !!this.channels?.slackBotToken,
-      slackApp: !!this.channels?.slackAppToken,
+      telegram: configured.includes('telegramBotToken'),
+      discord: configured.includes('discordBotToken'),
+      slackBot: configured.includes('slackBotToken'),
+      slackApp: configured.includes('slackAppToken'),
     };
+  }
+
+  /**
+   * Generic secret update — catalog-driven replacement for updateChannels.
+   * Reads from both legacy `channels` + new `encryptedSecrets`, merges,
+   * applies the patch, then dual-writes to both fields for backward compat.
+   *
+   * Does NOT restart the machine; the caller should prompt the user to restart.
+   */
+  async updateSecrets(
+    patch: Partial<Record<SecretFieldKey, EncryptedEnvelope | null>>
+  ): Promise<{ configured: SecretFieldKey[] }> {
+    await this.loadState();
+
+    // 1. Read from both legacy channels + new encryptedSecrets into field-keyed working set.
+    //    encryptedSecrets stores env var names; reverse-map back to field keys.
+    //    Non-catalog keys (generic secrets) are tracked separately to preserve them on write.
+    const currentSecrets: Record<string, EncryptedEnvelope | null> = {
+      ...(this.channels ?? {}),
+    };
+    const nonCatalogSecrets: Record<string, EncryptedEnvelope> = {};
+    if (this.encryptedSecrets) {
+      for (const [key, value] of Object.entries(this.encryptedSecrets)) {
+        const fieldKey = ENV_VAR_TO_FIELD_KEY.get(key);
+        if (fieldKey) {
+          currentSecrets[fieldKey] = value;
+        } else {
+          // Non-catalog secret (e.g. OPENAI_API_KEY) — preserve as-is in storage
+          nonCatalogSecrets[key] = value;
+        }
+      }
+    }
+
+    // 2. Apply patch (log operation + field key, NEVER log secret values)
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null) {
+        console.log('[DO] Secret removed', { fieldKey: key, operation: 'remove' });
+        delete currentSecrets[key];
+      } else {
+        console.log('[DO] Secret updated', { fieldKey: key, operation: 'set' });
+        currentSecrets[key] = value;
+      }
+    }
+
+    // 3. Enforce allFieldsRequired on post-merge state.
+    //    Rejects partial clears (e.g. removing slackBotToken while slackAppToken remains).
+    for (const entry of SECRET_CATALOG) {
+      if (!entry.allFieldsRequired) continue;
+      const fieldValues = entry.fields.map(f => currentSecrets[f.key]);
+      const hasAny = fieldValues.some(v => v != null);
+      const hasAll = fieldValues.every(v => v != null);
+      if (hasAny && !hasAll) {
+        const err = new Error(
+          `Invalid secret patch: ${entry.label} requires all fields to be set together`
+        );
+        (err as Error & { status: number }).status = 400;
+        throw err;
+      }
+    }
+
+    // 4. Dual-write: update both fields for backward compat
+    //    Legacy callers (patchChannels) still read from `channels`
+    const channelKeys = new Set(
+      SECRET_CATALOG.filter(e => e.category === 'channel').flatMap(e => e.fields.map(f => f.key))
+    );
+    const channelsSubset: Record<string, EncryptedEnvelope> = {};
+    for (const [key, value] of Object.entries(currentSecrets)) {
+      if (channelKeys.has(key) && value) {
+        channelsSubset[key] = value;
+      }
+    }
+
+    const hasChannels = Object.keys(channelsSubset).length > 0;
+    this.channels = hasChannels ? (channelsSubset as PersistedState['channels']) : null;
+
+    // Filter out null values for storage (only store non-null envelopes)
+    const cleanedSecrets: Record<string, EncryptedEnvelope> = {};
+    for (const [key, value] of Object.entries(currentSecrets)) {
+      if (value) {
+        cleanedSecrets[key] = value;
+      }
+    }
+
+    // Return only catalog field keys (exclude any non-catalog keys that may exist in storage)
+    const configured = Object.keys(cleanedSecrets).filter((k): k is SecretFieldKey =>
+      ALL_SECRET_FIELD_KEYS.has(k)
+    );
+
+    // 4. Remap field keys → env var names for encryptedSecrets storage.
+    //    buildEnvVars/mergeEnvVarsWithSecrets expects env var names as keys.
+    //    Non-catalog secrets are merged back unchanged.
+    const remappedSecrets: Record<string, EncryptedEnvelope> = { ...nonCatalogSecrets };
+    for (const [key, value] of Object.entries(cleanedSecrets)) {
+      const envName = FIELD_KEY_TO_ENV_VAR.get(key) ?? key;
+      remappedSecrets[envName] = value;
+    }
+    const hasSecrets = Object.keys(remappedSecrets).length > 0;
+    this.encryptedSecrets = hasSecrets ? remappedSecrets : null;
+
+    await this.ctx.storage.put({
+      channels: this.channels,
+      encryptedSecrets: this.encryptedSecrets,
+    });
+
+    return { configured };
   }
 
   /** KV cache key for pairing requests, scoped to the specific machine. */
@@ -1166,7 +1274,9 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       lastStartedAt: this.lastStartedAt,
       lastStoppedAt: this.lastStoppedAt,
       envVarCount: this.envVars ? Object.keys(this.envVars).length : 0,
-      secretCount: this.encryptedSecrets ? Object.keys(this.encryptedSecrets).length : 0,
+      secretCount: this.encryptedSecrets
+        ? Object.keys(this.encryptedSecrets).filter(k => !CHANNEL_ENV_VARS.has(k)).length
+        : 0,
       channelCount: this.channels ? Object.values(this.channels).filter(Boolean).length : 0,
       flyAppName: this.flyAppName,
       flyMachineId: this.flyMachineId,
@@ -1221,7 +1331,9 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       lastStartedAt: this.lastStartedAt,
       lastStoppedAt: this.lastStoppedAt,
       envVarCount: this.envVars ? Object.keys(this.envVars).length : 0,
-      secretCount: this.encryptedSecrets ? Object.keys(this.encryptedSecrets).length : 0,
+      secretCount: this.encryptedSecrets
+        ? Object.keys(this.encryptedSecrets).filter(k => !CHANNEL_ENV_VARS.has(k)).length
+        : 0,
       channelCount: this.channels ? Object.values(this.channels).filter(Boolean).length : 0,
       flyAppName: this.flyAppName,
       flyMachineId: this.flyMachineId,
@@ -1520,7 +1632,17 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         }
       }
 
-      await fly.stopMachineAndWait(flyConfig, this.flyMachineId);
+      // Try to stop the machine first for a clean config swap.
+      // If the stop times out (e.g. Fly auto-restart races the poll),
+      // fall through — updateMachine on a running machine triggers a
+      // restart with the new config, which achieves the same result.
+      try {
+        await fly.stopMachineAndWait(flyConfig, this.flyMachineId);
+      } catch (stopErr) {
+        const isTimeout = stopErr instanceof fly.FlyApiError && stopErr.status === 408;
+        if (!isTimeout) throw stopErr;
+        console.warn('[DO] restartGateway: stop timed out, will update in-place:', stopErr.message);
+      }
 
       const { envVars, minSecretsVersion } = await this.buildUserEnvVars();
       const guest = guestFromSize(this.machineSize);
@@ -2603,6 +2725,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
           openclawVersion: null,
           imageVariant: null,
           trackedImageTag: null,
+          instanceFeatures: [],
         })
       );
 
@@ -2629,6 +2752,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       this.imageVariant = null;
       this.trackedImageTag = null;
       this.trackedImageDigest = null;
+      this.instanceFeatures = [];
       this.loaded = true;
 
       console.log('[DO] Restored from Postgres: sandboxId =', instance.sandboxId);
@@ -2673,6 +2797,43 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     }
   }
 
+  private async mintFreshApiKey(
+    secret: string
+  ): Promise<{ token: string; expiresAt: string } | null> {
+    const connectionString = this.env.HYPERDRIVE?.connectionString;
+    if (!this.userId || !connectionString) {
+      return null;
+    }
+
+    const db = getWorkerDb(connectionString);
+    const user = await findPepperByUserId(db, this.userId);
+    if (!user) {
+      console.warn('[DO] mintFreshApiKey: user not found in DB');
+      return null;
+    }
+
+    return signKiloToken({
+      userId: user.id,
+      pepper: user.api_token_pepper,
+      secret,
+      expiresInSeconds: KILOCODE_API_KEY_EXPIRY_SECONDS,
+      env: this.env.WORKER_ENV,
+    });
+  }
+
+  private hasExpiredStoredApiKey(): boolean {
+    if (!this.kilocodeApiKey || !this.kilocodeApiKeyExpiresAt) {
+      return false;
+    }
+
+    const expiresAtMs = Date.parse(this.kilocodeApiKeyExpiresAt);
+    if (Number.isNaN(expiresAtMs)) {
+      return false;
+    }
+
+    return expiresAtMs <= Date.now();
+  }
+
   private async buildUserEnvVars(): Promise<{
     envVars: Record<string, string>;
     minSecretsVersion: number;
@@ -2683,6 +2844,41 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     if (!this.userId) {
       throw new Error('Cannot build env vars: userId missing');
     }
+    if (!this.env.NEXTAUTH_SECRET) {
+      throw new Error('Cannot build env vars: NEXTAUTH_SECRET missing');
+    }
+    const nextAuthSecret = this.env.NEXTAUTH_SECRET;
+
+    let kilocodeApiKey = this.kilocodeApiKey ?? undefined;
+    if (this.userId && this.env.HYPERDRIVE?.connectionString) {
+      try {
+        const freshKey = await withTimeout(
+          this.mintFreshApiKey(nextAuthSecret),
+          MINT_TIMEOUT_MS,
+          'API key mint timed out'
+        );
+        if (freshKey) {
+          kilocodeApiKey = freshKey.token;
+          this.kilocodeApiKey = freshKey.token;
+          this.kilocodeApiKeyExpiresAt = freshKey.expiresAt;
+          await this.ctx.storage.put(
+            storageUpdate({
+              kilocodeApiKey: freshKey.token,
+              kilocodeApiKeyExpiresAt: freshKey.expiresAt,
+            })
+          );
+          console.log('[DO] buildUserEnvVars: minted fresh API key, expires:', freshKey.expiresAt);
+        }
+      } catch (err) {
+        console.warn('[DO] buildUserEnvVars: failed to mint fresh API key, using stored key:', err);
+      }
+    }
+
+    if (this.hasExpiredStoredApiKey()) {
+      throw new Error(
+        'Cannot build env vars: stored KiloCode API key expired and fresh mint unavailable'
+      );
+    }
 
     const { env: plainEnv, sensitive } = await buildEnvVars(
       this.env,
@@ -2691,9 +2887,10 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       {
         envVars: this.envVars ?? undefined,
         encryptedSecrets: this.encryptedSecrets ?? undefined,
-        kilocodeApiKey: this.kilocodeApiKey ?? undefined,
+        kilocodeApiKey,
         kilocodeDefaultModel: this.kilocodeDefaultModel ?? undefined,
         channels: this.channels ?? undefined,
+        instanceFeatures: this.instanceFeatures,
       }
     );
 

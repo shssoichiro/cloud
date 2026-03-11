@@ -192,13 +192,33 @@ async function main() {
           message: reason,
           timestamp: Date.now(),
         });
+
+        // Abort the kilo session — the CLI is still running but we can't relay events
+        const job = state.currentJob;
+        if (job) {
+          kiloClient.abortSession({ sessionId: job.kiloSessionId }).catch(() => {});
+        }
+
+        // Mark as aborted so we don't send 'complete' (the WS is dead anyway)
+        getLifecycleManager().setAborted();
         state.clearAllInflight();
-        // Also close SSE consumer to avoid orphaned connection
-        void connectionManager.close();
+        getLifecycleManager().triggerDrainAndClose();
       },
       onCompletionSignal: () => {
         // Signal completion to lifecycle manager for post-processing waiters
         getLifecycleManager().signalCompletion();
+      },
+      onReconnecting: (attempt: number) => {
+        logToFile(`ingest WS reconnecting: attempt ${attempt}`);
+      },
+      onReconnected: () => {
+        logToFile('ingest WS reconnected');
+        // Only clear DISCONNECT errors — preserve more severe errors
+        // (e.g. INFLIGHT_TIMEOUT) that may have been set during the reconnect window
+        const lastError = state.getLastError();
+        if (lastError?.code === 'DISCONNECT') {
+          state.clearLastError();
+        }
       },
     }
   );
