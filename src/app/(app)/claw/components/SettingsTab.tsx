@@ -26,33 +26,6 @@ import { VersionPinCard } from './VersionPinCard';
 
 type ClawMutations = ReturnType<typeof useKiloClawMutations>;
 
-/**
- * Maps a catalog entry ID to whether the entry is "configured" based on
- * the channel status from the config endpoint. The config endpoint returns
- * per-field booleans (telegram, discord, slackBot, slackApp) rather than
- * per-entry booleans, so we need this bridge mapping.
- *
- * IMPORTANT: This switch must be updated when new channel entries are added
- * to the secret catalog. Unknown entry IDs silently return false ("Not configured").
- * The proper fix is to make the config endpoint return per-entry-id status
- * derived from the catalog, eliminating this manual mapping.
- */
-function isEntryConfigured(
-  entryId: string,
-  channelStatus: { telegram: boolean; discord: boolean; slackBot: boolean; slackApp: boolean }
-): boolean {
-  switch (entryId) {
-    case 'telegram':
-      return channelStatus.telegram;
-    case 'discord':
-      return channelStatus.discord;
-    case 'slack':
-      return channelStatus.slackBot && channelStatus.slackApp;
-    default:
-      return false;
-  }
-}
-
 export function SettingsTab({
   status,
   mutations,
@@ -116,12 +89,7 @@ export function SettingsTab({
     '2026.2.26'
   );
 
-  const channelStatus = config?.channels ?? {
-    telegram: false,
-    discord: false,
-    slackBot: false,
-    slackApp: false,
-  };
+  const configuredSecrets = config?.configuredSecrets ?? {};
 
   function handleSave() {
     if (hasModelSelectionError) {
@@ -310,7 +278,7 @@ export function SettingsTab({
             <SecretEntrySection
               key={entry.id}
               entry={entry}
-              configured={isEntryConfigured(entry.id, channelStatus)}
+              configured={configuredSecrets[entry.id] ?? false}
               mutations={mutations}
               onSecretsChanged={onChannelsChanged}
               isDirty={dirtyChannels.has(entry.id)}
