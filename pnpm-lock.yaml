@@ -589,8 +589,8 @@ importers:
   cloud-agent-next:
     dependencies:
       '@cloudflare/sandbox':
-        specifier: 0.7.8
-        version: 0.7.8(@xterm/xterm@6.0.0)
+        specifier: 0.7.13
+        version: 0.7.13(@xterm/xterm@6.0.0)
       '@hono/trpc-server':
         specifier: ^0.4.2
         version: 0.4.2(@trpc/server@11.9.0(typescript@5.9.3))(hono@4.12.2)
@@ -757,11 +757,11 @@ importers:
         version: 4.3.6
     devDependencies:
       '@cloudflare/containers':
-        specifier: ^0.0.30
-        version: 0.0.30
+        specifier: 0.1.1
+        version: 0.1.1
       '@cloudflare/sandbox':
-        specifier: 0.6.7
-        version: 0.6.7
+        specifier: 0.7.13
+        version: 0.7.13(@xterm/xterm@6.0.0)
       '@cloudflare/workers-types':
         specifier: 'catalog:'
         version: 4.20260305.0
@@ -2595,8 +2595,8 @@ packages:
       '@opencode-ai/sdk':
         optional: true
 
-  '@cloudflare/sandbox@0.7.8':
-    resolution: {integrity: sha512-BNiRgHlGWYFYzRDDs+OOy1fEMU+Vr2UsWeTLP1LOQmq1oE2GSc1cWFPOOK4KZXUoxWJurMqZRAG47qa0ipKBCw==}
+  '@cloudflare/sandbox@0.7.13':
+    resolution: {integrity: sha512-HVbg6nUqudsUPGMKznyG4gPgYVdEH6nt2NYgKmCJzUJeXixoWDiqCVsJpmCzNueHg/2HX982A6EhQgIUol6jzQ==}
     peerDependencies:
       '@openai/agents': ^0.3.3
       '@opencode-ai/sdk': ^1.1.40
@@ -13521,9 +13521,9 @@ snapshots:
     dependencies:
       '@cloudflare/containers': 0.0.30
 
-  '@cloudflare/sandbox@0.7.8(@xterm/xterm@6.0.0)':
+  '@cloudflare/sandbox@0.7.13(@xterm/xterm@6.0.0)':
     dependencies:
-      '@cloudflare/containers': 0.0.30
+      '@cloudflare/containers': 0.1.1
       aws4fetch: 1.0.20
     optionalDependencies:
       '@xterm/xterm': 6.0.0
