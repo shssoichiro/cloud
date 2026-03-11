@@ -372,7 +372,7 @@ const encryptedBundle = {
 };
 
 // ---------------------------------------------------------------------------
-// Step 8: POST to worker
+// POST encrypted credentials to worker
 // ---------------------------------------------------------------------------
 
 console.log('Sending credentials to your kiloclaw instance...');
