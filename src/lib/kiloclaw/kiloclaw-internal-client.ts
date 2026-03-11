@@ -22,6 +22,7 @@ import type {
   GatewayProcessActionResponse,
   ConfigRestoreResponse,
   ControllerVersionResponse,
+  OpenclawConfigResponse,
 } from './types';
 
 /**
@@ -243,6 +244,21 @@ export class KiloClawInternalClient {
     return this.request('/api/platform/config/restore', {
       method: 'POST',
       body: JSON.stringify({ userId, version }),
+    });
+  }
+
+  async getOpenclawConfig(userId: string): Promise<OpenclawConfigResponse> {
+    return this.request(`/api/platform/openclaw-config?userId=${encodeURIComponent(userId)}`);
+  }
+
+  async replaceOpenclawConfig(
+    userId: string,
+    config: Record<string, unknown>,
+    etag?: string
+  ): Promise<{ ok: true }> {
+    return this.request('/api/platform/openclaw-config', {
+      method: 'POST',
+      body: JSON.stringify({ userId, config, ...(etag !== undefined && { etag }) }),
     });
   }
 }
