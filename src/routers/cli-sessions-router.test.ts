@@ -6,6 +6,8 @@ import {
   sharedCliSessions,
   organizations,
   organization_memberships,
+  cloud_agent_webhook_triggers,
+  agent_environment_profiles,
 } from '@kilocode/db/schema';
 import { CliSessionSharedState } from '@/types/cli-session-shared-state';
 import { eq, and } from 'drizzle-orm';
@@ -40,6 +42,14 @@ jest.mock('@/lib/cloud-agent/cloud-agent-client', () => ({
     deleteSession: deleteCloudAgentSessionMock,
   })),
 }));
+
+jest.mock('@/lib/config.server', () => {
+  const actual: Record<string, unknown> = jest.requireActual('@/lib/config.server');
+  return {
+    ...actual,
+    SESSION_INGEST_WORKER_URL: 'https://test-ingest.example.com',
+  };
+});
 
 let regularUser: User;
 let otherUser: User;
@@ -1832,6 +1842,112 @@ describe('cli-sessions-router', () => {
           cloud_agent_session_id: testCloudAgentSessionId,
         })
       ).rejects.toThrow('No kilo session found for this cloud-agent session');
+    });
+  });
+
+  describe('shareForWebhookTrigger', () => {
+    let triggerId: string;
+    let profileId: string;
+    const testTriggerId = 'test-trigger-share';
+
+    beforeAll(async () => {
+      // Create an environment profile (required FK for triggers)
+      const [profile] = await db
+        .insert(agent_environment_profiles)
+        .values({
+          owned_by_user_id: regularUser.id,
+          name: 'share-test-profile',
+        })
+        .returning({ id: agent_environment_profiles.id });
+      profileId = profile.id;
+
+      // Create a personal webhook trigger owned by regularUser
+      const [trigger] = await db
+        .insert(cloud_agent_webhook_triggers)
+        .values({
+          trigger_id: testTriggerId,
+          user_id: regularUser.id,
+          github_repo: 'test/repo',
+          profile_id: profileId,
+        })
+        .returning({ id: cloud_agent_webhook_triggers.id });
+      triggerId = trigger.id;
+    });
+
+    afterAll(async () => {
+      await db
+        .delete(cloud_agent_webhook_triggers)
+        .where(eq(cloud_agent_webhook_triggers.id, triggerId));
+      await db
+        .delete(agent_environment_profiles)
+        .where(eq(agent_environment_profiles.id, profileId));
+    });
+
+    describe('v1 path (UUID sessions)', () => {
+      let v1SessionId: string;
+
+      beforeEach(async () => {
+        const [session] = await db
+          .insert(cliSessions)
+          .values({
+            kilo_user_id: regularUser.id,
+            title: 'V1 Share Test Session',
+            created_on_platform: 'vscode',
+          })
+          .returning({ session_id: cliSessions.session_id });
+        v1SessionId = session.session_id;
+      });
+
+      afterEach(async () => {
+        await db.delete(sharedCliSessions).where(eq(sharedCliSessions.session_id, v1SessionId));
+        await db.delete(cliSessions).where(eq(cliSessions.session_id, v1SessionId));
+      });
+
+      it('should share a v1 session by copying blobs and creating a shared record', async () => {
+        const caller = await createCallerForUser(regularUser.id);
+
+        const result = await caller.cliSessions.shareForWebhookTrigger({
+          kilo_session_id: v1SessionId,
+          trigger_id: testTriggerId,
+        });
+
+        expect(result.session_id).toBe(v1SessionId);
+        expect(result.share_id).toBeDefined();
+
+        // Verify shared session was created in the database
+        const [shared] = await db
+          .select()
+          .from(sharedCliSessions)
+          .where(eq(sharedCliSessions.share_id, result.share_id));
+
+        expect(shared).toBeDefined();
+        expect(shared.session_id).toBe(v1SessionId);
+        expect(shared.shared_state).toBe(CliSessionSharedState.Public);
+      });
+
+      it('should throw NOT_FOUND for non-existent v1 session', async () => {
+        const caller = await createCallerForUser(regularUser.id);
+        const fakeUuid = '00000000-0000-0000-0000-000000000000';
+
+        await expect(
+          caller.cliSessions.shareForWebhookTrigger({
+            kilo_session_id: fakeUuid,
+            trigger_id: testTriggerId,
+          })
+        ).rejects.toThrow('Session not found');
+      });
+    });
+
+    it('should throw NOT_FOUND for non-existent trigger', async () => {
+      const caller = await createCallerForUser(regularUser.id);
+      const fakeUuid = '10000000-0000-1000-8000-000000000001';
+
+      await expect(
+        caller.cliSessions.shareForWebhookTrigger({
+          kilo_session_id: fakeUuid,
+          trigger_id: 'non-existent-trigger',
+        })
+      ).rejects.toThrow('Trigger not found');
     });
   });
 });

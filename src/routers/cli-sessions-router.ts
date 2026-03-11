@@ -4,7 +4,7 @@ import * as z from 'zod';
 import { db } from '@/lib/drizzle';
 import { eq, and, desc, lt, or, ilike, sql, isNull, notInArray, type SQL } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
-import { cliSessions, sharedCliSessions, cloud_agent_webhook_triggers } from '@kilocode/db/schema';
+import { cliSessions, sharedCliSessions } from '@kilocode/db/schema';
 import { CliSessionSharedState } from '@/types/cli-session-shared-state';
 import {
   generateSignedUrls,
@@ -18,6 +18,7 @@ import { ensureOrganizationAccess } from '@/routers/organizations/utils';
 import { getCodeReviewById } from '@/lib/code-reviews/db/code-reviews';
 import { createCloudAgentClient } from '@/lib/cloud-agent/cloud-agent-client';
 import { generateApiToken } from '@/lib/tokens';
+import { verifyWebhookTriggerAccess } from '@/lib/webhook-trigger-ownership';
 
 export const BLOB_TYPES = [
   'api_conversation_history',
@@ -768,45 +769,19 @@ export const cliSessionsRouter = createTRPCRouter({
     }),
 
   /**
-   * Share a CLI session from a webhook trigger request.
-   * This allows any org member to share the session associated with an org webhook trigger,
-   * or the owner to share their personal webhook trigger session.
+   * Share a legacy v1 CLI session (UUID) from a webhook trigger request.
+   * For v2 sessions (ses_*), use cliSessionsV2.shareForWebhookTrigger instead.
    */
   shareForWebhookTrigger: baseProcedure
     .input(
       z.object({
-        kilo_session_id: sessionIdField,
+        kilo_session_id: z.string().uuid(),
         trigger_id: z.string().min(1),
         organization_id: z.string().uuid().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const triggerWhereClause = input.organization_id
-        ? and(
-            eq(cloud_agent_webhook_triggers.trigger_id, input.trigger_id),
-            eq(cloud_agent_webhook_triggers.organization_id, input.organization_id)
-          )
-        : and(
-            eq(cloud_agent_webhook_triggers.trigger_id, input.trigger_id),
-            eq(cloud_agent_webhook_triggers.user_id, ctx.user.id),
-            isNull(cloud_agent_webhook_triggers.organization_id)
-          );
-
-      const [trigger] = await db
-        .select()
-        .from(cloud_agent_webhook_triggers)
-        .where(triggerWhereClause);
-
-      if (!trigger) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Trigger not found',
-        });
-      }
-
-      if (input.organization_id) {
-        await ensureOrganizationAccess(ctx, input.organization_id);
-      }
+      await verifyWebhookTriggerAccess(ctx, input.trigger_id, input.organization_id);
 
       const [session] = await db
         .select()
