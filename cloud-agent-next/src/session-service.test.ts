@@ -1303,7 +1303,7 @@ describe('SessionService', () => {
       };
     };
 
-    it.each([undefined, 'app-builder'])(
+    it.each([undefined])(
       'should NOT include question:deny for interactive platform %s',
       async createdOnPlatform => {
         const { sandbox, sandboxCreateSession } = setupForPlatformTest();
@@ -1334,6 +1334,7 @@ describe('SessionService', () => {
 
     it.each([
       'cloud-agent',
+      'app-builder',
       'slack',
       'security-agent',
       'webhook',
