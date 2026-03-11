@@ -131,12 +131,14 @@ export function SettingsTab({
   const needsImageUpgrade = isRunning && controllerVersion && !controllerVersion.version;
   // User self-updated OpenClaw on-machine — running version differs from what the image shipped with
   const isModified = getRunningVersionBadge(runningVersion, trackedVersion) === 'modified';
-  // A newer image exists in the catalog with a newer OpenClaw version — user should redeploy
+  // A newer image exists in the catalog with a newer OpenClaw version — user should redeploy.
+  // Suppress when the user already self-updated past the catalog version (redeploying would downgrade).
   const updateAvailable =
     !!trackedVersion &&
     !!latestAvailableVersion &&
     latestAvailableVersion !== trackedVersion &&
-    calverAtLeast(latestAvailableVersion, trackedVersion);
+    calverAtLeast(latestAvailableVersion, trackedVersion) &&
+    (!runningVersion || !calverAtLeast(runningVersion, latestAvailableVersion));
   const isPinned = !!myPin;
 
   // Show version section when running with a tracked version — even if running version is unknown yet
