@@ -22,13 +22,15 @@
  */
 
 import { DurableObject } from 'cloudflare:workers';
+import { signKiloToken, withTimeout } from '@kilocode/worker-utils';
 import type { KiloClawEnv } from '../types';
 import { sandboxIdFromUserId } from '../auth/sandbox-id';
 import { deriveGatewayToken } from '../auth/gateway-token';
-import { getWorkerDb, getActiveInstance, markInstanceDestroyed } from '../db';
+import { findPepperByUserId, getWorkerDb, getActiveInstance, markInstanceDestroyed } from '../db';
 import { buildEnvVars } from '../gateway/env';
 import {
   PersistedStateSchema,
+  DEFAULT_INSTANCE_FEATURES,
   type InstanceConfig,
   type PersistedState,
   type EncryptedEnvelope,
@@ -49,6 +51,7 @@ import {
   HEALTH_PROBE_INTERVAL_MS,
   STALE_PROVISION_THRESHOLD_MS,
   OPENCLAW_BUILTIN_DEFAULT_MODEL,
+  KILOCODE_API_KEY_EXPIRY_SECONDS,
 } from '../config';
 import type { FlyClientConfig } from '../fly/client';
 import type { FlyMachineConfig, FlyVolumeSnapshot } from '../fly/types';
@@ -114,6 +117,8 @@ const STORAGE_KEYS = Object.keys(PersistedStateSchema.shape);
 function storageUpdate(update: Partial<PersistedState>): Partial<PersistedState> {
   return update;
 }
+
+const MINT_TIMEOUT_MS = 5_000;
 
 // ============================================================================
 // Structured reconciliation logging
@@ -189,6 +194,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   private lastDestroyErrorMessage: string | null = null;
   private lastDestroyErrorAt: number | null = null;
   private lastBoundMachineRecoveryAt: number | null = null;
+  private instanceFeatures: string[] = [];
 
   // In-memory only (not persisted to SQLite) — throttles live Fly checks in getStatus()
   private lastLiveCheckAt: number | null = null;
@@ -236,6 +242,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       this.lastDestroyErrorMessage = s.lastDestroyErrorMessage;
       this.lastDestroyErrorAt = s.lastDestroyErrorAt;
       this.lastBoundMachineRecoveryAt = s.lastBoundMachineRecoveryAt;
+      this.instanceFeatures = s.instanceFeatures;
     } else {
       const hasAnyData = entries.size > 0;
       if (hasAnyData) {
@@ -415,10 +422,16 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       trackedImageDigest: this.trackedImageDigest,
     };
 
+    // Set default instance features on first provision; preserve existing on re-provision.
+    if (isNew) {
+      this.instanceFeatures = [...DEFAULT_INSTANCE_FEATURES];
+    }
+
     const update = isNew
       ? storageUpdate({
           ...configFields,
           ...versionFields,
+          instanceFeatures: this.instanceFeatures,
           provisionedAt: Date.now(),
           lastStartedAt: null,
           lastStoppedAt: null,
@@ -431,7 +444,11 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
           pendingDestroyVolumeId: null,
           pendingPostgresMarkOnFinalize: false,
         })
-      : storageUpdate({ ...configFields, ...versionFields });
+      : storageUpdate({
+          ...configFields,
+          ...versionFields,
+          instanceFeatures: this.instanceFeatures,
+        });
 
     await this.ctx.storage.put(update);
 
@@ -1650,7 +1667,17 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         }
       }
 
-      await fly.stopMachineAndWait(flyConfig, this.flyMachineId);
+      // Try to stop the machine first for a clean config swap.
+      // If the stop times out (e.g. Fly auto-restart races the poll),
+      // fall through — updateMachine on a running machine triggers a
+      // restart with the new config, which achieves the same result.
+      try {
+        await fly.stopMachineAndWait(flyConfig, this.flyMachineId);
+      } catch (stopErr) {
+        const isTimeout = stopErr instanceof fly.FlyApiError && stopErr.status === 408;
+        if (!isTimeout) throw stopErr;
+        console.warn('[DO] restartGateway: stop timed out, will update in-place:', stopErr.message);
+      }
 
       const { envVars, minSecretsVersion } = await this.buildUserEnvVars();
       const guest = guestFromSize(this.machineSize);
@@ -2734,6 +2761,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
           openclawVersion: null,
           imageVariant: null,
           trackedImageTag: null,
+          instanceFeatures: [],
         })
       );
 
@@ -2760,6 +2788,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       this.imageVariant = null;
       this.trackedImageTag = null;
       this.trackedImageDigest = null;
+      this.instanceFeatures = [];
       this.loaded = true;
 
       console.log('[DO] Restored from Postgres: sandboxId =', instance.sandboxId);
@@ -2804,6 +2833,43 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     }
   }
 
+  private async mintFreshApiKey(
+    secret: string
+  ): Promise<{ token: string; expiresAt: string } | null> {
+    const connectionString = this.env.HYPERDRIVE?.connectionString;
+    if (!this.userId || !connectionString) {
+      return null;
+    }
+
+    const db = getWorkerDb(connectionString);
+    const user = await findPepperByUserId(db, this.userId);
+    if (!user) {
+      console.warn('[DO] mintFreshApiKey: user not found in DB');
+      return null;
+    }
+
+    return signKiloToken({
+      userId: user.id,
+      pepper: user.api_token_pepper,
+      secret,
+      expiresInSeconds: KILOCODE_API_KEY_EXPIRY_SECONDS,
+      env: this.env.WORKER_ENV,
+    });
+  }
+
+  private hasExpiredStoredApiKey(): boolean {
+    if (!this.kilocodeApiKey || !this.kilocodeApiKeyExpiresAt) {
+      return false;
+    }
+
+    const expiresAtMs = Date.parse(this.kilocodeApiKeyExpiresAt);
+    if (Number.isNaN(expiresAtMs)) {
+      return false;
+    }
+
+    return expiresAtMs <= Date.now();
+  }
+
   private async buildUserEnvVars(): Promise<{
     envVars: Record<string, string>;
     minSecretsVersion: number;
@@ -2814,6 +2880,41 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     if (!this.userId) {
       throw new Error('Cannot build env vars: userId missing');
     }
+    if (!this.env.NEXTAUTH_SECRET) {
+      throw new Error('Cannot build env vars: NEXTAUTH_SECRET missing');
+    }
+    const nextAuthSecret = this.env.NEXTAUTH_SECRET;
+
+    let kilocodeApiKey = this.kilocodeApiKey ?? undefined;
+    if (this.userId && this.env.HYPERDRIVE?.connectionString) {
+      try {
+        const freshKey = await withTimeout(
+          this.mintFreshApiKey(nextAuthSecret),
+          MINT_TIMEOUT_MS,
+          'API key mint timed out'
+        );
+        if (freshKey) {
+          kilocodeApiKey = freshKey.token;
+          this.kilocodeApiKey = freshKey.token;
+          this.kilocodeApiKeyExpiresAt = freshKey.expiresAt;
+          await this.ctx.storage.put(
+            storageUpdate({
+              kilocodeApiKey: freshKey.token,
+              kilocodeApiKeyExpiresAt: freshKey.expiresAt,
+            })
+          );
+          console.log('[DO] buildUserEnvVars: minted fresh API key, expires:', freshKey.expiresAt);
+        }
+      } catch (err) {
+        console.warn('[DO] buildUserEnvVars: failed to mint fresh API key, using stored key:', err);
+      }
+    }
+
+    if (this.hasExpiredStoredApiKey()) {
+      throw new Error(
+        'Cannot build env vars: stored KiloCode API key expired and fresh mint unavailable'
+      );
+    }
 
     const { env: plainEnv, sensitive } = await buildEnvVars(
       this.env,
@@ -2822,10 +2923,11 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       {
         envVars: this.envVars ?? undefined,
         encryptedSecrets: this.encryptedSecrets ?? undefined,
-        kilocodeApiKey: this.kilocodeApiKey ?? undefined,
+        kilocodeApiKey,
         kilocodeDefaultModel: this.kilocodeDefaultModel ?? undefined,
         channels: this.channels ?? undefined,
         googleCredentials: this.googleCredentials ?? undefined,
+        instanceFeatures: this.instanceFeatures,
       }
     );
 
