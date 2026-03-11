@@ -41,6 +41,25 @@ if (!apiKey) {
   process.exit(1);
 }
 
+// Validate worker URL scheme — reject non-HTTPS except for localhost dev.
+try {
+  const parsed = new URL(workerUrl);
+  const isLocalhost =
+    parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+  if (parsed.protocol !== 'https:' && !isLocalhost) {
+    console.error(
+      `Error: --worker-url must use HTTPS (got ${parsed.protocol}). HTTP is only allowed for localhost.`
+    );
+    process.exit(1);
+  }
+  if (workerUrl !== 'https://claw.kilo.ai') {
+    console.warn(`Warning: using non-default worker URL: ${workerUrl}`);
+  }
+} catch {
+  console.error(`Error: invalid --worker-url: ${workerUrl}`);
+  process.exit(1);
+}
+
 const authHeaders = {
   authorization: `Bearer ${apiKey}`,
   'content-type': 'application/json',
