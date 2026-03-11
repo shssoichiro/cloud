@@ -4,8 +4,8 @@ import { IMAGE_TAG_RE, IMAGE_TAG_MAX_LENGTH } from '../lib/image-tag-validation'
 
 export const EncryptedEnvelopeSchema = z.object({
   // AES-256-GCM ciphertext: 16-byte IV + ciphertext + 16-byte tag, base64-encoded.
-  // 8 KiB is generous for token values (typical bot tokens are < 200 bytes).
-  encryptedData: z.string().max(8192),
+  // 32 KiB headroom for larger payloads like gog config tarballs.
+  encryptedData: z.string().max(32768),
   // RSA-2048 OAEP ciphertext of the 32-byte DEK, base64-encoded (~344 chars).
   encryptedDEK: z.string().max(1024),
   algorithm: z.literal('rsa-aes-256-gcm'),
@@ -31,8 +31,8 @@ const envVarNameSchema = z
   .refine(s => !s.startsWith('KILOCLAW_'), 'Uses reserved prefix (KILOCLAW_*)');
 
 export const GoogleCredentialsSchema = z.object({
-  clientSecret: EncryptedEnvelopeSchema, // client_secret.json contents
-  credentials: EncryptedEnvelopeSchema, // OAuth tokens (refresh token, etc.)
+  gogConfigTarball: EncryptedEnvelopeSchema, // base64 tar.gz of ~/.config/gogcli/
+  email: z.string().optional(), // for display ("Connected as user@...")
 });
 
 export type GoogleCredentials = z.infer<typeof GoogleCredentialsSchema>;

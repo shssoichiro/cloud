@@ -398,11 +398,11 @@ EOFPATCH
 # ============================================================
 # GOG (Google Workspace CLI) KEYRING
 # ============================================================
-# gog uses 99designs/keyring with an empty password for the file backend.
-# Set GOG_KEYRING_PASSWORD here so it's inherited by the gateway and all
-# child processes (controller → gateway → gog). Without this, the keyring
-# library prompts for a password on a missing TTY and fails.
-export GOG_KEYRING_PASSWORD=""
+# gog uses 99designs/keyring with the file backend. Set GOG_KEYRING_PASSWORD
+# here so it's inherited by the gateway and all child processes
+# (controller → gateway → gog). Without this, the keyring library prompts
+# for a password on a missing TTY and fails.
+export GOG_KEYRING_PASSWORD="kiloclaw"
 
 # ============================================================
 # START CONTROLLER

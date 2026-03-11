@@ -108,8 +108,8 @@ async function jwtGet(path) {
 }
 
 const DUMMY_CREDS = {
-  clientSecret: { encryptedData: 'dGVzdA==', encryptedDEK: 'dGVzdA==', algorithm: 'rsa-aes-256-gcm', version: 1 },
-  credentials: { encryptedData: 'dGVzdA==', encryptedDEK: 'dGVzdA==', algorithm: 'rsa-aes-256-gcm', version: 1 },
+  gogConfigTarball: { encryptedData: 'dGVzdA==', encryptedDEK: 'dGVzdA==', algorithm: 'rsa-aes-256-gcm', version: 1 },
+  email: 'test@example.com',
 };
 
 // ---------------------------------------------------------------------------
@@ -307,7 +307,7 @@ assertEq('Rejects missing googleCredentials (400)', 400, badCode1);
 // Invalid envelope schema (internal API)
 const { status: badCode2 } = await internalPost('/api/platform/google-credentials', {
   userId: USER_ID,
-  googleCredentials: { clientSecret: { bad: 'data' }, credentials: { bad: 'data' } },
+  googleCredentials: { gogConfigTarball: { bad: 'data' } },
 });
 assertEq('Rejects invalid envelope schema (400)', 400, badCode2);
 

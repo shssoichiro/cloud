@@ -299,66 +299,37 @@ describe('buildEnvVars', () => {
 
   // ─── Google credentials (Layer 4b) ───────────────────────────────────
 
-  it('decrypts Google credentials into sensitive bucket and merges client_id/client_secret', async () => {
+  it('decrypts Google gog config tarball into sensitive bucket', async () => {
     const env = createMockEnv({
       AGENT_ENV_VARS_PRIVATE_KEY: testPrivateKey,
     });
+    const tarballBase64 = Buffer.from('fake-tarball').toString('base64');
     const result = await buildEnvVars(env, SANDBOX_ID, SECRET, {
       googleCredentials: {
-        clientSecret: encryptForTest('{"client_id":"cid","client_secret":"csec"}', testPublicKey),
-        // credentials envelope omits client_id/client_secret (new setup flow)
-        credentials: encryptForTest('{"refresh_token":"rt"}', testPublicKey),
+        gogConfigTarball: encryptForTest(tarballBase64, testPublicKey),
+        email: 'user@gmail.com',
       },
     });
 
-    expect(result.sensitive.GOOGLE_CLIENT_SECRET_JSON).toBe(
-      '{"client_id":"cid","client_secret":"csec"}'
-    );
-    // Verify client_id and client_secret were merged from clientSecret envelope
-    const creds = JSON.parse(result.sensitive.GOOGLE_CREDENTIALS_JSON);
-    expect(creds.refresh_token).toBe('rt');
-    expect(creds.client_id).toBe('cid');
-    expect(creds.client_secret).toBe('csec');
-    expect(result.env.GOOGLE_CLIENT_SECRET_JSON).toBeUndefined();
-    expect(result.env.GOOGLE_CREDENTIALS_JSON).toBeUndefined();
+    expect(result.sensitive.GOOGLE_GOG_CONFIG_TARBALL).toBe(tarballBase64);
+    expect(result.env.GOOGLE_ACCOUNT_EMAIL).toBe('user@gmail.com');
+    // Should not leak into plaintext
+    expect(result.env.GOOGLE_GOG_CONFIG_TARBALL).toBeUndefined();
   });
 
-  it('does not overwrite existing client_id/client_secret in credentials envelope', async () => {
+  it('decrypts Google gog config tarball without email', async () => {
     const env = createMockEnv({
       AGENT_ENV_VARS_PRIVATE_KEY: testPrivateKey,
     });
+    const tarballBase64 = Buffer.from('fake-tarball').toString('base64');
     const result = await buildEnvVars(env, SANDBOX_ID, SECRET, {
       googleCredentials: {
-        clientSecret: encryptForTest(
-          '{"client_id":"old","client_secret":"old_sec"}',
-          testPublicKey
-        ),
-        // Legacy credentials envelope that already has client_id/client_secret
-        credentials: encryptForTest(
-          '{"refresh_token":"rt","client_id":"existing","client_secret":"existing_sec"}',
-          testPublicKey
-        ),
+        gogConfigTarball: encryptForTest(tarballBase64, testPublicKey),
       },
     });
 
-    const creds = JSON.parse(result.sensitive.GOOGLE_CREDENTIALS_JSON);
-    expect(creds.client_id).toBe('existing');
-    expect(creds.client_secret).toBe('existing_sec');
-  });
-
-  it('classifies Google credential env var names as sensitive even when provided as plaintext', async () => {
-    const env = createMockEnv({ AGENT_ENV_VARS_PRIVATE_KEY: testPrivateKey });
-    const result = await buildEnvVars(env, SANDBOX_ID, SECRET, {
-      envVars: {
-        GOOGLE_CLIENT_SECRET_JSON: '{"client_id":"leak"}',
-        GOOGLE_CREDENTIALS_JSON: '{"refresh_token":"leak"}',
-      },
-    });
-
-    expect(result.sensitive.GOOGLE_CLIENT_SECRET_JSON).toBe('{"client_id":"leak"}');
-    expect(result.sensitive.GOOGLE_CREDENTIALS_JSON).toBe('{"refresh_token":"leak"}');
-    expect(result.env.GOOGLE_CLIENT_SECRET_JSON).toBeUndefined();
-    expect(result.env.GOOGLE_CREDENTIALS_JSON).toBeUndefined();
+    expect(result.sensitive.GOOGLE_GOG_CONFIG_TARBALL).toBe(tarballBase64);
+    expect(result.env.GOOGLE_ACCOUNT_EMAIL).toBeUndefined();
   });
 
   it('continues without Google access when credential decryption fails', async () => {
@@ -368,14 +339,7 @@ describe('buildEnvVars', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = await buildEnvVars(env, SANDBOX_ID, SECRET, {
       googleCredentials: {
-        // Corrupted envelopes — not valid encrypted data
-        clientSecret: {
-          encryptedData: 'bad',
-          encryptedDEK: 'bad',
-          algorithm: 'rsa-aes-256-gcm' as const,
-          version: 1 as const,
-        },
-        credentials: {
+        gogConfigTarball: {
           encryptedData: 'bad',
           encryptedDEK: 'bad',
           algorithm: 'rsa-aes-256-gcm' as const,
@@ -384,8 +348,7 @@ describe('buildEnvVars', () => {
       },
     });
 
-    expect(result.sensitive.GOOGLE_CLIENT_SECRET_JSON).toBeUndefined();
-    expect(result.sensitive.GOOGLE_CREDENTIALS_JSON).toBeUndefined();
+    expect(result.sensitive.GOOGLE_GOG_CONFIG_TARBALL).toBeUndefined();
     expect(warnSpy).toHaveBeenCalledWith(
       'Failed to decrypt Google credentials, starting without Google access:',
       expect.any(Error)
@@ -395,15 +358,14 @@ describe('buildEnvVars', () => {
 
   it('skips Google credential decryption when no private key configured', async () => {
     const env = createMockEnv(); // no AGENT_ENV_VARS_PRIVATE_KEY
+    const tarballBase64 = Buffer.from('fake-tarball').toString('base64');
     const result = await buildEnvVars(env, SANDBOX_ID, SECRET, {
       googleCredentials: {
-        clientSecret: encryptForTest('{"client_id":"test"}', testPublicKey),
-        credentials: encryptForTest('{"refresh_token":"rt"}', testPublicKey),
+        gogConfigTarball: encryptForTest(tarballBase64, testPublicKey),
       },
     });
 
-    expect(result.sensitive.GOOGLE_CLIENT_SECRET_JSON).toBeUndefined();
-    expect(result.sensitive.GOOGLE_CREDENTIALS_JSON).toBeUndefined();
+    expect(result.sensitive.GOOGLE_GOG_CONFIG_TARBALL).toBeUndefined();
   });
 
   // ─── Catalog-derived SENSITIVE_KEYS equivalence ───────────────────────

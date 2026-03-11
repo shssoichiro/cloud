@@ -16,6 +16,11 @@ RUN curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dea
   && apt-get update && apt-get install -y --no-install-recommends google-cloud-cli \
   && rm -rf /var/lib/apt/lists/*
 
+# Install gogcli v0.11.0 pre-built binary
+RUN curl -fsSL https://github.com/steipete/gogcli/releases/download/v0.11.0/gogcli_0.11.0_linux_amd64.tar.gz \
+    | tar xz -C /usr/local/bin gog \
+  && chmod +x /usr/local/bin/gog
+
 WORKDIR /app
 COPY setup.mjs ./
 

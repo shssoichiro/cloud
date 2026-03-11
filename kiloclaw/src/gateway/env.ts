@@ -163,33 +163,19 @@ export async function buildEnvVars(
       Object.assign(sensitive, channelEnv);
     }
 
-    // Layer 4b: Decrypt Google credentials and pass as env vars.
+    // Layer 4b: Decrypt Google credentials (gog config tarball) and pass as env var.
     // Wrapped in try/catch so corrupted credentials don't block container startup —
     // the machine starts without Google access instead of failing entirely.
     if (userConfig.googleCredentials && env.AGENT_ENV_VARS_PRIVATE_KEY) {
       try {
-        const clientSecretJson = decryptWithPrivateKey(
-          userConfig.googleCredentials.clientSecret,
+        const tarballBase64 = decryptWithPrivateKey(
+          userConfig.googleCredentials.gogConfigTarball,
           env.AGENT_ENV_VARS_PRIVATE_KEY
         );
-        sensitive.GOOGLE_CLIENT_SECRET_JSON = clientSecretJson;
-
-        const credentialsRaw = decryptWithPrivateKey(
-          userConfig.googleCredentials.credentials,
-          env.AGENT_ENV_VARS_PRIVATE_KEY
-        );
-        // Merge client_id/client_secret from the clientSecret envelope into
-        // the credentials object. The setup flow omits them from the credentials
-        // envelope to avoid duplicating the OAuth client secret across envelopes.
-        const clientSecret = JSON.parse(clientSecretJson);
-        const credentials = JSON.parse(credentialsRaw);
-        if (!credentials.client_id && clientSecret.client_id) {
-          credentials.client_id = clientSecret.client_id;
+        sensitive.GOOGLE_GOG_CONFIG_TARBALL = tarballBase64;
+        if (userConfig.googleCredentials.email) {
+          plainEnv.GOOGLE_ACCOUNT_EMAIL = userConfig.googleCredentials.email;
         }
-        if (!credentials.client_secret && clientSecret.client_secret) {
-          credentials.client_secret = clientSecret.client_secret;
-        }
-        sensitive.GOOGLE_CREDENTIALS_JSON = JSON.stringify(credentials);
       } catch (err) {
         console.warn('Failed to decrypt Google credentials, starting without Google access:', err);
       }

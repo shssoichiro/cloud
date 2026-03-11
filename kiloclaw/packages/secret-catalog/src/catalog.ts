@@ -138,8 +138,7 @@ export const ALL_SECRET_ENV_VARS: ReadonlySet<string> = new Set(
  * not entered by users through the secret management UI.
  */
 export const INTERNAL_SENSITIVE_ENV_VARS: ReadonlySet<string> = new Set([
-  'GOOGLE_CLIENT_SECRET_JSON',
-  'GOOGLE_CREDENTIALS_JSON',
+  'GOOGLE_GOG_CONFIG_TARBALL',
 ]);
 
 /**

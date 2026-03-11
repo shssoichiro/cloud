@@ -8,18 +8,15 @@
  * 2. Fetches the worker's RSA public key for credential encryption
  * 3. Signs into gcloud, creates/selects a GCP project, enables APIs
  * 4. Prompts user to create a Desktop OAuth client in Cloud Console
- * 5. Runs our own OAuth flow (localhost callback) to get a refresh token
- * 6. Fetches the user's email address
- * 7. Encrypts the client_secret + credentials with the worker's public key
- * 8. POSTs the encrypted bundle to the kiloclaw worker
+ * 5. Runs gog auth (credentials set + add) to authorize all services
+ * 6. Tarballs the gog config, encrypts, and POSTs to the worker
  *
  * Usage:
  *   docker run -it --network host kilocode/google-setup --token=<jwt>
  */
 
-import { spawn, execSync } from 'node:child_process';
+import { spawn, execSync, execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
-import http from 'node:http';
 import readline from 'node:readline';
 
 // ---------------------------------------------------------------------------
@@ -63,37 +60,6 @@ const authHeaders = {
   'content-type': 'application/json',
 };
 
-// ---------------------------------------------------------------------------
-// Scopes — all gog user services + pubsub
-// ---------------------------------------------------------------------------
-
-const SCOPES = [
-  'openid',
-  'email',
-  'https://www.googleapis.com/auth/gmail.modify',
-  'https://www.googleapis.com/auth/gmail.settings.basic',
-  'https://www.googleapis.com/auth/gmail.settings.sharing',
-  'https://www.googleapis.com/auth/calendar',
-  'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/documents',
-  'https://www.googleapis.com/auth/presentations',
-  'https://www.googleapis.com/auth/spreadsheets',
-  'https://www.googleapis.com/auth/tasks',
-  'https://www.googleapis.com/auth/contacts',
-  'https://www.googleapis.com/auth/contacts.other.readonly',
-  'https://www.googleapis.com/auth/directory.readonly',
-  'https://www.googleapis.com/auth/forms.body',
-  'https://www.googleapis.com/auth/forms.responses.readonly',
-  'https://www.googleapis.com/auth/chat.spaces',
-  'https://www.googleapis.com/auth/chat.messages',
-  'https://www.googleapis.com/auth/chat.memberships',
-  'https://www.googleapis.com/auth/classroom.courses',
-  'https://www.googleapis.com/auth/classroom.rosters',
-  'https://www.googleapis.com/auth/script.projects',
-  'https://www.googleapis.com/auth/script.deployments',
-  'https://www.googleapis.com/auth/pubsub',
-];
-
 // APIs to enable in the GCP project
 const GCP_APIS = [
   'gmail.googleapis.com',
@@ -136,7 +102,7 @@ function runCommand(cmd, args, opts = {}) {
 }
 
 function runCommandOutput(cmd, args) {
-  return execSync([cmd, ...args].join(' '), {
+  return execFileSync(cmd, args, {
     encoding: 'utf8',
     stdio: ['pipe', 'pipe', 'pipe'],
   }).trim();
@@ -304,144 +270,11 @@ if (!clientId || !clientSecret) {
   process.exit(1);
 }
 
-// Build client_secret.json in the standard Google format
-const clientSecretObj = {
-  installed: {
-    client_id: clientId,
-    project_id: projectId,
-    auth_uri: 'https://accounts.google.com/o/oauth2/auth',
-    token_uri: 'https://oauth2.googleapis.com/token',
-    auth_provider_x509_cert_url: 'https://www.googleapis.com/oauth2/v1/certs',
-    client_secret: clientSecret,
-    redirect_uris: ['http://localhost'],
-  },
-};
-const clientSecretJson = JSON.stringify(clientSecretObj);
-
 // ---------------------------------------------------------------------------
-// Step 5: Custom OAuth flow to get refresh token
+// Step 5: Run gog auth to set credentials and authorize account
 // ---------------------------------------------------------------------------
 
-console.log('\nStarting OAuth authorization...');
-
-const { code, redirectUri } = await new Promise((resolve, reject) => {
-  let callbackPort;
-
-  const server = http.createServer((req, res) => {
-    const url = new URL(req.url, `http://localhost`);
-    const code = url.searchParams.get('code');
-    const error = url.searchParams.get('error');
-
-    if (error) {
-      clearTimeout(timer);
-      res.writeHead(200, { 'content-type': 'text/html' });
-      res.end('<h1>Authorization failed</h1><p>You can close this tab.</p>');
-      server.close();
-      reject(new Error(`OAuth error: ${error}`));
-      return;
-    }
-
-    if (code) {
-      clearTimeout(timer);
-      res.writeHead(200, { 'content-type': 'text/html' });
-      res.end('<h1>Authorization successful!</h1><p>You can close this tab.</p>');
-      server.close();
-      resolve({ code, redirectUri: `http://localhost:${callbackPort}` });
-      return;
-    }
-
-    // Ignore non-OAuth requests (e.g. browser favicon)
-    res.writeHead(404);
-    res.end();
-  });
-
-  let timer;
-
-  server.on('error', err => {
-    clearTimeout(timer);
-    reject(new Error(`OAuth callback server failed: ${err.message}`));
-  });
-
-  server.listen(0, () => {
-    callbackPort = server.address().port;
-    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-    authUrl.searchParams.set('client_id', clientId);
-    authUrl.searchParams.set('redirect_uri', `http://localhost:${callbackPort}`);
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('scope', SCOPES.join(' '));
-    authUrl.searchParams.set('access_type', 'offline');
-    authUrl.searchParams.set('prompt', 'consent');
-
-    console.log('\nOpen this URL in your browser to authorize:\n');
-    console.log(`  ${authUrl.toString()}\n`);
-    console.log(`Waiting for OAuth callback on port ${callbackPort}...`);
-  });
-
-  timer = setTimeout(
-    () => {
-      server.close();
-      reject(new Error('OAuth flow timed out (5 minutes)'));
-    },
-    5 * 60 * 1000
-  );
-  timer.unref();
-});
-
-// Exchange authorization code for tokens
-console.log('Exchanging authorization code for tokens...');
-
-const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-  method: 'POST',
-  headers: { 'content-type': 'application/x-www-form-urlencoded' },
-  body: new URLSearchParams({
-    code,
-    client_id: clientId,
-    client_secret: clientSecret,
-    redirect_uri: redirectUri,
-    grant_type: 'authorization_code',
-  }),
-});
-
-if (!tokenRes.ok) {
-  const err = await tokenRes.text();
-  console.error('Token exchange failed:', err);
-  process.exit(1);
-}
-
-const tokens = await tokenRes.json();
-console.log('OAuth tokens obtained.');
-
-// ---------------------------------------------------------------------------
-// Step 6: Fetch user email
-// ---------------------------------------------------------------------------
-
-console.log('Fetching account info...');
-
-const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-  headers: { authorization: `Bearer ${tokens.access_token}` },
-});
-
-let userEmail;
-if (userinfoRes.ok) {
-  const userinfo = await userinfoRes.json();
-  userEmail = userinfo.email;
-  console.log(`Account: ${userEmail}`);
-} else {
-  console.warn('Could not fetch user email. gog account auto-selection will not work.');
-}
-
-// Build credentials object — includes email for gog keyring key naming
-const credentialsObj = {
-  type: 'authorized_user',
-  ...tokens,
-  scopes: SCOPES,
-  ...(userEmail && { email: userEmail }),
-};
-const credentialsJson = JSON.stringify(credentialsObj);
-
-// ---------------------------------------------------------------------------
-// Step 7: Encrypt credentials with worker's public key
-// ---------------------------------------------------------------------------
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 function encryptEnvelope(plaintext, pemKey) {
   const dek = crypto.randomBytes(32);
@@ -463,11 +296,79 @@ function encryptEnvelope(plaintext, pemKey) {
   };
 }
 
-console.log('Encrypting credentials...');
+const gogHome = '/tmp/gogcli-home';
+const gogEnv = {
+  ...process.env,
+  HOME: gogHome,
+  GOG_KEYRING_BACKEND: 'file',
+  GOG_KEYRING_PASSWORD: 'kiloclaw',
+};
+
+// Build client_secret.json in Google's standard format and feed it to gog
+const clientSecretJson = JSON.stringify({
+  installed: {
+    client_id: clientId,
+    project_id: projectId,
+    auth_uri: 'https://accounts.google.com/o/oauth2/auth',
+    token_uri: 'https://oauth2.googleapis.com/token',
+    auth_provider_x509_cert_url: 'https://www.googleapis.com/oauth2/v1/certs',
+    client_secret: clientSecret,
+    redirect_uris: ['http://localhost'],
+  },
+});
+
+// Write to temp file so gog can read it
+const clientSecretPath = '/tmp/client_secret.json';
+writeFileSync(clientSecretPath, clientSecretJson);
+
+console.log('\nSetting up gog credentials...');
+
+try {
+  await runCommand('gog', ['auth', 'credentials', 'set', clientSecretPath], {
+    env: gogEnv,
+  });
+} catch (err) {
+  console.error('gog auth credentials set failed:', err.message);
+  process.exit(1);
+}
+
+// Use the gcloud account email for gog auth add
+const userEmail = gcloudAccount;
+console.log(`\nAuthorizing ${userEmail} with gog...`);
+console.log('A browser window will open for you to authorize Google Workspace access.\n');
+
+try {
+  await runCommand('gog', [
+    'auth', 'add', userEmail,
+    '--services=all',
+    '--force-consent',
+  ], {
+    env: gogEnv,
+  });
+} catch (err) {
+  console.error('gog auth add failed:', err.message);
+  process.exit(1);
+}
+
+console.log(`\nAuthenticated as: ${userEmail}`);
+
+// ---------------------------------------------------------------------------
+// Step 6: Create config tarball, encrypt, and POST
+// ---------------------------------------------------------------------------
+
+console.log('Creating config tarball...');
+const tarballBuffer = execSync(`tar czf - -C ${gogHome}/.config gogcli`, {
+  maxBuffer: 1024 * 1024,
+});
+const tarballBase64 = tarballBuffer.toString('base64');
+
+console.log(`Config tarball size: ${tarballBuffer.length} bytes`);
+
+console.log('Encrypting config tarball...');
 
 const encryptedBundle = {
-  clientSecret: encryptEnvelope(clientSecretJson, publicKeyPem),
-  credentials: encryptEnvelope(credentialsJson, publicKeyPem),
+  gogConfigTarball: encryptEnvelope(tarballBase64, publicKeyPem),
+  email: userEmail,
 };
 
 // ---------------------------------------------------------------------------
