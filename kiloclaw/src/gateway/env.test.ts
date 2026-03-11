@@ -331,6 +331,28 @@ describe('buildEnvVars', () => {
     expect(result.env.GOOGLE_CREDENTIALS_JSON).toBeUndefined();
   });
 
+  it('continues without Google access when credential decryption fails', async () => {
+    const env = createMockEnv({
+      AGENT_ENV_VARS_PRIVATE_KEY: testPrivateKey,
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await buildEnvVars(env, SANDBOX_ID, SECRET, {
+      googleCredentials: {
+        // Corrupted envelopes — not valid encrypted data
+        clientSecret: { encrypted: 'bad', key: 'bad', iv: 'bad', authTag: 'bad' },
+        credentials: { encrypted: 'bad', key: 'bad', iv: 'bad', authTag: 'bad' },
+      },
+    });
+
+    expect(result.sensitive.GOOGLE_CLIENT_SECRET_JSON).toBeUndefined();
+    expect(result.sensitive.GOOGLE_CREDENTIALS_JSON).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Failed to decrypt Google credentials, starting without Google access:',
+      expect.any(Error)
+    );
+    warnSpy.mockRestore();
+  });
+
   it('skips Google credential decryption when no private key configured', async () => {
     const env = createMockEnv(); // no AGENT_ENV_VARS_PRIVATE_KEY
     const result = await buildEnvVars(env, SANDBOX_ID, SECRET, {

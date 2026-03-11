@@ -163,16 +163,22 @@ export async function buildEnvVars(
       Object.assign(sensitive, channelEnv);
     }
 
-    // Layer 4b: Decrypt Google credentials and pass as env vars
+    // Layer 4b: Decrypt Google credentials and pass as env vars.
+    // Wrapped in try/catch so corrupted credentials don't block container startup —
+    // the machine starts without Google access instead of failing entirely.
     if (userConfig.googleCredentials && env.AGENT_ENV_VARS_PRIVATE_KEY) {
-      sensitive.GOOGLE_CLIENT_SECRET_JSON = decryptWithPrivateKey(
-        userConfig.googleCredentials.clientSecret,
-        env.AGENT_ENV_VARS_PRIVATE_KEY
-      );
-      sensitive.GOOGLE_CREDENTIALS_JSON = decryptWithPrivateKey(
-        userConfig.googleCredentials.credentials,
-        env.AGENT_ENV_VARS_PRIVATE_KEY
-      );
+      try {
+        sensitive.GOOGLE_CLIENT_SECRET_JSON = decryptWithPrivateKey(
+          userConfig.googleCredentials.clientSecret,
+          env.AGENT_ENV_VARS_PRIVATE_KEY
+        );
+        sensitive.GOOGLE_CREDENTIALS_JSON = decryptWithPrivateKey(
+          userConfig.googleCredentials.credentials,
+          env.AGENT_ENV_VARS_PRIVATE_KEY
+        );
+      } catch (err) {
+        console.warn('Failed to decrypt Google credentials, starting without Google access:', err);
+      }
     }
   }
 
