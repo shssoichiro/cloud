@@ -4,7 +4,7 @@
  * KiloClaw Google Account Setup
  *
  * Docker-based tool that:
- * 1. Validates the user's KiloCode API key against the kiloclaw worker
+ * 1. Validates the user's session token (JWT) against the kiloclaw worker
  * 2. Fetches the worker's RSA public key for credential encryption
  * 3. Signs into gcloud, creates/selects a GCP project, enables APIs
  * 4. Prompts user to create a Desktop OAuth client in Cloud Console
@@ -14,7 +14,7 @@
  * 8. POSTs the encrypted bundle to the kiloclaw worker
  *
  * Usage:
- *   docker run -it --network host kilocode/google-setup --api-key=kilo_abc123
+ *   docker run -it --network host kilocode/google-setup --token=<jwt>
  */
 
 import { spawn, execSync } from 'node:child_process';
@@ -27,17 +27,17 @@ import readline from 'node:readline';
 // ---------------------------------------------------------------------------
 
 const args = process.argv.slice(2);
-const apiKeyArg = args.find(a => a.startsWith('--api-key='));
-const apiKey = apiKeyArg?.substring(apiKeyArg.indexOf('=') + 1);
+const tokenArg = args.find(a => a.startsWith('--token='));
+const token = tokenArg?.substring(tokenArg.indexOf('=') + 1);
 
 const workerUrlArg = args.find(a => a.startsWith('--worker-url='));
 const workerUrl = workerUrlArg
   ? workerUrlArg.substring(workerUrlArg.indexOf('=') + 1)
   : 'https://claw.kilo.ai';
 
-if (!apiKey) {
+if (!token) {
   console.error(
-    'Usage: docker run -it --network host kilocode/google-setup --api-key=<your-api-key>'
+    'Usage: docker run -it --network host kilocode/google-setup --token=<session-jwt>'
   );
   process.exit(1);
 }
@@ -62,7 +62,7 @@ try {
 }
 
 const authHeaders = {
-  authorization: `Bearer ${apiKey}`,
+  authorization: `Bearer ${token}`,
   'content-type': 'application/json',
 };
 
@@ -143,10 +143,10 @@ function runCommandOutput(cmd, args) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1: Validate API key
+// Step 1: Validate session token
 // ---------------------------------------------------------------------------
 
-console.log('Validating API key...');
+console.log('Validating session token...');
 
 const validateRes = await fetch(`${workerUrl}/health`);
 if (!validateRes.ok) {
@@ -159,11 +159,11 @@ const authCheckRes = await fetch(`${workerUrl}/api/admin/google-credentials`, {
 });
 
 if (authCheckRes.status === 401 || authCheckRes.status === 403) {
-  console.error('Invalid API key. Check your key and try again.');
+  console.error('Invalid or expired session token. Log in to kilo.ai and copy a fresh token.');
   process.exit(1);
 }
 
-console.log('API key verified.\n');
+console.log('Session token verified.\n');
 
 // ---------------------------------------------------------------------------
 // Step 2: Fetch public key for encryption
@@ -241,49 +241,27 @@ console.log('\nEnabling Google APIs (this may take a minute)...');
 await runCommand('gcloud', ['services', 'enable', ...GCP_APIS, `--project=${projectId}`]);
 console.log('APIs enabled.\n');
 
-// Configure OAuth consent screen via REST API
-console.log('Configuring OAuth consent screen...');
-const accessToken = runCommandOutput('gcloud', ['auth', 'print-access-token']);
-
-// Check if brand already exists
-const brandsRes = await fetch(
-  `https://iap.googleapis.com/v1/projects/${projectId}/brands`,
-  { headers: { authorization: `Bearer ${accessToken}` } }
-);
-const brandsData = await brandsRes.json();
-
-if (!brandsData.brands?.length) {
-  const createBrandRes = await fetch(
-    `https://iap.googleapis.com/v1/projects/${projectId}/brands`,
-    {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${accessToken}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        applicationTitle: 'KiloClaw',
-        supportEmail: gcloudAccount,
-      }),
-    }
-  );
-  if (!createBrandRes.ok) {
-    console.warn('Could not auto-configure consent screen. You may need to set it up manually.');
-    console.warn(`Visit: https://console.cloud.google.com/apis/credentials/consent?project=${projectId}\n`);
-  } else {
-    console.log('OAuth consent screen configured.\n');
-  }
-} else {
-  console.log('OAuth consent screen already configured.\n');
-}
-
 // ---------------------------------------------------------------------------
-// Step 4: Manual OAuth client creation
+// Step 4: Configure OAuth consent screen + create OAuth client
 // ---------------------------------------------------------------------------
 
+const consentUrl = `https://console.cloud.google.com/auth/overview?project=${projectId}`;
 const credentialsUrl = `https://console.cloud.google.com/apis/credentials?project=${projectId}`;
 
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log('  Configure OAuth consent screen');
+console.log('');
+console.log(`  1. Open: ${consentUrl}`);
+console.log('  2. Click "Get started"');
+console.log('  3. App name: "KiloClaw", User support email: your email');
+console.log('  4. Audience: select "External"');
+console.log('  5. Contact email: your email');
+console.log('  6. Finish and click "Create"');
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+await ask('Press Enter when done...');
+
+console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 console.log('  Create an OAuth client');
 console.log('');
 console.log(`  1. Open: ${credentialsUrl}`);

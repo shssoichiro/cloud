@@ -187,7 +187,7 @@ const dockerArgs = [
   'run', '--rm', '-it',
   '--network', 'host',
   DOCKER_IMAGE,
-  `--api-key=${jwt}`,
+  `--token=${jwt}`,
   `--worker-url=${DOCKER_WORKER_URL}`,
 ];
 

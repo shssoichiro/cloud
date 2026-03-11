@@ -4,7 +4,7 @@ Docker image that guides users through connecting their Google account to KiloCl
 
 ## What it does
 
-1. Validates the user's KiloCode API key
+1. Validates the user's session token (JWT)
 2. Signs into gcloud, creates/selects a GCP project, enables Google APIs
 3. Guides user through creating a Desktop OAuth client in Google Cloud Console
 4. Runs a local OAuth flow to obtain refresh tokens
@@ -14,14 +14,14 @@ Docker image that guides users through connecting their Google account to KiloCl
 ## Usage
 
 ```bash
-docker run -it --network host ghcr.io/kilo-org/google-setup --api-key="YOUR_API_KEY"
+docker run -it --network host ghcr.io/kilo-org/google-setup --token="YOUR_SESSION_JWT"
 ```
 
 For local development against a local worker:
 
 ```bash
 docker run -it --network host ghcr.io/kilo-org/google-setup \
-  --api-key="YOUR_API_KEY" \
+  --token="YOUR_SESSION_JWT" \
   --worker-url=http://localhost:8795
 ```
 
