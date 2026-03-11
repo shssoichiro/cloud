@@ -11,7 +11,7 @@ import {
   microdollar_usage,
   microdollar_usage_metadata,
 } from '@kilocode/db/schema';
-import { eq, and, desc, count, ne, inArray, sql, sum } from 'drizzle-orm';
+import { eq, and, desc, count, ne, inArray, sql, sum, gte } from 'drizzle-orm';
 import { captureException } from '@sentry/nextjs';
 import type { CreateReviewParams, CodeReviewStatus, ListReviewsParams, Owner } from '../core';
 import type { CloudAgentCodeReview } from '@kilocode/db/schema';
@@ -502,18 +502,20 @@ export type SessionUsageSummary = {
  * system (processUsage → microdollar_usage) already records per-request
  * usage keyed by session_id, so we aggregate here.
  *
- * Uses two queries:
- * 1. Session-wide totals (tokens + cost across all models)
- * 2. The model with the most tokens (the primary review model name)
- *
- * This avoids undercounting when a session uses more than one model.
+ * The `reviewCreatedAt` lower bound lets Postgres use the existing
+ * `idx_microdollar_usage_metadata_created_at` index instead of seq-scanning
+ * the full table (~469 M rows). Billing rows cannot exist before the review.
  */
 export async function getSessionUsageFromBilling(
-  cliSessionId: string
+  cliSessionId: string,
+  reviewCreatedAt: string
 ): Promise<SessionUsageSummary | null> {
   try {
-    const sessionFilter = eq(microdollar_usage_metadata.session_id, cliSessionId);
     const joinCondition = eq(microdollar_usage.id, microdollar_usage_metadata.id);
+    const sessionFilter = and(
+      eq(microdollar_usage_metadata.session_id, cliSessionId),
+      gte(microdollar_usage_metadata.created_at, reviewCreatedAt)
+    );
 
     // 1. Session-wide totals (all models combined)
     const [totals] = await db
