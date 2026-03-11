@@ -1,5 +1,5 @@
 import type { KiloFreeModel } from '@/lib/providers/kilo-free-model';
-import type { ParsedProxyRequest } from '@/lib/providers/openrouter/types';
+import type { GatewayRequest } from '@/lib/providers/openrouter/types';
 
 export const corethink_free_model: KiloFreeModel = {
   public_id: 'corethink:free',
@@ -15,7 +15,7 @@ export const corethink_free_model: KiloFreeModel = {
   inference_provider: 'corethink',
 };
 
-export function applyCoreThinkProviderSettings(requestToMutate: ParsedProxyRequest) {
+export function applyCoreThinkProviderSettings(requestToMutate: GatewayRequest) {
   if (requestToMutate.kind !== 'chat_completions') {
     return;
   }

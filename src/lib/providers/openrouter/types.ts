@@ -90,7 +90,7 @@ export type MessageWithReasoning = {
  * - `chat_completions`: OpenAI Chat Completions API (and OpenRouter superset)
  * - `responses`: OpenAI Responses API
  */
-export type ParsedProxyRequest =
+export type GatewayRequest =
   | { kind: 'chat_completions'; body: OpenRouterChatCompletionRequest }
   | { kind: 'responses'; body: GatewayResponsesRequest };
 

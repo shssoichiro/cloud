@@ -1,4 +1,4 @@
-import type { ParsedProxyRequest } from '@/lib/providers/openrouter/types';
+import type { GatewayRequest } from '@/lib/providers/openrouter/types';
 import { normalizeToolCallIds } from '@/lib/tool-calling';
 import type OpenAI from 'openai';
 
@@ -77,7 +77,7 @@ export function addCacheBreakpoints(messages: OpenAI.Chat.ChatCompletionMessageP
 }
 
 export function applyAnthropicModelSettings(
-  requestToMutate: ParsedProxyRequest,
+  requestToMutate: GatewayRequest,
   extraHeaders: Record<string, string>
 ) {
   appendAnthropicBetaHeader(extraHeaders, 'fine-grained-tool-streaming-2025-05-14');

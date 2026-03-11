@@ -12,7 +12,7 @@ import { validateFeatureHeader, FEATURE_HEADER } from '@/lib/feature-detection';
 import type {
   OpenRouterChatCompletionRequest,
   GatewayResponsesRequest,
-  ParsedProxyRequest,
+  GatewayRequest,
 } from '@/lib/providers/openrouter/types';
 import { applyProviderSpecificLogic, getProvider, openRouterRequest } from '@/lib/providers';
 import { debugSaveProxyRequest } from '@/lib/debugUtils';
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   // Parse body first to check model before auth (needed for anonymous access)
   const requestBodyText = await request.text();
   debugSaveProxyRequest(requestBodyText);
-  let parsedRequest: ParsedProxyRequest;
+  let parsedRequest: GatewayRequest;
   try {
     if (path === '/chat/completions') {
       const body: OpenRouterChatCompletionRequest = JSON.parse(requestBodyText);

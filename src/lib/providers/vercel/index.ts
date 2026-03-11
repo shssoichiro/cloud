@@ -12,7 +12,7 @@ import {
 } from '@/lib/providers/openrouter/inference-provider-id';
 import type {
   OpenRouterProviderConfig,
-  ParsedProxyRequest,
+  GatewayRequest,
   VercelInferenceProviderConfig,
   VercelProviderConfig,
 } from '@/lib/providers/openrouter/types';
@@ -151,7 +151,7 @@ export function getVercelInferenceProviderConfigForUserByok(
 
 export function applyVercelSettings(
   requestedModel: string,
-  requestToMutate: ParsedProxyRequest,
+  requestToMutate: GatewayRequest,
   userByok: BYOKResult[] | null
 ) {
   requestToMutate.body.model = mapModelIdToVercel(requestedModel);

@@ -3,7 +3,7 @@ import type { KiloFreeModel } from '@/lib/providers/kilo-free-model';
 import type {
   MessageWithReasoning,
   OpenRouterChatCompletionRequest,
-  ParsedProxyRequest,
+  GatewayRequest,
 } from '@/lib/providers/openrouter/types';
 
 export const grok_code_fast_1_optimized_free_model: KiloFreeModel = {
@@ -46,7 +46,7 @@ export function convertReasoningDetailsToReasoningContent(
 
 export function applyXaiModelSettings(
   requestedModel: string,
-  requestToMutate: ParsedProxyRequest,
+  requestToMutate: GatewayRequest,
   extraHeaders: Record<string, string>
 ) {
   if (requestedModel === grok_code_fast_1_optimized_free_model.public_id) {

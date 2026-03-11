@@ -1,4 +1,4 @@
-import type { ParsedProxyRequest } from '@/lib/providers/openrouter/types';
+import type { GatewayRequest } from '@/lib/providers/openrouter/types';
 import {
   dropToolStrictProperties,
   hasAttemptCompletionTool,
@@ -12,7 +12,7 @@ export function isCodestralModel(model: string) {
   return model.startsWith('mistralai/codestral');
 }
 
-export function applyMistralModelSettings(requestToMutate: ParsedProxyRequest) {
+export function applyMistralModelSettings(requestToMutate: GatewayRequest) {
   if (requestToMutate.kind !== 'chat_completions') {
     return;
   }
@@ -35,7 +35,7 @@ export function applyMistralModelSettings(requestToMutate: ParsedProxyRequest) {
 }
 
 export function applyMistralProviderSettings(
-  requestToMutate: ParsedProxyRequest,
+  requestToMutate: GatewayRequest,
   extraHeaders: Record<string, string>
 ) {
   if (requestToMutate.kind !== 'chat_completions') {

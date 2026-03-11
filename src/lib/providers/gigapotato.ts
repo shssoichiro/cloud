@@ -1,5 +1,5 @@
 import type { KiloFreeModel } from '@/lib/providers/kilo-free-model';
-import type { ParsedProxyRequest } from '@/lib/providers/openrouter/types';
+import type { GatewayRequest } from '@/lib/providers/openrouter/types';
 
 export const giga_potato_model: KiloFreeModel = {
   public_id: 'giga-potato',
@@ -26,7 +26,7 @@ export const giga_potato_thinking_model: KiloFreeModel = {
 
 export function applyGigaPotatoProviderSettings(
   requestedModel: string,
-  requestToMutate: ParsedProxyRequest
+  requestToMutate: GatewayRequest
 ) {
   // https://kilo-code.slack.com/archives/C09L90J0B3J/p1768024809733959?thread_ts=1767929401.984039&cid=C09L90J0B3J
   const nonDisclosureRule =

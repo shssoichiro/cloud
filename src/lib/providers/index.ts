@@ -6,7 +6,7 @@ import type {
   GatewayResponsesRequest,
   OpenRouterChatCompletionRequest,
   OpenRouterGeneration,
-  ParsedProxyRequest,
+  GatewayRequest,
 } from '@/lib/providers/openrouter/types';
 import {
   applyMistralModelSettings,
@@ -243,7 +243,7 @@ function applyPreferredProvider(
 export function applyProviderSpecificLogic(
   provider: Provider,
   requestedModel: string,
-  requestToMutate: ParsedProxyRequest,
+  requestToMutate: GatewayRequest,
   extraHeaders: Record<string, string>,
   userByok: BYOKResult[] | null
 ) {

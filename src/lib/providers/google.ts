@@ -1,4 +1,4 @@
-import type { ParsedProxyRequest } from '@/lib/providers/openrouter/types';
+import type { GatewayRequest } from '@/lib/providers/openrouter/types';
 import type { ProviderId } from '@/lib/providers/provider-id';
 
 export function isGeminiModel(model: string) {
@@ -25,10 +25,7 @@ type ReadFileParametersSchema = {
   };
 };
 
-export function applyGoogleModelSettings(
-  provider: ProviderId,
-  requestToMutate: ParsedProxyRequest
-) {
+export function applyGoogleModelSettings(provider: ProviderId, requestToMutate: GatewayRequest) {
   if (provider !== 'vercel' || requestToMutate.kind !== 'chat_completions') {
     return;
   }

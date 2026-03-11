@@ -1,10 +1,10 @@
-import type { ParsedProxyRequest } from '@/lib/providers/openrouter/types';
+import type { GatewayRequest } from '@/lib/providers/openrouter/types';
 
 export function isQwenModel(requestedModelId: string) {
   return requestedModelId.startsWith('qwen/');
 }
 
-export function applyQwenModelSettings(requestToMutate: ParsedProxyRequest) {
+export function applyQwenModelSettings(requestToMutate: GatewayRequest) {
   if (requestToMutate.kind !== 'chat_completions') {
     return;
   }
