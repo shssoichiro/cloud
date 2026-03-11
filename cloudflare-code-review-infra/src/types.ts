@@ -29,6 +29,8 @@ export interface SessionInput {
   platform?: 'github' | 'gitlab';
   envVars?: Record<string, string>;
   mcpServers?: Record<string, MCPServerConfig>;
+  /** Gate threshold — when not 'off', the agent should report gateResult in its callback */
+  gateThreshold?: 'off' | 'all' | 'warning' | 'critical';
 }
 
 export interface CodeReviewEvent {
@@ -63,6 +65,8 @@ export interface CodeReview {
   skipBalanceCheck?: boolean; // Skip balance validation in cloud agent (for OSS sponsorship)
   /** Which cloud agent backend to use: 'v1' (cloud-agent SSE) or 'v2' (cloud-agent-next) */
   agentVersion?: string;
+  /** Cloud-agent session ID from a previous completed review, for session continuation */
+  previousCloudAgentSessionId?: string;
 }
 
 export interface CodeReviewStatusResponse {
@@ -91,6 +95,8 @@ export interface CodeReviewRequest {
   skipBalanceCheck?: boolean;
   /** Which cloud agent backend to use: 'v1' (cloud-agent SSE) or 'v2' (cloud-agent-next) */
   agentVersion?: string;
+  /** Cloud-agent session ID from a previous completed review, for session continuation */
+  previousCloudAgentSessionId?: string;
 }
 
 export interface CodeReviewResponse {

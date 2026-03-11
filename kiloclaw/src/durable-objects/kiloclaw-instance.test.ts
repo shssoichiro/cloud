@@ -12,7 +12,7 @@
  * - Alarm cadence varies by status
  */
 
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 
 // -- Mock cloudflare:workers --
 // Must be before the DO import so vitest hoists it.
@@ -67,6 +67,10 @@ vi.mock('../lib/image-version', async () => {
 vi.mock('../db', () => ({
   getWorkerDb: vi.fn(() => ({})),
   getActiveInstance: vi.fn().mockResolvedValue(null),
+  findPepperByUserId: vi.fn().mockResolvedValue({
+    id: 'user-1',
+    api_token_pepper: 'pepper-1',
+  }),
   markInstanceDestroyed: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -88,7 +92,9 @@ import { KiloClawInstance } from './kiloclaw-instance';
 import * as flyClient from '../fly/client';
 import { FlyApiError } from '../fly/client';
 import * as db from '../db';
+import * as gatewayEnv from '../gateway/env';
 import { resolveLatestVersion } from '../lib/image-version';
+import { verifyKiloToken } from '@kilocode/worker-utils';
 import {
   ALARM_INTERVAL_RUNNING_MS,
   ALARM_INTERVAL_DESTROYING_MS,
@@ -152,12 +158,14 @@ function createFakeEnv() {
     FLY_APP_NAME: 'test-app',
     FLY_REGION: 'us,eu',
     GATEWAY_TOKEN_SECRET: 'test-secret',
+    NEXTAUTH_SECRET: 'test-nextauth-secret-at-least-32-chars',
+    WORKER_ENV: 'development',
     KILOCLAW_INSTANCE: {} as unknown,
     KILOCLAW_APP: {
       idFromName: vi.fn().mockReturnValue('fake-do-id'),
       get: vi.fn().mockReturnValue(appStub),
     } as unknown,
-    HYPERDRIVE: { connectionString: '' } as unknown,
+    HYPERDRIVE: { connectionString: 'postgresql://fake' } as unknown,
     KV_CLAW_CACHE: {
       get: vi.fn().mockResolvedValue(null),
       put: vi.fn().mockResolvedValue(undefined),
@@ -247,6 +255,10 @@ beforeEach(() => {
       return Promise.resolve({ ok: true, status: 200 });
     })
   );
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('two-phase destroy', () => {
@@ -804,6 +816,202 @@ describe('status guards', () => {
     // Status unchanged
     expect(storage._store.get('status')).toBe('destroying');
     expect(flyClient.stopMachineAndWait).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildUserEnvVars API key refresh', () => {
+  async function callBuildUserEnvVars(instance: KiloClawInstance) {
+    await (instance as unknown as { loadState: () => Promise<void> }).loadState();
+    return await (
+      instance as unknown as {
+        buildUserEnvVars: () => Promise<{
+          envVars: Record<string, string>;
+          minSecretsVersion: number;
+        }>;
+      }
+    ).buildUserEnvVars();
+  }
+
+  beforeEach(() => {
+    (gatewayEnv.buildEnvVars as Mock).mockClear();
+    (db.findPepperByUserId as Mock).mockResolvedValue({
+      id: 'user-1',
+      api_token_pepper: 'pepper-1',
+    });
+  });
+
+  it('mints a fresh key, persists it, and passes it to buildEnvVars', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      kilocodeApiKey: 'stale-key',
+      kilocodeApiKeyExpiresAt: '2026-12-01T00:00:00.000Z',
+    });
+
+    const result = await callBuildUserEnvVars(instance);
+
+    expect(result.minSecretsVersion).toBe(1);
+    expect(db.findPepperByUserId).toHaveBeenCalledTimes(1);
+    expect(gatewayEnv.buildEnvVars).toHaveBeenCalledTimes(1);
+
+    const options = (gatewayEnv.buildEnvVars as Mock).mock.calls[0][3] as {
+      kilocodeApiKey?: string;
+    };
+    expect(options.kilocodeApiKey).toBeTypeOf('string');
+    expect(options.kilocodeApiKey).not.toBe('stale-key');
+    expect(storage._store.get('kilocodeApiKey')).toBe(options.kilocodeApiKey);
+    expect(storage._store.get('kilocodeApiKeyExpiresAt')).toBeTypeOf('string');
+
+    const payload = await verifyKiloToken(
+      options.kilocodeApiKey!,
+      'test-nextauth-secret-at-least-32-chars'
+    );
+    expect(payload.kiloUserId).toBe('user-1');
+    expect(payload.apiTokenPepper).toBe('pepper-1');
+    expect(payload.env).toBe('development');
+  });
+
+  it('falls back to the stored key when Hyperdrive is unavailable', async () => {
+    const env = createFakeEnv();
+    env.HYPERDRIVE = { connectionString: '' } as never;
+    const { instance, storage } = createInstance(createFakeStorage(), env);
+    await seedProvisioned(storage, {
+      kilocodeApiKey: 'stored-key',
+      kilocodeApiKeyExpiresAt: '2026-12-01T00:00:00.000Z',
+    });
+
+    await callBuildUserEnvVars(instance);
+
+    expect(db.findPepperByUserId).not.toHaveBeenCalled();
+    const options = (gatewayEnv.buildEnvVars as Mock).mock.calls[0][3] as {
+      kilocodeApiKey?: string;
+    };
+    expect(options.kilocodeApiKey).toBe('stored-key');
+    expect(storage._store.get('kilocodeApiKey')).toBe('stored-key');
+  });
+
+  it('rejects when Hyperdrive is unavailable and the stored key is expired', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-10T12:00:00.000Z'));
+
+    const env = createFakeEnv();
+    env.HYPERDRIVE = { connectionString: '' } as never;
+    const { instance, storage } = createInstance(createFakeStorage(), env);
+    await seedProvisioned(storage, {
+      kilocodeApiKey: 'stored-key',
+      kilocodeApiKeyExpiresAt: '2026-03-10T11:59:59.000Z',
+    });
+
+    await expect(callBuildUserEnvVars(instance)).rejects.toThrow(
+      'Cannot build env vars: stored KiloCode API key expired and fresh mint unavailable'
+    );
+    expect(db.findPepperByUserId).not.toHaveBeenCalled();
+    expect(gatewayEnv.buildEnvVars).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the stored key and logs when the user is missing', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      kilocodeApiKey: 'stored-key',
+      kilocodeApiKeyExpiresAt: '2026-12-01T00:00:00.000Z',
+    });
+    (db.findPepperByUserId as Mock).mockResolvedValueOnce(null);
+
+    await callBuildUserEnvVars(instance);
+
+    expect(console.warn).toHaveBeenCalledWith('[DO] mintFreshApiKey: user not found in DB');
+    const options = (gatewayEnv.buildEnvVars as Mock).mock.calls[0][3] as {
+      kilocodeApiKey?: string;
+    };
+    expect(options.kilocodeApiKey).toBe('stored-key');
+  });
+
+  it('falls back to the stored key and logs when the DB lookup throws', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      kilocodeApiKey: 'stored-key',
+      kilocodeApiKeyExpiresAt: '2026-12-01T00:00:00.000Z',
+    });
+    const err = new Error('db down');
+    (db.findPepperByUserId as Mock).mockRejectedValueOnce(err);
+
+    await callBuildUserEnvVars(instance);
+
+    expect(console.warn).toHaveBeenCalledWith(
+      '[DO] buildUserEnvVars: failed to mint fresh API key, using stored key:',
+      err
+    );
+    const options = (gatewayEnv.buildEnvVars as Mock).mock.calls[0][3] as {
+      kilocodeApiKey?: string;
+    };
+    expect(options.kilocodeApiKey).toBe('stored-key');
+  });
+
+  it('rejects when minting fails and the stored key is expired', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-10T12:00:00.000Z'));
+
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      kilocodeApiKey: 'stored-key',
+      kilocodeApiKeyExpiresAt: '2026-03-10T11:59:59.000Z',
+    });
+    const err = new Error('db down');
+    (db.findPepperByUserId as Mock).mockRejectedValueOnce(err);
+
+    await expect(callBuildUserEnvVars(instance)).rejects.toThrow(
+      'Cannot build env vars: stored KiloCode API key expired and fresh mint unavailable'
+    );
+    expect(console.warn).toHaveBeenCalledWith(
+      '[DO] buildUserEnvVars: failed to mint fresh API key, using stored key:',
+      err
+    );
+    expect(gatewayEnv.buildEnvVars).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the stored key and logs when minting times out', async () => {
+    vi.useFakeTimers();
+
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      kilocodeApiKey: 'stored-key',
+      kilocodeApiKeyExpiresAt: '2026-12-01T00:00:00.000Z',
+    });
+    (db.findPepperByUserId as Mock).mockImplementationOnce(() => new Promise(() => undefined));
+
+    const buildPromise = callBuildUserEnvVars(instance);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await buildPromise;
+
+    const warningCall = (console.warn as Mock).mock.calls.find(
+      (call: unknown[]) =>
+        call[0] === '[DO] buildUserEnvVars: failed to mint fresh API key, using stored key:' &&
+        call[1] instanceof Error &&
+        call[1].message === 'API key mint timed out'
+    );
+    expect(warningCall).toBeDefined();
+
+    const options = (gatewayEnv.buildEnvVars as Mock).mock.calls[0][3] as {
+      kilocodeApiKey?: string;
+    };
+    expect(options.kilocodeApiKey).toBe('stored-key');
+  });
+
+  it('rejects env building when NEXTAUTH_SECRET is missing', async () => {
+    const env = {
+      ...createFakeEnv(),
+      NEXTAUTH_SECRET: undefined,
+    } as unknown as ReturnType<typeof createFakeEnv>;
+    const { instance, storage } = createInstance(createFakeStorage(), env);
+    await seedProvisioned(storage, {
+      kilocodeApiKey: 'stored-key',
+      kilocodeApiKeyExpiresAt: '2026-12-01T00:00:00.000Z',
+    });
+
+    await expect(callBuildUserEnvVars(instance)).rejects.toThrow(
+      'Cannot build env vars: NEXTAUTH_SECRET missing'
+    );
+    expect(db.findPepperByUserId).not.toHaveBeenCalled();
+    expect(gatewayEnv.buildEnvVars).not.toHaveBeenCalled();
   });
 });
 
@@ -1411,6 +1619,230 @@ describe('updateChannels', () => {
 
     expect(result.telegram).toBe(true);
     expect(result.discord).toBe(true);
+  });
+
+  it('updateChannels dual-writes to encryptedSecrets (no interleave drift)', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    // Write via legacy path
+    await instance.updateChannels({ telegramBotToken: fakeEnvelope });
+
+    // channels uses field keys, encryptedSecrets uses env var names
+    const channels = storage._store.get('channels') as Record<string, unknown>;
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    expect(channels.telegramBotToken).toEqual(fakeEnvelope);
+    expect(secrets.TELEGRAM_BOT_TOKEN).toEqual(fakeEnvelope);
+  });
+
+  it('interleaving updateChannels and updateSecrets keeps storage in sync', async () => {
+    const discordEnvelope = { ...fakeEnvelope, encryptedData: 'discord-data' };
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    // Step 1: set telegram via updateSecrets (new path)
+    await instance.updateSecrets({ telegramBotToken: fakeEnvelope });
+
+    // Step 2: set discord via updateChannels (legacy path, delegates to updateSecrets)
+    const result = await instance.updateChannels({ discordBotToken: discordEnvelope });
+
+    // Both should be present via legacy response
+    expect(result.telegram).toBe(true);
+    expect(result.discord).toBe(true);
+
+    // channels uses field keys, encryptedSecrets uses env var names
+    const channels = storage._store.get('channels') as Record<string, unknown>;
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    expect(channels.telegramBotToken).toEqual(fakeEnvelope);
+    expect(channels.discordBotToken).toEqual(discordEnvelope);
+    expect(secrets.TELEGRAM_BOT_TOKEN).toEqual(fakeEnvelope);
+    expect(secrets.DISCORD_BOT_TOKEN).toEqual(discordEnvelope);
+  });
+});
+
+// ============================================================================
+// updateSecrets
+// ============================================================================
+
+describe('updateSecrets', () => {
+  const fakeEnvelope = {
+    encryptedData: 'data',
+    encryptedDEK: 'dek',
+    algorithm: 'rsa-aes-256-gcm' as const,
+    version: 1 as const,
+  };
+
+  it('stores env var names in encryptedSecrets but field keys in channels', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    const result = await instance.updateSecrets({ telegramBotToken: fakeEnvelope });
+
+    expect(result.configured).toContain('telegramBotToken');
+    // channels uses field keys (for decryptChannelTokens backward compat)
+    const channels = storage._store.get('channels') as Record<string, unknown>;
+    expect(channels.telegramBotToken).toEqual(fakeEnvelope);
+    // encryptedSecrets uses env var names (for buildEnvVars/mergeEnvVarsWithSecrets)
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    expect(secrets.TELEGRAM_BOT_TOKEN).toEqual(fakeEnvelope);
+    expect(secrets.telegramBotToken).toBeUndefined();
+  });
+
+  it('removes a secret when null is passed', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      channels: { telegramBotToken: fakeEnvelope },
+      encryptedSecrets: { TELEGRAM_BOT_TOKEN: fakeEnvelope },
+    });
+
+    const result = await instance.updateSecrets({ telegramBotToken: null });
+
+    expect(result.configured).not.toContain('telegramBotToken');
+    expect(storage._store.get('channels')).toBeNull();
+    expect(storage._store.get('encryptedSecrets')).toBeNull();
+  });
+
+  it('merges with existing secrets — setting telegram preserves discord', async () => {
+    const discordEnvelope = { ...fakeEnvelope, encryptedData: 'discord-data' };
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      channels: { discordBotToken: discordEnvelope },
+      encryptedSecrets: { DISCORD_BOT_TOKEN: discordEnvelope },
+    });
+
+    const result = await instance.updateSecrets({ telegramBotToken: fakeEnvelope });
+
+    expect(result.configured).toContain('telegramBotToken');
+    expect(result.configured).toContain('discordBotToken');
+    const channels = storage._store.get('channels') as Record<string, unknown>;
+    expect(channels.telegramBotToken).toEqual(fakeEnvelope);
+    expect(channels.discordBotToken).toEqual(discordEnvelope);
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    expect(secrets.TELEGRAM_BOT_TOKEN).toEqual(fakeEnvelope);
+    expect(secrets.DISCORD_BOT_TOKEN).toEqual(discordEnvelope);
+  });
+
+  it('reads from legacy channels field when encryptedSecrets is empty', async () => {
+    const { instance, storage } = createInstance();
+    // Simulate legacy state: only channels field, no encryptedSecrets
+    await seedProvisioned(storage, {
+      channels: { telegramBotToken: fakeEnvelope },
+    });
+
+    const discordEnvelope = { ...fakeEnvelope, encryptedData: 'discord-data' };
+    const result = await instance.updateSecrets({ discordBotToken: discordEnvelope });
+
+    // Should see both: legacy telegram + new discord
+    expect(result.configured).toContain('telegramBotToken');
+    expect(result.configured).toContain('discordBotToken');
+  });
+
+  it('removing all secrets sets both storage fields to null', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      channels: { telegramBotToken: fakeEnvelope },
+      encryptedSecrets: { TELEGRAM_BOT_TOKEN: fakeEnvelope },
+    });
+
+    const result = await instance.updateSecrets({ telegramBotToken: null });
+
+    expect(result.configured).toEqual([]);
+    expect(storage._store.get('channels')).toBeNull();
+    expect(storage._store.get('encryptedSecrets')).toBeNull();
+  });
+
+  it('sets both slack tokens and dual-writes to channels', async () => {
+    const slackBotEnvelope = { ...fakeEnvelope, encryptedData: 'slack-bot' };
+    const slackAppEnvelope = { ...fakeEnvelope, encryptedData: 'slack-app' };
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    const result = await instance.updateSecrets({
+      slackBotToken: slackBotEnvelope,
+      slackAppToken: slackAppEnvelope,
+    });
+
+    expect(result.configured).toContain('slackBotToken');
+    expect(result.configured).toContain('slackAppToken');
+    const channels = storage._store.get('channels') as Record<string, unknown>;
+    expect(channels.slackBotToken).toEqual(slackBotEnvelope);
+    expect(channels.slackAppToken).toEqual(slackAppEnvelope);
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    expect(secrets.SLACK_BOT_TOKEN).toEqual(slackBotEnvelope);
+    expect(secrets.SLACK_APP_TOKEN).toEqual(slackAppEnvelope);
+  });
+
+  it('clears both slack tokens simultaneously', async () => {
+    const slackBotEnvelope = { ...fakeEnvelope, encryptedData: 'slack-bot' };
+    const slackAppEnvelope = { ...fakeEnvelope, encryptedData: 'slack-app' };
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      channels: { slackBotToken: slackBotEnvelope, slackAppToken: slackAppEnvelope },
+      encryptedSecrets: { SLACK_BOT_TOKEN: slackBotEnvelope, SLACK_APP_TOKEN: slackAppEnvelope },
+    });
+
+    const result = await instance.updateSecrets({
+      slackBotToken: null,
+      slackAppToken: null,
+    });
+
+    expect(result.configured).not.toContain('slackBotToken');
+    expect(result.configured).not.toContain('slackAppToken');
+    expect(storage._store.get('channels')).toBeNull();
+    expect(storage._store.get('encryptedSecrets')).toBeNull();
+  });
+
+  it('second updateSecrets call does not accumulate phantom entries', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    // First call: set telegram
+    await instance.updateSecrets({ telegramBotToken: fakeEnvelope });
+
+    // Second call: set discord — telegram should persist, no phantom keys
+    const discordEnvelope = { ...fakeEnvelope, encryptedData: 'discord-data' };
+    const result = await instance.updateSecrets({ discordBotToken: discordEnvelope });
+
+    expect(result.configured).toEqual(
+      expect.arrayContaining(['telegramBotToken', 'discordBotToken'])
+    );
+    expect(result.configured).toHaveLength(2);
+
+    // encryptedSecrets should have exactly 2 env var keys, no field key duplicates
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    const secretKeys = Object.keys(secrets).sort();
+    expect(secretKeys).toEqual(['DISCORD_BOT_TOKEN', 'TELEGRAM_BOT_TOKEN']);
+
+    // channels should have exactly 2 field keys
+    const channels = storage._store.get('channels') as Record<string, unknown>;
+    const channelKeys = Object.keys(channels).sort();
+    expect(channelKeys).toEqual(['discordBotToken', 'telegramBotToken']);
+  });
+
+  it('configured return uses field keys not env var names', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    const result = await instance.updateSecrets({ telegramBotToken: fakeEnvelope });
+
+    // Should return field keys, not env var names
+    expect(result.configured).toContain('telegramBotToken');
+    expect(result.configured).not.toContain('TELEGRAM_BOT_TOKEN');
+  });
+
+  it('rejects partial clear of allFieldsRequired entry', async () => {
+    const slackBotEnvelope = { ...fakeEnvelope, encryptedData: 'slack-bot' };
+    const slackAppEnvelope = { ...fakeEnvelope, encryptedData: 'slack-app' };
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      channels: { slackBotToken: slackBotEnvelope, slackAppToken: slackAppEnvelope },
+      encryptedSecrets: { SLACK_BOT_TOKEN: slackBotEnvelope, SLACK_APP_TOKEN: slackAppEnvelope },
+    });
+
+    // Removing only one Slack token should fail — allFieldsRequired
+    await expect(instance.updateSecrets({ slackBotToken: null })).rejects.toThrow(
+      'Invalid secret patch: Slack requires all fields to be set together'
+    );
   });
 });
 
@@ -2192,6 +2624,37 @@ describe('provision: auto-start after fresh provision', () => {
 
     expect(flyClient.createMachine).not.toHaveBeenCalled();
     expect(storage._store.get('status')).toBe('running');
+  });
+});
+
+describe('provision: instance feature flags', () => {
+  it('sets DEFAULT_INSTANCE_FEATURES on first provision', async () => {
+    const { instance, storage } = createInstance();
+
+    (flyClient.createVolumeWithFallback as Mock).mockResolvedValue({
+      id: 'vol-1',
+      region: 'iad',
+    });
+    (flyClient.getVolume as Mock).mockResolvedValue({ id: 'vol-1', region: 'iad' });
+    (flyClient.createMachine as Mock).mockResolvedValue({ id: 'machine-1', region: 'iad' });
+    (flyClient.waitForState as Mock).mockResolvedValue(undefined);
+
+    await instance.provision('user-1', {});
+
+    const features = storage._store.get('instanceFeatures') as string[];
+    expect(features).toEqual(['npm-global-prefix', 'pip-global-prefix', 'uv-global-prefix']);
+  });
+
+  it('preserves existing features on re-provision (does not reset to defaults)', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, {
+      instanceFeatures: ['some-old-feature'],
+    });
+
+    await instance.provision('user-1', { kilocodeApiKey: 'new-key' });
+
+    const features = storage._store.get('instanceFeatures') as string[];
+    expect(features).toEqual(['some-old-feature']);
   });
 });
 

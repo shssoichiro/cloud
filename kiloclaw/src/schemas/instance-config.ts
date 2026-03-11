@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ALL_SECRET_FIELD_KEYS } from '@kilocode/kiloclaw-secret-catalog';
 import { IMAGE_TAG_RE, IMAGE_TAG_MAX_LENGTH } from '../lib/image-tag-validation';
 
 export const EncryptedEnvelopeSchema = z.object({
@@ -21,16 +22,13 @@ export type MachineSize = z.infer<typeof MachineSizeSchema>;
 
 /**
  * Valid env var name: must be a valid shell identifier and must not use
- * reserved prefixes (KILOCLAW_ENC_, KILOCLAW_ENV_) which are reserved
- * for the env var encryption system.
+ * the reserved KILOCLAW_ prefix (used for encryption, feature flags,
+ * and other internal system vars).
  */
 const envVarNameSchema = z
   .string()
   .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Must be a valid shell identifier')
-  .refine(
-    s => !s.startsWith('KILOCLAW_ENC_') && !s.startsWith('KILOCLAW_ENV_'),
-    'Uses reserved prefix (KILOCLAW_ENC_ or KILOCLAW_ENV_)'
-  );
+  .refine(s => !s.startsWith('KILOCLAW_'), 'Uses reserved prefix (KILOCLAW_*)');
 
 export const InstanceConfigSchema = z.object({
   envVars: z.record(envVarNameSchema, z.string()).optional(),
@@ -68,6 +66,14 @@ export const ChannelsPatchSchema = z.object({
     slackBotToken: EncryptedEnvelopeSchema.nullable().optional(),
     slackAppToken: EncryptedEnvelopeSchema.nullable().optional(),
   }),
+});
+
+export const SecretsPatchSchema = z.object({
+  userId: z.string().min(1),
+  secrets: z.record(
+    z.string().refine(k => ALL_SECRET_FIELD_KEYS.has(k), { message: 'Unknown secret field key' }),
+    EncryptedEnvelopeSchema.nullable()
+  ),
 });
 
 export const ProvisionRequestSchema = z.object({
@@ -143,6 +149,21 @@ export const PersistedStateSchema = z.object({
   // Cooldown for bound-machine recovery during destroy: avoids repeated getVolume
   // calls when the volume consistently reports no attached machine.
   lastBoundMachineRecoveryAt: z.number().nullable().default(null),
+  // Instance feature flags: set on first provision, persisted across reboots.
+  // Each entry is a feature name (e.g. "npm-global-prefix") that gates runtime behavior.
+  // New instances get the current feature set; legacy instances have an empty array.
+  instanceFeatures: z.array(z.string()).default([]),
 });
 
 export type PersistedState = z.infer<typeof PersistedStateSchema>;
+
+/**
+ * Default instance features enabled for newly provisioned instances.
+ * Existing instances keep their persisted (possibly empty) feature set.
+ * See kiloclaw/docs/instance-features.md for details.
+ */
+export const DEFAULT_INSTANCE_FEATURES: readonly string[] = [
+  'npm-global-prefix',
+  'pip-global-prefix',
+  'uv-global-prefix',
+];

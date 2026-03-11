@@ -11,9 +11,21 @@ import { beads, BeadRecord, MergeRequestBeadRecord } from '../../db/tables/beads
 import { review_metadata } from '../../db/tables/review-metadata.table';
 import { bead_dependencies } from '../../db/tables/bead-dependencies.table';
 import { agent_metadata } from '../../db/tables/agent-metadata.table';
+import { convoy_metadata } from '../../db/tables/convoy-metadata.table';
 import { query } from '../../util/query.util';
-import { logBeadEvent, getBead, closeBead, updateBeadStatus, createBead } from './beads';
+import {
+  logBeadEvent,
+  getBead,
+  closeBead,
+  updateBeadStatus,
+  updateConvoyProgress,
+  createBead,
+  getConvoyForBead,
+  getConvoyFeatureBranch,
+  getConvoyMergeMode,
+} from './beads';
 import { getAgent, unhookBead } from './agents';
+import { getRig } from './rigs';
 import type { ReviewQueueInput, ReviewQueueEntry, AgentDoneInput, Molecule } from '../../types';
 
 // Review entries stuck in 'running' past this timeout are reset to 'pending'
@@ -86,6 +98,26 @@ export function submitToReviewQueue(sql: SqlStorage, input: ReviewQueueInput): v
     metadata.pr_url = input.pr_url;
   }
 
+  // Resolve the target branch for this MR:
+  // - For review-then-land convoy beads → convoy's feature branch
+  // - For review-and-merge convoy beads → rig's default branch (land independently)
+  // - For standalone beads → rig's default branch
+  // We pass defaultBranch from the caller so we don't hardcode 'main'.
+  const convoyId = getConvoyForBead(sql, input.bead_id);
+  const convoyFeatureBranch = convoyId ? getConvoyFeatureBranch(sql, convoyId) : null;
+  const convoyMergeMode = convoyId ? getConvoyMergeMode(sql, convoyId) : null;
+  const targetBranch =
+    convoyMergeMode === 'review-then-land' && convoyFeatureBranch
+      ? convoyFeatureBranch
+      : (input.default_branch ?? 'main');
+
+  if (convoyId) {
+    metadata.convoy_id = convoyId;
+    if (convoyFeatureBranch) {
+      metadata.convoy_feature_branch = convoyFeatureBranch;
+    }
+  }
+
   // Create the merge_request bead
   query(
     sql,
@@ -141,7 +173,7 @@ export function submitToReviewQueue(sql: SqlStorage, input: ReviewQueueInput): v
         ${review_metadata.columns.pr_url}, ${review_metadata.columns.retry_count}
       ) VALUES (?, ?, ?, ?, ?, ?)
     `,
-    [id, input.branch, 'main', null, input.pr_url ?? null, 0]
+    [id, input.branch, targetBranch, null, input.pr_url ?? null, 0]
   );
 
   logBeadEvent(sql, {
@@ -149,7 +181,7 @@ export function submitToReviewQueue(sql: SqlStorage, input: ReviewQueueInput): v
     agentId: input.agent_id,
     eventType: 'review_submitted',
     newValue: input.branch,
-    metadata: { branch: input.branch },
+    metadata: { branch: input.branch, target_branch: targetBranch },
   });
 }
 
@@ -242,7 +274,31 @@ export function completeReviewWithResult(
   });
 
   if (input.status === 'merged') {
+    const mergeTimestamp = now();
     closeBead(sql, entry.bead_id, entry.agent_id);
+
+    // Explicitly trigger convoy progress for the source bead after the MR closes.
+    // closeBead → updateBeadStatus → updateConvoyProgress, but only if the source
+    // bead's status actually changes. If the polecat already closed the source bead
+    // before submitting to the review queue, the guard in updateBeadStatus short-
+    // circuits and updateConvoyProgress is never called. Calling it here directly
+    // ensures the convoy recounts after the MR bead is now closed (not in-flight),
+    // so the source bead passes the NOT EXISTS guard and counts toward closedCount.
+    updateConvoyProgress(sql, entry.bead_id, mergeTimestamp);
+
+    // If this was a convoy landing MR, also set landed_at on the convoy metadata
+    const sourceBead = getBead(sql, entry.bead_id);
+    if (sourceBead?.type === 'convoy') {
+      query(
+        sql,
+        /* sql */ `
+          UPDATE ${convoy_metadata}
+          SET ${convoy_metadata.columns.landed_at} = ?
+          WHERE ${convoy_metadata.bead_id} = ?
+        `,
+        [now(), entry.bead_id]
+      );
+    }
   } else if (input.status === 'conflict') {
     // Create an escalation bead so the conflict is visible and actionable
     createBead(sql, {
@@ -359,12 +415,76 @@ export function recoverStuckReviews(sql: SqlStorage): void {
   );
 }
 
+/**
+ * Close MR beads that are stuck waiting for a PR review but whose assigned
+ * agent is no longer active. After a container restart, agents lose their
+ * in-memory state — the PR review will never complete. Close these beads
+ * so they don't block convoy progress indefinitely.
+ *
+ * Only affects beads with a pr_url (excluded by recoverStuckReviews) that
+ * are stale (>30 min) and whose agent is idle/dead/missing.
+ */
+const ORPHAN_REVIEW_TIMEOUT_MS = 30 * 60 * 1000;
+
+export function closeOrphanedReviewBeads(sql: SqlStorage): void {
+  const cutoff = new Date(Date.now() - ORPHAN_REVIEW_TIMEOUT_MS).toISOString();
+
+  const orphanRows = [
+    ...query(
+      sql,
+      /* sql */ `
+        SELECT ${beads.bead_id}, ${beads.assignee_agent_bead_id}
+        FROM ${beads}
+        INNER JOIN ${review_metadata} ON ${beads.bead_id} = ${review_metadata.bead_id}
+        LEFT JOIN ${agent_metadata} ON ${beads.assignee_agent_bead_id} = ${agent_metadata.bead_id}
+        WHERE ${beads.type} = 'merge_request'
+          AND ${beads.status} = 'open'
+          AND ${review_metadata.pr_url} IS NOT NULL
+          AND ${beads.updated_at} < ?
+          AND (
+            ${agent_metadata.bead_id} IS NULL
+            OR ${agent_metadata.status} IN ('idle', 'dead')
+          )
+      `,
+      [cutoff]
+    ),
+  ];
+
+  for (const row of orphanRows) {
+    const parsed = z
+      .object({ bead_id: z.string(), assignee_agent_bead_id: z.string().nullable() })
+      .parse(row);
+    try {
+      closeBead(sql, parsed.bead_id, parsed.assignee_agent_bead_id ?? 'system');
+      console.log(
+        `[review-queue] closeOrphanedReviewBeads: closed orphaned MR bead=${parsed.bead_id}`
+      );
+    } catch (err) {
+      console.warn(
+        `[review-queue] closeOrphanedReviewBeads: failed to close bead=${parsed.bead_id}`,
+        err
+      );
+    }
+  }
+}
+
 // ── Agent Done ──────────────────────────────────────────────────────
 
 export function agentDone(sql: SqlStorage, agentId: string, input: AgentDoneInput): void {
   const agent = getAgent(sql, agentId);
   if (!agent) throw new Error(`Agent ${agentId} not found`);
   if (!agent.current_hook_bead_id) throw new Error(`Agent ${agentId} has no hooked bead`);
+
+  // Triage batch beads don't produce code — close and unhook without
+  // submitting to the review queue. Only applies to system-created triage
+  // beads (created_by = 'patrol'). User-created beads that happen to carry
+  // the gt:triage label go through normal review flow.
+  const hookedBead = getBead(sql, agent.current_hook_bead_id);
+  if (hookedBead?.labels.includes('gt:triage') && hookedBead.created_by === 'patrol') {
+    closeBead(sql, agent.current_hook_bead_id, agentId);
+    unhookBead(sql, agentId);
+    return;
+  }
 
   if (agent.role === 'refinery') {
     // The refinery handles merging (direct strategy) or PR creation (pr strategy)
@@ -421,13 +541,19 @@ export function agentDone(sql: SqlStorage, agentId: string, input: AgentDoneInpu
     );
   }
 
+  // Resolve the rig's default branch so submitToReviewQueue can use it
+  // instead of hardcoding 'main' for standalone/review-and-merge beads.
+  const rigId = agent.rig_id ?? '';
+  const rig = rigId ? getRig(sql, rigId) : null;
+
   submitToReviewQueue(sql, {
     agent_id: agentId,
     bead_id: sourceBead,
-    rig_id: agent.rig_id ?? '',
+    rig_id: rigId,
     branch: input.branch,
     pr_url: input.pr_url,
     summary: input.summary,
+    default_branch: rig?.default_branch,
   });
 
   // Close the source bead (matches upstream gt done behavior). The polecat's

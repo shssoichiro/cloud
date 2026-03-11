@@ -65,6 +65,8 @@ function toAgent(row: AgentBeadRecord): Agent {
     last_activity_at: row.last_activity_at,
     checkpoint: row.checkpoint,
     created_at: row.created_at,
+    agent_status_message: row.agent_status_message,
+    agent_status_updated_at: row.agent_status_updated_at,
   };
 }
 
@@ -81,7 +83,8 @@ const AGENT_JOIN = /* sql */ `
          ${agent_metadata.status} AS status,
          ${agent_metadata.current_hook_bead_id},
          ${agent_metadata.dispatch_attempts}, ${agent_metadata.last_activity_at},
-         ${agent_metadata.checkpoint}
+         ${agent_metadata.checkpoint},
+         ${agent_metadata.agent_status_message}, ${agent_metadata.agent_status_updated_at}
   FROM ${beads}
   INNER JOIN ${agent_metadata} ON ${beads.bead_id} = ${agent_metadata.bead_id}
 `;
@@ -241,18 +244,22 @@ export function hookBead(sql: SqlStorage, agentId: string, beadId: string): void
       SET ${agent_metadata.columns.current_hook_bead_id} = ?,
           ${agent_metadata.columns.status} = 'idle',
           ${agent_metadata.columns.dispatch_attempts} = 0,
-          ${agent_metadata.columns.last_activity_at} = ?
+          ${agent_metadata.columns.last_activity_at} = ?,
+          ${agent_metadata.columns.agent_status_message} = NULL,
+          ${agent_metadata.columns.agent_status_updated_at} = NULL
       WHERE ${agent_metadata.bead_id} = ?
     `,
     [beadId, now(), agentId]
   );
 
+  // Assign the agent to the bead but keep the bead as 'open'.
+  // The bead transitions to 'in_progress' only when the agent's
+  // container process actually starts (in dispatchAgent).
   query(
     sql,
     /* sql */ `
       UPDATE ${beads}
-      SET ${beads.columns.status} = 'in_progress',
-          ${beads.columns.assignee_agent_bead_id} = ?,
+      SET ${beads.columns.assignee_agent_bead_id} = ?,
           ${beads.columns.updated_at} = ?
       WHERE ${beads.bead_id} = ?
     `,
@@ -333,7 +340,7 @@ export function allocatePolecatName(sql: SqlStorage): string {
 
 /**
  * Find an idle agent of the given role, or create one.
- * For singleton roles (witness, refinery, mayor), reuse existing.
+ * For singleton roles (mayor), reuse existing.
  * For polecats, create a new one.
  */
 export function getOrCreateAgent(
@@ -343,13 +350,32 @@ export function getOrCreateAgent(
   townId: string
 ): Agent {
   // Town-wide singletons: one per town, not tied to a rig.
-  const townSingletonRoles = ['witness', 'mayor'];
+  const townSingletonRoles = ['mayor'];
+  // Per-rig singletons: one per rig (the refinery processes reviews
+  // sequentially, so there should never be two for the same rig).
+  const rigSingletonRoles = ['refinery'];
 
   if (townSingletonRoles.includes(role)) {
     const existing = listAgents(sql, { role });
     if (existing.length > 0) return existing[0];
+  } else if (rigSingletonRoles.includes(role)) {
+    // Return the existing agent regardless of status. The caller is
+    // responsible for checking whether it's idle before dispatching.
+    const existing = [
+      ...query(
+        sql,
+        /* sql */ `
+          ${AGENT_JOIN}
+          WHERE ${agent_metadata.role} = ?
+            AND ${beads.rig_id} = ?
+          LIMIT 1
+        `,
+        [role, rigId]
+      ),
+    ];
+    if (existing.length > 0) return toAgent(AgentBeadRecord.parse(existing[0]));
   } else {
-    // Per-rig agents (polecat, refinery): reuse an idle one in the SAME rig.
+    // Per-rig agents (polecat): reuse an idle one in the SAME rig.
     // Agents are tied to a rig's worktree/repo — reusing one from a different
     // rig would dispatch it into the wrong repository.
     const idle = [
@@ -430,6 +456,21 @@ export function writeCheckpoint(sql: SqlStorage, agentId: string, data: unknown)
 export function readCheckpoint(sql: SqlStorage, agentId: string): unknown {
   const agent = getAgent(sql, agentId);
   return agent?.checkpoint ?? null;
+}
+
+// ── Status Message ───────────────────────────────────────
+
+export function updateAgentStatusMessage(sql: SqlStorage, agentId: string, message: string): void {
+  query(
+    sql,
+    /* sql */ `
+      UPDATE ${agent_metadata}
+      SET ${agent_metadata.columns.agent_status_message} = ?,
+          ${agent_metadata.columns.agent_status_updated_at} = ?
+      WHERE ${agent_metadata.bead_id} = ?
+    `,
+    [message, now(), agentId]
+  );
 }
 
 // ── Touch (heartbeat helper) ────────────────────────────────────────

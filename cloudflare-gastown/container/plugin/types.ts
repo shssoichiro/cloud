@@ -30,7 +30,7 @@ export type Bead = {
   closed_at: string | null;
 };
 
-export type AgentRole = 'polecat' | 'refinery' | 'mayor' | 'witness';
+export type AgentRole = 'polecat' | 'refinery' | 'mayor';
 export type AgentStatus = 'idle' | 'working' | 'stalled' | 'dead';
 
 export type Agent = {
@@ -87,9 +87,41 @@ export type SlingResult = {
   agent: Agent;
 };
 
+// Sling batch result (convoy + beads + agents)
+export type SlingBatchResult = {
+  convoy: Convoy;
+  beads: Array<{ bead: Bead; agent: Agent }>;
+};
+
+// Convoy summary (returned by list and status endpoints)
+export type Convoy = {
+  id: string;
+  title: string;
+  status: 'active' | 'landed';
+  total_beads: number;
+  closed_beads: number;
+  created_by: string | null;
+  created_at: string;
+  landed_at: string | null;
+};
+
+// Detailed convoy status with per-bead breakdown
+export type ConvoyDetail = Convoy & {
+  beads: Array<{
+    bead_id: string;
+    title: string;
+    status: BeadStatus;
+    rig_id: string | null;
+    assignee_agent_name: string | null;
+  }>;
+};
+
 // Environment variable config for the plugin (rig-scoped agents)
 export type GastownEnv = {
   apiUrl: string;
+  /** Container-scoped JWT (shared by all agents, refreshed by alarm). */
+  containerToken?: string;
+  /** Legacy per-agent JWT (8h expiry) — fallback during rollout. */
   sessionToken: string;
   agentId: string;
   rigId: string;
@@ -99,6 +131,9 @@ export type GastownEnv = {
 // Environment variable config for the mayor (town-scoped)
 export type MayorGastownEnv = {
   apiUrl: string;
+  /** Container-scoped JWT (shared by all agents, refreshed by alarm). */
+  containerToken?: string;
+  /** Legacy per-agent JWT (8h expiry) — fallback during rollout. */
   sessionToken: string;
   agentId: string;
   townId: string;

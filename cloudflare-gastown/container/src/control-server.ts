@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { runAgent } from './agent-runner';
+import { runAgent, resolveGitCredentials } from './agent-runner';
 import {
   stopAgent,
   sendMessage,
@@ -13,8 +13,8 @@ import {
   registerEventSink,
 } from './process-manager';
 import { startHeartbeat, stopHeartbeat } from './heartbeat';
-import { mergeBranch } from './git-manager';
-import { StartAgentRequest, SendMessageRequest, MergeRequest } from './types';
+import { mergeBranch, setupRigBrowseWorktree } from './git-manager';
+import { StartAgentRequest, SendMessageRequest, MergeRequest, SetupRepoRequest } from './types';
 import type {
   AgentStatusResponse,
   HealthResponse,
@@ -93,6 +93,20 @@ app.get('/health', c => {
   return c.json(response);
 });
 
+// POST /refresh-token
+// Hot-swap the container-scoped JWT on the running process. Called by
+// the TownDO alarm to push a fresh token before the current one expires.
+// Updates process.env so all subsequent API calls use the new token.
+app.post('/refresh-token', async c => {
+  const body: unknown = await c.req.json().catch(() => null);
+  if (!body || typeof body !== 'object' || !('token' in body) || typeof body.token !== 'string') {
+    return c.json({ error: 'Missing or invalid token field' }, 400);
+  }
+  process.env.GASTOWN_CONTAINER_TOKEN = body.token;
+  console.log('[control-server] Container token refreshed');
+  return c.json({ refreshed: true });
+});
+
 // POST /agents/start
 app.post('/agents/start', async c => {
   const body: unknown = await c.req.json().catch(() => null);
@@ -105,7 +119,7 @@ app.post('/agents/start', async c => {
   console.log(
     `[control-server] /agents/start: role=${parsed.data.role} name=${parsed.data.name} rigId=${parsed.data.rigId} agentId=${parsed.data.agentId}`
   );
-  console.log(`[control-server] system prompt length: ${parsed.data.systemPrompt.length}`);
+  console.log(`[control-server] system prompt length: ${parsed.data.systemPrompt?.length ?? 0}`);
 
   try {
     const agent = await runAgent(parsed.data);
@@ -113,8 +127,13 @@ app.post('/agents/start', async c => {
       `[control-server] /agents/start: success agentId=${agent.agentId} port=${agent.serverPort} session=${agent.sessionId}`
     );
     // Strip sensitive fields before returning — the caller only needs
-    // agent metadata, not the internal session token or API URL.
-    const { gastownSessionToken: _, gastownApiUrl: _url, ...safeAgent } = agent;
+    // agent metadata, not the internal tokens or API URL.
+    const {
+      gastownSessionToken: _,
+      gastownContainerToken: _ct,
+      gastownApiUrl: _url,
+      ...safeAgent
+    } = agent;
     return c.json(safeAgent, 201);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -228,6 +247,53 @@ export function consumeStreamTicket(ticket: string): string | null {
   return entry.agentId;
 }
 
+// POST /repos/setup
+// Proactively clone a rig's repo and create a browse worktree so the
+// mayor (and future agents) have immediate access to the codebase.
+// Called by the TownDO when a new rig is added.
+app.post('/repos/setup', async c => {
+  const body: unknown = await c.req.json().catch(() => null);
+  const parsed = SetupRepoRequest.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+  }
+
+  const req = parsed.data;
+  console.log(`[control-server] /repos/setup: rigId=${req.rigId} gitUrl=${req.gitUrl}`);
+
+  // Run in background so we return 202 immediately.
+  // Errors are caught and logged — never propagated as unhandled rejections.
+  const doSetup = async () => {
+    try {
+      // Resolve git credentials from platformIntegrationId if no token
+      // is present in envVars (e.g. rigs using GitHub App installations).
+      const envVars = await resolveGitCredentials({
+        envVars: req.envVars,
+        platformIntegrationId: req.platformIntegrationId,
+      });
+
+      const browseDir = await setupRigBrowseWorktree({
+        rigId: req.rigId,
+        gitUrl: req.gitUrl,
+        defaultBranch: req.defaultBranch,
+        envVars,
+      });
+      console.log(`[control-server] /repos/setup: done rigId=${req.rigId} browse=${browseDir}`);
+    } catch (err) {
+      // Log as a warning, not an error — this is a best-effort background
+      // operation. The mayor and agents can still function without the
+      // browse worktree; it will be retried on the next agent dispatch.
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[control-server] /repos/setup: FAILED for rigId=${req.rigId}: ${message.split('\n')[0]}`
+      );
+    }
+  };
+  doSetup().catch(() => {});
+
+  return c.json({ status: 'accepted', message: 'Repo setup started' }, 202);
+});
+
 // POST /git/merge
 // Deterministic merge of a polecat branch into the target branch.
 // Called by the Rig DO's processReviewQueue → startMergeInContainer.
@@ -245,7 +311,12 @@ app.post('/git/merge', async c => {
   // Run the merge in the background so we can return 202 immediately.
   // The Rig DO will be notified via callback when the merge completes.
   const apiUrl = req.envVars?.GASTOWN_API_URL ?? process.env.GASTOWN_API_URL;
-  const token = req.envVars?.GASTOWN_SESSION_TOKEN ?? process.env.GASTOWN_SESSION_TOKEN;
+  // Prefer container secret (no expiry) over session token (8h JWT)
+  const token =
+    req.envVars?.GASTOWN_CONTAINER_TOKEN ??
+    process.env.GASTOWN_CONTAINER_TOKEN ??
+    req.envVars?.GASTOWN_SESSION_TOKEN ??
+    process.env.GASTOWN_SESSION_TOKEN;
 
   const doMerge = async () => {
     const outcome = await mergeBranch({
@@ -468,11 +539,12 @@ app.onError((err, c) => {
 export function startControlServer(): void {
   const PORT = 8080;
 
-  // Start heartbeat if env vars are configured
+  // Start heartbeat if env vars are configured.
+  // Prefer container secret (no expiry) over session token (8h JWT).
   const apiUrl = process.env.GASTOWN_API_URL;
-  const sessionToken = process.env.GASTOWN_SESSION_TOKEN;
-  if (apiUrl && sessionToken) {
-    startHeartbeat(apiUrl, sessionToken);
+  const authToken = process.env.GASTOWN_CONTAINER_TOKEN ?? process.env.GASTOWN_SESSION_TOKEN;
+  if (apiUrl && authToken) {
+    startHeartbeat(apiUrl, authToken);
   }
 
   // Handle graceful shutdown

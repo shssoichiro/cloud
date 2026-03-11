@@ -9,12 +9,10 @@ import type {
 import type { ExecutionParams as _ExecutionParams } from './schema.js';
 import { generateSandboxId } from './sandbox-id.js';
 import {
-  checkDiskSpace,
-  cleanupStaleWorkspaces,
+  checkDiskAndCleanBeforeSetup,
   cloneGitHubRepo,
   cloneGitRepo,
   cleanupWorkspace,
-  getBaseWorkspacePath,
   getSessionHomePath,
   getSessionWorkspacePath,
   manageBranch,
@@ -350,6 +348,36 @@ export async function writeAuthFile(
   logger.info('Wrote kilo auth file for session ingest');
 }
 
+// Write global rules file so the CLI injects cloud-agent-specific instructions.
+// The CLI's RulesMigrator discovers ~/.kilocode/rules/*.md and appends them
+// to the system prompt automatically.
+export async function writeGlobalRules(
+  sandbox: SandboxInstance,
+  sessionHome: string,
+  sessionId: string
+): Promise<void> {
+  const rulesDir = `${sessionHome}/.kilocode/rules`;
+  const rulesPath = `${rulesDir}/cloud-agent.md`;
+
+  await sandbox.exec(`mkdir -p ${rulesDir}`);
+
+  const content = [
+    '# Cloud Agent Environment',
+    '',
+    "You are running inside a sandboxed cloud container, not on the user's local machine.",
+    'The filesystem is ephemeral and will not persist after the session ends.',
+    "Do not assume access to the user's local files, browsers, or desktop environment.",
+    '',
+    '## Temporary Files',
+    '',
+    `When you need to create temporary or scratch files, use \`/tmp/${sessionId}/\` as your scratch directory.`,
+    'This path is pre-approved for file access and will not trigger permission prompts.',
+    '',
+  ].join('\n');
+
+  await sandbox.writeFile(rulesPath, content);
+}
+
 /**
  * Fetch session metadata from Durable Object using RPC with retry logic.
  * Creates a fresh stub for each retry attempt as recommended by Cloudflare.
@@ -558,7 +586,8 @@ export class SessionService {
 
     const permission: Record<string, unknown> = {
       external_directory: {
-        [`/tmp/attachments/${sessionId}/**`]: 'allow',
+        '*': 'deny',
+        [`/tmp/${sessionId}/**`]: 'allow',
         [`${workspacePath}/**`]: 'allow',
       },
       ...(!isInteractive && { question: 'deny' }),
@@ -793,6 +822,9 @@ export class SessionService {
 
     logger.info('Initiating session');
 
+    // Check disk space before creating any directories; clean stale workspaces if low
+    await checkDiskAndCleanBeforeSetup(sandbox, orgId, userId, sessionId);
+
     const { workspacePath, sessionHome } = await setupWorkspace(sandbox, userId, orgId, sessionId);
 
     const context = this.buildContext({
@@ -828,9 +860,6 @@ export class SessionService {
       undefined, // appendSystemPrompt
       mcpServers
     );
-
-    // Check disk space before clone; clean up stale workspaces if low
-    await SessionService.checkDiskAndCleanIfLow(session, sandbox, orgId, userId, sessionId);
 
     // Clone repository using appropriate method
     // Shallow clone (depth: 1) can be enabled for faster checkout and reduced disk usage
@@ -876,6 +905,7 @@ export class SessionService {
 
     // Write auth file for session ingest
     await writeAuthFile(sandbox, context.sessionHome, kilocodeToken);
+    await writeGlobalRules(sandbox, context.sessionHome, context.sessionId);
 
     // Save metadata to Durable Object
     const existingMetadata = await this.loadSessionMetadata(env, context);
@@ -899,80 +929,6 @@ export class SessionService {
       context,
       session,
     };
-  }
-
-  private async restoreSessionSnapshot(
-    session: ExecutionSession,
-    sessionId: string,
-    kiloSessionId: string,
-    env: PersistenceEnv,
-    userId: string
-  ): Promise<void> {
-    const tmpPath = `/tmp/kilo-session-export-${sessionId}.json`;
-    let wroteSnapshot = false;
-    try {
-      const payload = await env.SESSION_INGEST.exportSession({
-        sessionId: kiloSessionId,
-        kiloUserId: userId,
-      });
-
-      if (payload === null) {
-        throw new SessionSnapshotRestoreError(
-          `Session snapshot restore failed: session not found`,
-          404
-        );
-      }
-      await session.writeFile(tmpPath, payload);
-      wroteSnapshot = true;
-
-      const importResult = await session.exec(`kilo import "${tmpPath}"`);
-      if (importResult.exitCode !== 0) {
-        logger
-          .withFields({
-            sessionId,
-            userId,
-            exitCode: importResult.exitCode,
-            stderr: importResult.stderr,
-            stdout: importResult.stdout,
-          })
-          .error('Session snapshot import failed');
-        throw new Error(`Session snapshot import failed with exit code ${importResult.exitCode}`);
-      }
-    } catch (error) {
-      if (error instanceof SessionSnapshotRestoreError) {
-        logger
-          .withFields({
-            sessionId,
-            userId,
-            status: error.status,
-            error: error.message,
-          })
-          .error('Session snapshot restore failed');
-        throw error;
-      }
-      logger
-        .withFields({
-          sessionId,
-          userId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-        .error('Session snapshot restore failed');
-      throw error instanceof Error ? error : new Error(String(error));
-    } finally {
-      if (wroteSnapshot) {
-        try {
-          await session.deleteFile(tmpPath);
-        } catch (error) {
-          logger
-            .withFields({
-              sessionId,
-              userId,
-              error: error instanceof Error ? error.message : String(error),
-            })
-            .debug('Failed to delete session snapshot temp file');
-        }
-      }
-    }
   }
 
   /**
@@ -1030,6 +986,9 @@ export class SessionService {
 
     logger.info('Initiating session from existing kilo session');
 
+    // Check disk space before creating any directories; clean stale workspaces if low
+    await checkDiskAndCleanBeforeSetup(sandbox, orgId, userId, sessionId);
+
     // Setup workspace (same as initiate)
     const { workspacePath, sessionHome } = await setupWorkspace(sandbox, userId, orgId, sessionId);
 
@@ -1071,9 +1030,6 @@ export class SessionService {
       existingMetadata?.appendSystemPrompt,
       mcpServers
     );
-
-    // Check disk space before clone; clean up stale workspaces if low
-    await SessionService.checkDiskAndCleanIfLow(session, sandbox, orgId, userId, sessionId);
 
     // Clone repository using appropriate method
     if (gitUrl) {
@@ -1126,6 +1082,7 @@ export class SessionService {
 
     // Write auth file for session ingest
     await writeAuthFile(sandbox, context.sessionHome, kilocodeToken);
+    await writeGlobalRules(sandbox, context.sessionHome, sessionId);
 
     // Fetch metadata from DO if not provided, to ensure we preserve existing fields
     const metadataToPreserve =
@@ -1204,6 +1161,9 @@ export class SessionService {
 
     logger.info('Resuming session');
 
+    // Check disk space before creating any directories; clean stale workspaces if low
+    await checkDiskAndCleanBeforeSetup(sandbox, orgId, userId, sessionId);
+
     const workspacePath = getSessionWorkspacePath(orgId, userId, sessionId);
     const sessionHome = getSessionHomePath(sessionId);
 
@@ -1255,9 +1215,6 @@ export class SessionService {
     const repoCheck = await session.exec(`test -d ${workspacePath}/.git && echo exists`);
     const repoExists = repoCheck.stdout?.includes('exists') ?? false;
     const isColdStart = !repoExists;
-
-    // Check disk space; clean up stale workspaces if low
-    await SessionService.checkDiskAndCleanIfLow(session, sandbox, orgId, userId, sessionId);
 
     // Only re-run setup if we had to reclone (cold start)
     if (isColdStart) {
@@ -1316,28 +1273,114 @@ export class SessionService {
         `Session ${sessionId} has no kiloSessionId in metadata. Cannot restore snapshot.`
       );
     }
-    // Clone first so .git exists when `kilo import` runs — the CLI derives the
-    // project ID from the repo's root commit hash; without a repo the FK on
-    // session.project_id fails.
-    await restoreWorkspace(session, context.workspacePath, context.branchName, {
-      githubRepo: metadata.githubRepo,
-      githubToken: freshGithubToken ?? metadata.githubToken,
-      gitUrl: metadata.gitUrl,
-      gitToken: freshGitToken ?? metadata.gitToken,
-      gitAuthorEnv: getGitAuthorEnv(env, metadata.githubAppType),
-      lastSeenBranch: metadata.upstreamBranch,
-      platform: context.platform,
-    });
+    // Wrap clone and all post-clone steps so that any failure removes the
+    // workspace directory. Without this, `.git` survives and the next retry
+    // sees `isColdStart = false`, skipping the full restore flow — leaving
+    // the session in a broken half-initialized state.
+    try {
+      // Clone first so .git exists when `kilo import` runs — the CLI derives
+      // the project ID from the repo's root commit hash; without a repo the
+      // FK on session.project_id fails.
+      await restoreWorkspace(session, context.workspacePath, context.branchName, {
+        githubRepo: metadata.githubRepo,
+        githubToken: freshGithubToken ?? metadata.githubToken,
+        gitUrl: metadata.gitUrl,
+        gitToken: freshGitToken ?? metadata.gitToken,
+        gitAuthorEnv: getGitAuthorEnv(env, metadata.githubAppType),
+        lastSeenBranch: metadata.upstreamBranch,
+        platform: context.platform,
+      });
+      // Write auth file BEFORE kilo import so KiloSessions.bootstrap() can authenticate
+      await writeAuthFile(sandbox, context.sessionHome, kilocodeToken);
+      await writeGlobalRules(sandbox, context.sessionHome, sessionId);
 
-    // Write auth file BEFORE kilo import so KiloSessions.bootstrap() can authenticate
-    await writeAuthFile(sandbox, context.sessionHome, kilocodeToken);
+      // Single restore script handles download, import, and diff application inside
+      // the sandbox — the snapshot never enters worker memory.
+      logger.info('Starting cold-start session restore');
 
-    await this.restoreSessionSnapshot(session, sessionId, metadata.kiloSessionId, env, userId);
+      const escapedId = metadata.kiloSessionId.replaceAll("'", "'\\''");
+      const escapedWorkspace = context.workspacePath.replaceAll("'", "'\\''");
+      const restoreResult = await session.exec(
+        `bun /usr/local/bin/kilo-restore-session.js '${escapedId}' '${escapedWorkspace}'`
+      );
 
-    // Re-run setup commands (fresh clone, need to reinstall)
-    if (metadata.setupCommands && metadata.setupCommands.length > 0) {
-      logger.info('Re-running setup commands after fresh clone');
-      await runSetupCommands(session, context, metadata.setupCommands, false); // lenient
+      if (restoreResult.exitCode !== 0) {
+        logger
+          .withFields({
+            sessionId,
+            userId,
+            exitCode: restoreResult.exitCode,
+            stderr: restoreResult.stderr,
+            stdout: restoreResult.stdout,
+          })
+          .error('Cold-start session restore failed');
+
+        // Parse stdout JSON for structured error info
+        let code: number | undefined;
+        let step: string | undefined;
+        let restoreError: string | undefined;
+        try {
+          const parsed = JSON.parse(restoreResult.stdout?.trim() ?? '{}') as Record<
+            string,
+            unknown
+          >;
+          if (typeof parsed.code === 'number') {
+            code = parsed.code;
+          }
+          if (typeof parsed.step === 'string') {
+            step = parsed.step;
+          }
+          if (typeof parsed.error === 'string') {
+            restoreError = parsed.error;
+          }
+        } catch {
+          // non-JSON stdout, ignore
+        }
+
+        if (code === 404) {
+          throw new SessionSnapshotRestoreError(
+            'Session snapshot restore failed: session not found',
+            404
+          );
+        }
+
+        const detail = [
+          `exit ${restoreResult.exitCode}`,
+          step && `step=${step}`,
+          restoreError && `error=${restoreError}`,
+        ]
+          .filter(Boolean)
+          .join(', ');
+        throw new SessionSnapshotRestoreError(`Cold-start session restore failed: ${detail}`, code);
+      }
+
+      // Log structured summary from restore script
+      try {
+        const summary = JSON.parse(restoreResult.stdout?.trim() ?? '{}') as Record<string, unknown>;
+        logger
+          .withFields({ sessionId, userId, ...summary })
+          .info('Cold-start session restore completed');
+      } catch {
+        // non-JSON stdout, non-fatal
+      }
+
+      // Re-run setup commands (fresh clone, need to reinstall)
+      if (metadata.setupCommands && metadata.setupCommands.length > 0) {
+        logger.info('Re-running setup commands after fresh clone');
+        await runSetupCommands(session, context, metadata.setupCommands, false); // lenient
+      }
+    } catch (error) {
+      // Remove the workspace and sessionHome so the next retry sees a true
+      // cold start and re-runs the full restore from scratch.
+      logger
+        .withFields({
+          sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        .warn('Cold-start resume step failed; removing workspace for clean retry');
+      await cleanupWorkspace(session, context.workspacePath, context.sessionHome);
+
+      throw error;
     }
   }
 
@@ -1359,24 +1402,6 @@ export class SessionService {
       return SessionService.interruptWithPkill(session, sessionContext, executionId);
     }
     return SessionService.interruptWithSandboxApi(sandbox, session, sessionContext);
-  }
-
-  private static async checkDiskAndCleanIfLow(
-    session: ExecutionSession,
-    sandbox: SandboxInstance,
-    orgId: string | undefined,
-    userId: string,
-    sessionId: string
-  ): Promise<void> {
-    const diskSpace = await checkDiskSpace(session);
-    if (diskSpace.isLow) {
-      await cleanupStaleWorkspaces(
-        session,
-        sandbox,
-        getBaseWorkspacePath(orgId, userId),
-        sessionId
-      );
-    }
   }
 
   /**

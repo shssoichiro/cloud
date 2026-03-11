@@ -4,7 +4,7 @@
  */
 
 import { getTownContainerStub } from '../TownContainer.do';
-import { signAgentJWT } from '../../util/jwt.util';
+import { signAgentJWT, signContainerJWT } from '../../util/jwt.util';
 import { buildPolecatSystemPrompt } from '../../prompts/polecat-system.prompt';
 import { buildMayorSystemPrompt } from '../../prompts/mayor-system.prompt';
 import type { TownConfig } from '../../types';
@@ -41,6 +41,9 @@ export async function resolveJWTSecret(env: Env): Promise<string | null> {
 /**
  * Mint a short-lived agent JWT for the given agent to authenticate
  * API calls back to the gastown worker.
+ *
+ * @deprecated Prefer container secrets (ensureContainerSecret) for new code.
+ * Agent JWTs are retained for backwards compatibility during rollout.
  */
 export async function mintAgentToken(
   env: Env,
@@ -56,6 +59,73 @@ export async function mintAgentToken(
     8 * 3600
   );
 }
+
+/**
+ * Mint a container-scoped JWT and push it to the TownContainerDO.
+ * One JWT per container — shared by all agents in the town. Carries
+ * { townId, userId, scope: 'container' } with 8h expiry.
+ *
+ * Pushes via both setEnvVar() (for next container boot) and
+ * POST /refresh-token (for the running process). This ensures that
+ * all code paths — existing agents, heartbeat, event persistence —
+ * pick up the fresh token immediately.
+ *
+ * Returns the token so callers can also pass it as a per-agent env var.
+ */
+export async function ensureContainerToken(
+  env: Env,
+  townId: string,
+  userId: string
+): Promise<string | null> {
+  const jwtSecret = await resolveJWTSecret(env);
+  if (!jwtSecret) {
+    console.error(`${TOWN_LOG} ensureContainerToken: no JWT secret available`);
+    return null;
+  }
+
+  const token = signContainerJWT({ townId, userId }, jwtSecret);
+  const container = getTownContainerStub(env, townId);
+
+  // Store for next boot
+  try {
+    await container.setEnvVar('GASTOWN_CONTAINER_TOKEN', token);
+  } catch (err) {
+    console.warn(
+      `${TOWN_LOG} ensureContainerToken: setEnvVar failed (container may not be running):`,
+      err instanceof Error ? err.message : err
+    );
+  }
+
+  // Push to running process so existing agents pick up the fresh token.
+  // Throw on non-2xx so the alarm's throttle doesn't advance on failure.
+  try {
+    const resp = await container.fetch('http://container/refresh-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!resp.ok) {
+      throw new Error(`container returned ${resp.status}`);
+    }
+  } catch (err) {
+    // If the container isn't running yet, the token will be in envVars
+    // when it boots. But if it IS running and rejected the refresh,
+    // propagate the error so the alarm retries on the next tick.
+    const isContainerDown =
+      err instanceof TypeError || (err instanceof Error && err.message.includes('fetch'));
+    if (!isContainerDown) throw err;
+  }
+
+  return token;
+}
+
+/**
+ * Alias for ensureContainerToken — both functions now push to the
+ * running container process via POST /refresh-token. Kept as a
+ * separate export for call-site readability (alarm code calls
+ * "refresh", dispatch code calls "ensure").
+ */
+export const refreshContainerToken = ensureContainerToken;
 
 /** Build the initial prompt for an agent from its bead. */
 export function buildPrompt(params: {
@@ -99,8 +169,6 @@ export function systemPromptForRole(params: {
       switch (params.role) {
         case 'refinery':
           return `${base} You review code quality and merge PRs. Check for correctness, style, and test coverage.`;
-        case 'witness':
-          return `${base} You monitor agent health and report anomalies.`;
         default:
           return base;
       }
@@ -116,6 +184,33 @@ export function branchForAgent(name: string, beadId?: string): string {
     .replace(/-+/g, '-');
   const beadSuffix = beadId ? `/${beadId.slice(0, 8)}` : '';
   return `gt/${slug}${beadSuffix}`;
+}
+
+/**
+ * Generate a branch name for a convoy bead's agent.
+ *
+ * Agent branches are siblings of the convoy feature branch's /head ref,
+ * not children of it. Git refs are file-based: a ref at path X blocks
+ * refs under X/. The convoy feature branch ends with /head (a leaf),
+ * and agent branches sit alongside it under the same convoy prefix:
+ *
+ *   convoy/<slug>/<id>/head             ← feature branch
+ *   convoy/<slug>/<id>/gt/<agent>/<bead> ← agent branch (sibling)
+ *
+ * Both are entries within the <id>/ directory, so no ref conflict.
+ */
+export function branchForConvoyAgent(
+  convoyFeatureBranch: string,
+  name: string,
+  beadId: string
+): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-');
+  // Strip /head suffix to get the convoy prefix, then place the agent branch as a sibling
+  const convoyPrefix = convoyFeatureBranch.replace(/\/head$/, '');
+  return `${convoyPrefix}/gt/${slug}/${beadId.slice(0, 8)}`;
 }
 
 /**
@@ -143,23 +238,38 @@ export async function startAgentInContainer(
     townConfig: TownConfig;
     systemPromptOverride?: string;
     platformIntegrationId?: string;
+    /** For convoy beads: the convoy's feature branch to branch from instead of defaultBranch. */
+    convoyFeatureBranch?: string;
+    /** All rigs in the town (mayor only) — used to set up browse worktrees on fresh containers. */
+    rigs?: Array<{
+      rigId: string;
+      gitUrl: string;
+      defaultBranch: string;
+      platformIntegrationId?: string;
+    }>;
   }
 ): Promise<boolean> {
   console.log(
     `${TOWN_LOG} startAgentInContainer: agentId=${params.agentId} role=${params.role} name=${params.agentName}`
   );
   try {
-    const token = await mintAgentToken(env, {
+    // Mint a container-scoped JWT (8h expiry, refreshed by TownDO alarm).
+    // One token per container — shared by all agents in the town.
+    // Carries { townId, userId, scope: 'container' }.
+    const containerToken = await ensureContainerToken(env, params.townId, params.userId);
+
+    // Also mint a per-agent JWT as fallback during rollout.
+    const agentToken = await mintAgentToken(env, {
       agentId: params.agentId,
       rigId: params.rigId,
       townId: params.townId,
       userId: params.userId,
     });
 
-    if (!token) {
+    if (!containerToken && !agentToken) {
       console.error(
-        `${TOWN_LOG} startAgentInContainer: ABORTING — failed to mint JWT for agent ${params.agentId}. ` +
-          'The agent would start without GASTOWN_SESSION_TOKEN and be unable to call back to the worker.'
+        `${TOWN_LOG} startAgentInContainer: ABORTING — failed to mint any auth token for agent ${params.agentId}. ` +
+          'The agent would start without credentials and be unable to call back to the worker.'
       );
       return false;
     }
@@ -178,13 +288,16 @@ export async function startAgentInContainer(
       envVars.GITLAB_INSTANCE_URL = params.townConfig.git_auth.gitlab_instance_url;
     }
 
-    if (token) envVars.GASTOWN_SESSION_TOKEN = token;
+    // Container token is preferred (shared by all agents, refreshed by alarm).
+    // Legacy per-agent JWT kept as fallback during rollout.
+    if (containerToken) envVars.GASTOWN_CONTAINER_TOKEN = containerToken;
+    if (agentToken) envVars.GASTOWN_SESSION_TOKEN = agentToken;
     // kilocodeToken: prefer rig-level, fall back to town config
     const kilocodeToken = params.kilocodeToken ?? params.townConfig.kilocode_token;
     if (kilocodeToken) envVars.KILOCODE_TOKEN = kilocodeToken;
 
     console.log(
-      `${TOWN_LOG} startAgentInContainer: envVars built: keys=[${Object.keys(envVars).join(',')}] hasGitToken=${!!envVars.GIT_TOKEN} hasGitlabToken=${!!envVars.GITLAB_TOKEN} hasJwt=${!!token} hasKilocodeToken=${!!kilocodeToken} git_auth_keys=[${Object.keys(params.townConfig.git_auth ?? {}).join(',')}]`
+      `${TOWN_LOG} startAgentInContainer: envVars built: keys=[${Object.keys(envVars).join(',')}] hasGitToken=${!!envVars.GIT_TOKEN} hasGitlabToken=${!!envVars.GITLAB_TOKEN} hasContainerToken=${!!containerToken} hasAgentJwt=${!!agentToken} hasKilocodeToken=${!!kilocodeToken} git_auth_keys=[${Object.keys(params.townConfig.git_auth ?? {}).join(',')}]`
     );
 
     const containerConfig = await buildContainerConfig(storage, env);
@@ -220,10 +333,20 @@ export async function startAgentInContainer(
             townId: params.townId,
           }),
         gitUrl: params.gitUrl,
-        branch: branchForAgent(params.agentName, params.beadId),
+        branch: params.convoyFeatureBranch
+          ? branchForConvoyAgent(params.convoyFeatureBranch, params.agentName, params.beadId)
+          : branchForAgent(params.agentName, params.beadId),
+        // Always use the rig's real default branch for the initial git clone.
+        // The convoy feature branch may not exist on the remote yet (the first
+        // agent's work creates it via the refinery merge). The agent's working
+        // branch is created as a worktree from HEAD after clone.
         defaultBranch: params.defaultBranch,
         envVars,
         platformIntegrationId: params.platformIntegrationId,
+        // For convoy agents, start from the convoy's feature branch so the
+        // worktree includes all previously merged convoy work.
+        startPoint: params.convoyFeatureBranch ? `origin/${params.convoyFeatureBranch}` : undefined,
+        rigs: params.rigs,
       }),
     });
 
@@ -258,12 +381,22 @@ export async function startMergeInContainer(
   }
 ): Promise<boolean> {
   try {
-    const token = await mintAgentToken(env, {
+    const userId = params.townConfig.owner_user_id ?? params.townId;
+    const containerToken = await ensureContainerToken(env, params.townId, userId);
+    const agentToken = await mintAgentToken(env, {
       agentId: params.agentId,
       rigId: params.rigId,
       townId: params.townId,
-      userId: params.townConfig.owner_user_id ?? '',
+      userId,
     });
+
+    if (!containerToken && !agentToken) {
+      console.error(
+        `${TOWN_LOG} startMergeInContainer: ABORTING — failed to mint any auth token for merge entry ${params.entryId}. ` +
+          'The merge process would start without credentials and be unable to report results.'
+      );
+      return false;
+    }
 
     const envVars: Record<string, string> = { ...(params.townConfig.env_vars ?? {}) };
     if (params.townConfig.git_auth?.github_token) {
@@ -275,7 +408,8 @@ export async function startMergeInContainer(
     if (params.townConfig.git_auth?.gitlab_instance_url) {
       envVars.GITLAB_INSTANCE_URL = params.townConfig.git_auth.gitlab_instance_url;
     }
-    if (token) envVars.GASTOWN_SESSION_TOKEN = token;
+    if (containerToken) envVars.GASTOWN_CONTAINER_TOKEN = containerToken;
+    if (agentToken) envVars.GASTOWN_SESSION_TOKEN = agentToken;
     if (env.GASTOWN_API_URL) envVars.GASTOWN_API_URL = env.GASTOWN_API_URL;
     const mergeKilocodeToken = params.kilocodeToken ?? params.townConfig.kilocode_token;
     if (mergeKilocodeToken) envVars.KILOCODE_TOKEN = mergeKilocodeToken;
@@ -326,6 +460,11 @@ export async function checkAgentContainerStatus(
     const container = getTownContainerStub(env, townId);
     // TODO: Generally you should use containerFetch which waits for ports to be available
     const response = await container.fetch(`http://container/agents/${agentId}/status`);
+    // 404 means the container is running but has no record of this agent
+    // (e.g. after container eviction). Report as 'not_found' so
+    // witnessPatrol can immediately reset and redispatch the agent
+    // instead of waiting for the 2-hour GUPP timeout.
+    if (response.status === 404) return { status: 'not_found' };
     if (!response.ok) return { status: 'unknown' };
     const data: unknown = await response.json();
     if (typeof data === 'object' && data !== null && 'status' in data) {

@@ -9,12 +9,10 @@ import { summarizeUserPayments } from '@/lib/creditTransactions';
 import { hasOrganizationEverPaid, hasUserEverPaid } from '@/lib/creditTransactions';
 import { cachedPosthogQuery } from '@/lib/posthog-query';
 import * as z from 'zod';
-import { subDays } from 'date-fns';
-import { hasReceivedPromotion } from '@/lib/promotionalCredits';
-
 import { getKiloPassStateForUser } from '@/lib/kilo-pass/state';
 import { db } from '@/lib/drizzle';
 import { fromMicrodollars } from '@/lib/utils';
+import { KILO_AUTO_FREE_MODEL } from '@/lib/kilo-auto-model';
 
 export type KiloNotification = {
   id: string;
@@ -28,6 +26,8 @@ export type KiloNotification = {
   // When showIn is specified this can be used to target specific apps. When not specified all apps with notification support will show it:
   // CAUTION: use extension-native sparingly since it shows up as a native VSCode notification and is spammy
   showIn?: ('extension' | 'extension-native' | 'cli')[];
+  // ISO 8601 timestamp after which this notification should no longer be shown
+  expiresAt?: string;
 };
 
 const normalUnconditionalNotifications: KiloNotification[] = [
@@ -61,6 +61,17 @@ const normalUnconditionalNotifications: KiloNotification[] = [
     },
     showIn: ['extension', 'cli'],
   },
+  {
+    id: 'app-builder-promo-mar-6',
+    title: 'Try App Builder',
+    message: "Don't feel like coding? Try App Builder to build with natural language from the web",
+    action: {
+      actionText: 'Try App Builder',
+      actionURL: 'https://app.kilo.ai/app-builder',
+    },
+    showIn: ['extension'],
+    expiresAt: '2026-03-09T08:00:00Z',
+  },
 ];
 
 export async function generateUserNotifications(user: User): Promise<KiloNotification[]> {
@@ -68,8 +79,8 @@ export async function generateUserNotifications(user: User): Promise<KiloNotific
     generateTeamsTrialNotification,
     generateLowCreditNotification,
     generateAutoTopUpNotification,
+    generateAutoTopUpOrgsNotification,
     generateByokProvidersNotification,
-    generateFirstDayWelcomeNotification,
     generateKiloPassNotification,
     generateKimiFreeEndingNotification,
   ];
@@ -78,7 +89,10 @@ export async function generateUserNotifications(user: User): Promise<KiloNotific
     await Promise.all(conditionalNotifications.map(f => f(user)))
   ).flat();
 
-  return [...resolvedConditionalNotifications, ...normalUnconditionalNotifications];
+  const now = new Date();
+  return [...resolvedConditionalNotifications, ...normalUnconditionalNotifications].filter(
+    n => !n.expiresAt || new Date(n.expiresAt) > now
+  );
 }
 
 async function generateLowCreditNotification(user: User): Promise<KiloNotification[]> {
@@ -130,6 +144,26 @@ async function generateAutoTopUpNotification(user: User): Promise<KiloNotificati
       action: {
         actionText: 'Enable Auto Top-Ups',
         actionURL: 'https://app.kilo.ai/credits',
+      },
+      showIn: ['cli', 'extension'],
+    },
+  ];
+}
+
+async function generateAutoTopUpOrgsNotification(user: User): Promise<KiloNotification[]> {
+  const orgs = await getUserOrganizationsWithSeats(user.id);
+  const isOwnerOrAdmin = orgs.some(org => org.role === 'owner');
+  if (!isOwnerOrAdmin) return [];
+
+  return [
+    {
+      id: 'auto-top-up-orgs-march-10',
+      title: 'New: Auto Top-Ups For Organizations',
+      message:
+        "Set your top-up amount once—we'll automatically add credits to your organization's balance when it drops below $50.",
+      action: {
+        actionText: 'Enable Auto Top-Ups',
+        actionURL: 'https://app.kilo.ai/',
       },
       showIn: ['cli', 'extension'],
     },
@@ -223,39 +257,6 @@ async function generateByokProvidersNotification(user: User): Promise<KiloNotifi
   }
 }
 
-async function generateFirstDayWelcomeNotification(user: User): Promise<KiloNotification[]> {
-  // Check if user was created within the last day
-  if (new Date(user.created_at) < subDays(new Date(), 1)) {
-    return [];
-  }
-
-  // Check if user has received the signup bonus
-  const hasReceivedBonus = await hasReceivedPromotion(user.id, 'automatic-welcome-credits');
-  if (!hasReceivedBonus) {
-    return [];
-  }
-
-  // Check if user still has credit balance
-  const { balance } = await getBalanceForUser(user);
-  if (balance <= 1) {
-    return [];
-  }
-
-  return [
-    {
-      id: 'first-day-welcome-jan-8',
-      title: 'Welcome to Kilo Code!',
-      message:
-        'We added $5 to your balance to get started! If you want something to try, try asking Kilo to clone Kilo-Org/KiloMan and run it.',
-      action: {
-        actionText: 'Open Kilo-Org/KiloMan',
-        actionURL: 'https://github.com/Kilo-Org/kiloman',
-      },
-      showIn: ['cli', 'extension'],
-    },
-  ];
-}
-
 async function generateKiloPassNotification(user: User): Promise<KiloNotification[]> {
   // Exclude users who already have a Kilo Pass
   const kiloPassState = await getKiloPassStateForUser(db, user.id);
@@ -313,7 +314,7 @@ async function generateKimiFreeEndingNotification(user: User): Promise<KiloNotif
         title: 'Kimi K2.5 Free Promotion Ending Soon',
         message:
           'We hope you enjoyed free use of Kimi K2.5! The promotion will be ending soon. You can switch to Kilo: Auto free mode or keep using Kimi with credits.',
-        suggestModelId: 'kilo/auto-free',
+        suggestModelId: KILO_AUTO_FREE_MODEL.id,
         action: {
           actionText: 'Switch to Kilo: Auto Free',
           actionURL: `${APP_URL}/credits`,

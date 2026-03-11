@@ -12,6 +12,7 @@ import { giga_potato_model, giga_potato_thinking_model } from '@/lib/providers/g
 import type { KiloFreeModel } from '@/lib/providers/kilo-free-model';
 import { minimax_m21_free_model, minimax_m25_free_model } from '@/lib/providers/minimax';
 import { kimi_k25_free_model } from '@/lib/providers/moonshotai';
+import { morph_warp_grep_free_model } from '@/lib/providers/morph';
 import { grok_code_fast_1_optimized_free_model } from '@/lib/providers/xai';
 import { zai_glm5_free_model } from '@/lib/providers/zai';
 
@@ -26,8 +27,7 @@ export const preferredModels = [
   'arcee-ai/trinity-large-preview:free',
   CLAUDE_OPUS_CURRENT_MODEL_ID,
   CLAUDE_SONNET_CURRENT_MODEL_ID,
-  'openai/gpt-5.2',
-  'openai/gpt-5.3-codex',
+  'openai/gpt-5.4',
   'google/gemini-3.1-pro-preview',
   'z-ai/glm-5',
   'x-ai/grok-code-fast-1',
@@ -36,6 +36,7 @@ export const preferredModels = [
 export function isFreeModel(model: string): boolean {
   return (
     kiloFreeModels.some(m => m.public_id === model && m.is_enabled) ||
+    model === KILO_AUTO_FREE_MODEL.id ||
     (model ?? '').endsWith(':free') ||
     model === 'openrouter/free' ||
     isOpenRouterStealthModel(model ?? '')
@@ -60,22 +61,17 @@ export const kiloFreeModels = [
   kimi_k25_free_model,
   minimax_m25_free_model,
   minimax_m21_free_model,
+  morph_warp_grep_free_model,
   grok_code_fast_1_optimized_free_model,
   zai_glm5_free_model,
 ] as KiloFreeModel[];
 
 export function isKiloStealthModel(model: string): boolean {
-  return kiloFreeModels.some(
-    m => m.public_id === model && m.inference_providers.includes('stealth')
-  );
+  return kiloFreeModels.some(m => m.public_id === model && m.inference_provider === 'stealth');
 }
 
 function isOpenRouterStealthModel(model: string): boolean {
   return model.startsWith('openrouter/') && (model.endsWith('-alpha') || model.endsWith('-beta'));
-}
-
-export function extraRequiredProviders(model: string) {
-  return kiloFreeModels.find(m => m.public_id === model)?.inference_providers ?? [];
 }
 
 export function isDeadFreeModel(model: string): boolean {

@@ -4,6 +4,40 @@ import type { CloneOptions, WorktreeOptions } from './types';
 
 const WORKSPACE_ROOT = '/workspace/rigs';
 
+// ── Per-rig mutex ────────────────────────────────────────────────────────
+// Git operations (clone, fetch, worktree add/remove) on the same bare repo
+// must be serialized because git acquires index.lock internally. Concurrent
+// operations on different rigs are unaffected.
+
+const rigLocks = new Map<string, Promise<void>>();
+
+function withRigLock<T>(rigId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = rigLocks.get(rigId) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  // Keep the chain alive for the next caller; clean up when idle.
+  rigLocks.set(
+    rigId,
+    next.then(
+      () => {},
+      () => {}
+    )
+  );
+  void next.finally(() => {
+    // Remove the entry once the chain is idle (no pending waiters).
+    // If another caller chained onto `next` between our set and this
+    // finally, the map value will have changed — only delete if it
+    // still points to our void-mapped promise.
+    const current = rigLocks.get(rigId);
+    if (current) {
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      current.then(() => {
+        if (rigLocks.get(rigId) === current) rigLocks.delete(rigId);
+      });
+    }
+  });
+  return next;
+}
+
 /**
  * Reject path segments that could escape the workspace via traversal.
  * Allows alphanumeric, hyphens, underscores, dots, and forward slashes
@@ -108,6 +142,13 @@ async function exec(cmd: string, args: string[], cwd?: string): Promise<string> 
     cwd,
     stdout: 'pipe',
     stderr: 'pipe',
+    env: {
+      ...process.env,
+      // Prevent git from prompting for credentials in the container.
+      // Public repos clone without auth; private repos fail fast with
+      // a clear error instead of hanging on a username prompt.
+      GIT_TERMINAL_PROMPT: '0',
+    },
   });
 
   const exitCode = await proc.exited;
@@ -151,7 +192,13 @@ async function worktreeDir(rigId: string, branch: string): Promise<string> {
  * If the repo is already cloned, fetches latest instead.
  * When envVars contains GIT_TOKEN/GITLAB_TOKEN, constructs authenticated URLs.
  */
-export async function cloneRepo(
+export function cloneRepo(
+  options: CloneOptions & { envVars?: Record<string, string> }
+): Promise<string> {
+  return withRigLock(options.rigId, () => cloneRepoInner(options));
+}
+
+async function cloneRepoInner(
   options: CloneOptions & { envVars?: Record<string, string> }
 ): Promise<string> {
   validateGitUrl(options.gitUrl);
@@ -189,7 +236,11 @@ export async function cloneRepo(
  * Create an isolated git worktree for an agent's branch.
  * If the worktree already exists, resets it to track the branch.
  */
-export async function createWorktree(options: WorktreeOptions): Promise<string> {
+export function createWorktree(options: WorktreeOptions): Promise<string> {
+  return withRigLock(options.rigId, () => createWorktreeInner(options));
+}
+
+async function createWorktreeInner(options: WorktreeOptions): Promise<string> {
   const repo = await repoDir(options.rigId);
   const dir = await worktreeDir(options.rigId, options.branch);
 
@@ -202,10 +253,27 @@ export async function createWorktree(options: WorktreeOptions): Promise<string> 
     return dir;
   }
 
+  // When a startPoint is provided (e.g. a convoy feature branch), create
+  // the new branch from that ref so the agent begins with the latest
+  // merged work from upstream. Without a startPoint, try to track the
+  // remote branch or fall back to the repo's current HEAD.
+  const startPoint = options.startPoint;
   try {
-    await exec('git', ['branch', '--track', options.branch, `origin/${options.branch}`], repo);
+    if (startPoint) {
+      await exec('git', ['branch', options.branch, startPoint], repo);
+    } else {
+      await exec('git', ['branch', '--track', options.branch, `origin/${options.branch}`], repo);
+    }
   } catch {
-    await exec('git', ['branch', options.branch], repo);
+    // Fall back to origin/<defaultBranch> so we always branch from the
+    // latest remote tip rather than the repo's local HEAD (which may be
+    // stale in a --no-checkout bare clone).
+    const fallback = options.defaultBranch ? `origin/${options.defaultBranch}` : undefined;
+    if (fallback) {
+      await exec('git', ['branch', options.branch, fallback], repo);
+    } else {
+      await exec('git', ['branch', options.branch], repo);
+    }
   }
 
   await exec('git', ['worktree', 'add', dir, options.branch], repo);
@@ -216,14 +284,16 @@ export async function createWorktree(options: WorktreeOptions): Promise<string> 
 /**
  * Remove a git worktree.
  */
-export async function removeWorktree(rigId: string, branch: string): Promise<void> {
-  const repo = await repoDir(rigId);
-  const dir = await worktreeDir(rigId, branch);
+export function removeWorktree(rigId: string, branch: string): Promise<void> {
+  return withRigLock(rigId, async () => {
+    const repo = await repoDir(rigId);
+    const dir = await worktreeDir(rigId, branch);
 
-  if (!(await pathExists(dir))) return;
+    if (!(await pathExists(dir))) return;
 
-  await exec('git', ['worktree', 'remove', '--force', dir], repo);
-  console.log(`Removed worktree at ${dir}`);
+    await exec('git', ['worktree', 'remove', '--force', dir], repo);
+    console.log(`Removed worktree at ${dir}`);
+  });
 }
 
 /**
@@ -238,6 +308,65 @@ export async function listWorktrees(rigId: string): Promise<string[]> {
     .split('\n')
     .filter(line => line.startsWith('worktree '))
     .map(line => line.replace('worktree ', ''));
+}
+
+/**
+ * Create (or update) a read-only browse worktree for a rig on its default branch.
+ * This gives the mayor agent a checked-out view of the codebase at
+ * `/workspace/rigs/<rigId>/browse/` that it can navigate into via external_directory.
+ *
+ * If the browse worktree already exists, pulls latest from the remote.
+ */
+export function setupRigBrowseWorktree(
+  options: CloneOptions & { envVars?: Record<string, string> }
+): Promise<string> {
+  return withRigLock(options.rigId, async () => {
+    // Ensure the repo is cloned/up-to-date first
+    await cloneRepoInner(options);
+    return setupBrowseWorktreeInner(options.rigId, options.defaultBranch);
+  });
+}
+
+async function setupBrowseWorktreeInner(rigId: string, defaultBranch: string): Promise<string> {
+  validatePathSegment(rigId, 'rigId');
+  const repo = await repoDir(rigId);
+  const browseDir = resolve(WORKSPACE_ROOT, rigId, 'browse');
+  await assertInsideWorkspace(browseDir);
+
+  if (await pathExists(browseDir)) {
+    // Already exists — fetch latest and reset the tracking branch to
+    // origin/<defaultBranch>. The worktree lives on the synthetic
+    // browse-<rigId> branch, not on <defaultBranch> directly.
+    try {
+      await exec('git', ['fetch', 'origin', defaultBranch], browseDir);
+      await exec('git', ['reset', '--hard', `origin/${defaultBranch}`], browseDir);
+      console.log(`Updated browse worktree for rig ${rigId} at ${browseDir}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
+      console.warn(`Browse worktree refresh failed for rig ${rigId} (may be stale): ${msg}`);
+    }
+    return browseDir;
+  }
+
+  // Create a worktree on the default branch for browsing.
+  // Force-create (or reset) the tracking branch to origin/<defaultBranch>
+  // so a recreated browse worktree always starts from the latest remote
+  // tip rather than a stale local ref.
+  const trackingBranch = `browse-${rigId.slice(0, 8)}`;
+  try {
+    await exec(
+      'git',
+      ['branch', '--force', '--track', trackingBranch, `origin/${defaultBranch}`],
+      repo
+    );
+  } catch {
+    // --force --track may fail on very old git; fall back to create-or-reset
+    await exec('git', ['branch', '-f', trackingBranch, `origin/${defaultBranch}`], repo);
+  }
+
+  await exec('git', ['worktree', 'add', browseDir, trackingBranch], repo);
+  console.log(`Created browse worktree for rig ${rigId} at ${browseDir}`);
+  return browseDir;
 }
 
 export type MergeOutcome = {

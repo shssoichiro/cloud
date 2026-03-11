@@ -5,11 +5,14 @@ import type {
   BeadPriority,
   BeadStatus,
   BeadType,
+  Convoy,
+  ConvoyDetail,
   GastownEnv,
   Mail,
   MayorGastownEnv,
   PrimeContext,
   Rig,
+  SlingBatchResult,
   SlingResult,
 } from './types';
 
@@ -23,12 +26,14 @@ function isApiResponse(
 
 export class GastownClient {
   private baseUrl: string;
+  private containerToken: string | undefined;
   private token: string;
   private agentId: string;
   private rigId: string;
   private townId: string;
   constructor(env: GastownEnv) {
     this.baseUrl = env.apiUrl.replace(/\/+$/, '');
+    this.containerToken = env.containerToken;
     this.token = env.sessionToken;
     this.agentId = env.agentId;
     this.rigId = env.rigId;
@@ -47,7 +52,18 @@ export class GastownClient {
     // Normalize headers so callers can pass plain objects, Headers instances, or tuples
     const headers = new Headers(init?.headers);
     headers.set('Content-Type', 'application/json');
-    headers.set('Authorization', `Bearer ${this.token}`);
+    // Prefer the live container token from process.env (refreshed by the
+    // TownDO alarm via POST /refresh-token), then the token captured at
+    // init, then the legacy per-agent JWT.
+    const authToken = process.env.GASTOWN_CONTAINER_TOKEN ?? this.containerToken ?? this.token;
+    headers.set('Authorization', `Bearer ${authToken}`);
+    // When using a container-scoped JWT, send agent identity headers so
+    // the auth middleware can populate agentId/rigId on routes that don't
+    // have :agentId/:rigId params (e.g. /triage/resolve, /mail).
+    if (process.env.GASTOWN_CONTAINER_TOKEN || this.containerToken) {
+      headers.set('X-Gastown-Agent-Id', this.agentId);
+      headers.set('X-Gastown-Rig-Id', this.rigId);
+    }
 
     let response: Response;
     try {
@@ -106,6 +122,13 @@ export class GastownClient {
     await this.request<void>(this.agentPath('/checkpoint'), {
       method: 'POST',
       body: JSON.stringify({ data }),
+    });
+  }
+
+  async updateAgentStatusMessage(message: string): Promise<void> {
+    await this.request<void>(this.agentPath('/status'), {
+      method: 'POST',
+      body: JSON.stringify({ message }),
     });
   }
 
@@ -171,20 +194,37 @@ export class GastownClient {
       body: JSON.stringify({ summary }),
     });
   }
+
+  /**
+   * Resolve a triage_request bead with the chosen action and notes.
+   * The TownDO closes the triage request and executes any side effects.
+   */
+  async resolveTriage(input: {
+    triage_request_bead_id: string;
+    action: string;
+    resolution_notes: string;
+  }): Promise<Bead> {
+    return this.request<Bead>(this.rigPath('/triage/resolve'), {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
 }
 
 /**
  * Mayor-scoped client for town-level cross-rig operations.
- * Uses `/api/mayor/:townId/tools/*` routes authenticated via townId-scoped JWT.
+ * Uses `/api/mayor/:townId/tools/*` routes authenticated via container secret or JWT.
  */
 export class MayorGastownClient {
   private baseUrl: string;
+  private containerToken: string | undefined;
   private token: string;
   private agentId: string;
   private townId: string;
 
   constructor(env: MayorGastownEnv) {
     this.baseUrl = env.apiUrl.replace(/\/+$/, '');
+    this.containerToken = env.containerToken;
     this.token = env.sessionToken;
     this.agentId = env.agentId;
     this.townId = env.townId;
@@ -197,7 +237,13 @@ export class MayorGastownClient {
   private async request<T>(url: string, init?: RequestInit): Promise<T> {
     const headers = new Headers(init?.headers);
     headers.set('Content-Type', 'application/json');
-    headers.set('Authorization', `Bearer ${this.token}`);
+    // Prefer live container token (refreshed via POST /refresh-token),
+    // then init-time token, then legacy per-agent JWT.
+    const authToken = process.env.GASTOWN_CONTAINER_TOKEN ?? this.containerToken ?? this.token;
+    headers.set('Authorization', `Bearer ${authToken}`);
+    if (process.env.GASTOWN_CONTAINER_TOKEN || this.containerToken) {
+      headers.set('X-Gastown-Agent-Id', this.agentId);
+    }
 
     let response: Response;
     try {
@@ -281,6 +327,27 @@ export class MayorGastownClient {
       }),
     });
   }
+
+  async slingBatch(input: {
+    rig_id: string;
+    convoy_title: string;
+    tasks: Array<{ title: string; body?: string; depends_on?: number[] }>;
+    merge_mode?: 'review-then-land' | 'review-and-merge';
+    parallel?: boolean;
+  }): Promise<SlingBatchResult> {
+    return this.request<SlingBatchResult>(this.mayorPath('/sling-batch'), {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async listConvoys(): Promise<Convoy[]> {
+    return this.request<Convoy[]>(this.mayorPath('/convoys'));
+  }
+
+  async getConvoyStatus(convoyId: string): Promise<ConvoyDetail> {
+    return this.request<ConvoyDetail>(this.mayorPath(`/convoys/${convoyId}`));
+  }
 }
 
 export class GastownApiError extends Error {
@@ -295,15 +362,18 @@ export class GastownApiError extends Error {
 
 export function createClientFromEnv(): GastownClient {
   const apiUrl = process.env.GASTOWN_API_URL;
+  const containerToken = process.env.GASTOWN_CONTAINER_TOKEN;
   const sessionToken = process.env.GASTOWN_SESSION_TOKEN;
   const agentId = process.env.GASTOWN_AGENT_ID;
   const rigId = process.env.GASTOWN_RIG_ID;
   const townId = process.env.GASTOWN_TOWN_ID;
 
-  if (!apiUrl || !sessionToken || !agentId || !rigId || !townId) {
+  // Require either containerToken or sessionToken (prefer containerToken)
+  const hasAuth = containerToken || sessionToken;
+  if (!apiUrl || !hasAuth || !agentId || !rigId || !townId) {
     const missing = [
       !apiUrl && 'GASTOWN_API_URL',
-      !sessionToken && 'GASTOWN_SESSION_TOKEN',
+      !hasAuth && 'GASTOWN_CONTAINER_TOKEN or GASTOWN_SESSION_TOKEN',
       !agentId && 'GASTOWN_AGENT_ID',
       !rigId && 'GASTOWN_RIG_ID',
       !townId && 'GASTOWN_TOWN_ID',
@@ -311,24 +381,39 @@ export function createClientFromEnv(): GastownClient {
     throw new Error(`Missing required Gastown environment variables: ${missing.join(', ')}`);
   }
 
-  return new GastownClient({ apiUrl, sessionToken, agentId, rigId, townId });
+  return new GastownClient({
+    apiUrl,
+    containerToken: containerToken ?? undefined,
+    sessionToken: sessionToken ?? '',
+    agentId,
+    rigId,
+    townId,
+  });
 }
 
 export function createMayorClientFromEnv(): MayorGastownClient {
   const apiUrl = process.env.GASTOWN_API_URL;
+  const containerToken = process.env.GASTOWN_CONTAINER_TOKEN;
   const sessionToken = process.env.GASTOWN_SESSION_TOKEN;
   const agentId = process.env.GASTOWN_AGENT_ID;
   const townId = process.env.GASTOWN_TOWN_ID;
 
-  if (!apiUrl || !sessionToken || !agentId || !townId) {
+  const hasAuth = containerToken || sessionToken;
+  if (!apiUrl || !hasAuth || !agentId || !townId) {
     const missing = [
       !apiUrl && 'GASTOWN_API_URL',
-      !sessionToken && 'GASTOWN_SESSION_TOKEN',
+      !hasAuth && 'GASTOWN_CONTAINER_TOKEN or GASTOWN_SESSION_TOKEN',
       !agentId && 'GASTOWN_AGENT_ID',
       !townId && 'GASTOWN_TOWN_ID',
     ].filter(Boolean);
     throw new Error(`Missing required mayor environment variables: ${missing.join(', ')}`);
   }
 
-  return new MayorGastownClient({ apiUrl, sessionToken, agentId, townId });
+  return new MayorGastownClient({
+    apiUrl,
+    containerToken: containerToken ?? undefined,
+    sessionToken: sessionToken ?? '',
+    agentId,
+    townId,
+  });
 }

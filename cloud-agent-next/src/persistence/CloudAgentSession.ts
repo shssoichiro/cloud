@@ -47,7 +47,7 @@ import {
 } from '../websocket/ingest.js';
 import type { StoredEvent } from '../websocket/types.js';
 import type { WrapperCommand } from '../shared/protocol.js';
-import { STALE_THRESHOLD_MS } from '../core/lease.js';
+import { STALE_THRESHOLD_MS, SANDBOX_SLEEP_AFTER_SECONDS } from '../core/lease.js';
 import { ExecutionOrchestrator, type OrchestratorDeps } from '../execution/orchestrator.js';
 import type {
   ExecutionMode,
@@ -85,6 +85,21 @@ const LAST_ACTIVITY_KEY = 'last_activity';
 /** Kilo server idle timeout: 15 minutes */
 const KILO_SERVER_IDLE_TIMEOUT_MS_DEFAULT = 15 * 60 * 1000;
 
+/** Grace period before failing execution after wrapper disconnect (ms).
+ *  Covers the first few reconnection attempts (exponential backoff: 1s, 2s, 4s …). */
+const DISCONNECT_GRACE_MS = 10_000;
+
+/** DO storage key for persisting disconnect grace state across hibernation. */
+const DISCONNECT_GRACE_KEY = 'disconnect_grace';
+
+/** Stored in DO storage under DISCONNECT_GRACE_KEY while a grace period is active. */
+type DisconnectGraceState = {
+  executionId: ExecutionId;
+  disconnectedAt: number;
+  wsCloseCode: number;
+  wsCloseReason: string;
+};
+
 export class CloudAgentSession extends DurableObject {
   private executionQueries: ExecutionQueries;
   private eventQueries: EventQueries;
@@ -105,7 +120,8 @@ export class CloudAgentSession extends DurableObject {
   private async enqueueCallbackNotification(
     executionId: ExecutionId,
     status: 'completed' | 'failed' | 'interrupted',
-    error?: string
+    error?: string,
+    gateResult?: 'pass' | 'fail'
   ): Promise<void> {
     const metadata = await this.getMetadata();
     const callbackQueue = (this.env as unknown as WorkerEnv).CALLBACK_QUEUE;
@@ -134,6 +150,7 @@ export class CloudAgentSession extends DurableObject {
         errorMessage: error,
         lastSeenBranch: metadata.upstreamBranch,
         kiloSessionId: metadata.kiloSessionId,
+        gateResult,
       },
     };
 
@@ -229,6 +246,8 @@ export class CloudAgentSession extends DurableObject {
         updateKiloSessionId: (id: string) => this.updateKiloSessionId(id),
         updateUpstreamBranch: (branch: string) => this.updateUpstreamBranch(branch),
         clearActiveExecution: () => this.clearActiveExecution(),
+        getActiveExecutionId: () => this.executionQueries.getActiveExecutionId(),
+        cancelDisconnectGrace: () => this.cancelDisconnectGrace(),
         getExecution: async (executionId: string) => {
           const execution = await this.executionQueries.get(executionId as ExecutionId);
           if (!execution) return null;
@@ -247,17 +266,23 @@ export class CloudAgentSession extends DurableObject {
         },
         updateHeartbeat: async (executionId: string, timestamp: number) => {
           await this.executionQueries.updateHeartbeat(executionId as ExecutionId, timestamp);
+          // Reset the sandbox container's sleep timer alongside the heartbeat.
+          // The wrapper heartbeat travels over an outbound WebSocket that
+          // bypasses containerFetch(), so the idle timer never refreshes otherwise.
+          void this.keepContainerAlive();
         },
         updateExecutionStatus: async (
           executionId: string,
           status: 'completed' | 'failed' | 'interrupted',
-          error?: string
+          error?: string,
+          gateResult?: 'pass' | 'fail'
         ) => {
           await this.updateExecutionStatus({
             executionId: executionId as ExecutionId,
             status,
             error,
             completedAt: Date.now(),
+            gateResult,
           });
         },
       };
@@ -371,59 +396,15 @@ export class CloudAgentSession extends DurableObject {
       const ingestHandler = await this.getIngestHandler();
       const disconnectedExecutionId = ingestHandler.handleIngestClose(ws);
 
-      // If the wrapper disconnected while its execution was still active, fail it immediately
+      // If the wrapper disconnected while its execution was still active, start a
+      // grace period before failing. This gives the wrapper time to reconnect
+      // (exponential backoff: 1s, 2s, 4s …).
       if (disconnectedExecutionId) {
         const activeExecutionId = await this.executionQueries.getActiveExecutionId();
         if (activeExecutionId === disconnectedExecutionId) {
           const execution = await this.executionQueries.get(activeExecutionId);
-          // Only act if execution is still running or pending (not already terminal)
           if (execution && (execution.status === 'running' || execution.status === 'pending')) {
-            logger
-              .withFields({
-                sessionId: this.sessionId,
-                executionId: activeExecutionId,
-                wsCloseCode: code,
-                wsCloseReason: reason,
-              })
-              .warn('Wrapper disconnected while execution active - marking as failed');
-
-            const now = Date.now();
-
-            // Mark execution as failed — if another codepath already moved it
-            // to a terminal state, skip the broadcast and cleanup.
-            const statusResult = await this.updateExecutionStatus({
-              executionId: activeExecutionId,
-              status: 'failed',
-              error: 'Wrapper disconnected',
-              completedAt: now,
-            });
-
-            if (!statusResult.ok) {
-              logger
-                .withFields({ executionId: activeExecutionId, error: statusResult.error })
-                .info('Skipping disconnect cleanup - status transition failed');
-              return;
-            }
-
-            // Clear active execution (updateStatus should do this, but ensure it)
-            await this.executionQueries.clearActiveExecution();
-
-            // Clear interrupt flag if set
-            await this.executionQueries.clearInterrupt();
-
-            // Insert a synthetic wrapper_disconnected event so /stream clients are notified
-            const sessionId = await this.requireSessionId();
-            this.insertAndBroadcastEvent({
-              executionId: activeExecutionId,
-              sessionId,
-              streamEventType: 'wrapper_disconnected',
-              payload: JSON.stringify({
-                reason: 'Wrapper disconnected',
-                wsCloseCode: code,
-                wsCloseReason: reason,
-              }),
-              timestamp: now,
-            });
+            await this.startDisconnectGrace(activeExecutionId, code, reason);
           }
         }
       }
@@ -618,6 +599,25 @@ export class CloudAgentSession extends DurableObject {
   }
 
   /**
+   * Update the callback target for this session.
+   * This allows redirecting completion callbacks to a new URL (e.g., for follow-up reviews).
+   */
+  private async updateCallbackTarget(callbackTarget: CallbackTarget): Promise<void> {
+    const metadata = await this.getMetadata();
+    if (!metadata) {
+      throw new Error('Cannot update callbackTarget: session metadata not found');
+    }
+
+    const updated = {
+      ...metadata,
+      callbackTarget,
+      version: Date.now(), // Bump version for cache invalidation
+    };
+
+    await this.updateMetadata(updated);
+  }
+
+  /**
    * Update the upstream branch for this session.
    * This allows capturing the branch after kilo execution without a full metadata write.
    */
@@ -738,6 +738,7 @@ export class CloudAgentSession extends DurableObject {
     callbackTarget?: CallbackTarget;
     images?: Images;
     createdOnPlatform?: string;
+    gateThreshold?: 'off' | 'all' | 'warning' | 'critical';
     // Workspace metadata (set during prepareSession)
     workspacePath?: string;
     sessionHome?: string;
@@ -803,7 +804,15 @@ export class CloudAgentSession extends DurableObject {
     if (!metadata?.preparedAt) {
       return { success: false, error: 'Session has not been prepared' };
     }
-    if (metadata.initiatedAt) {
+
+    // callbackTarget can be updated even after initiation (needed for follow-up
+    // reviews that reuse an existing session with a new callback URL).
+    // All other fields are immutable once initiated.
+    const allKeys = Object.keys(updates).filter(
+      k => updates[k as keyof typeof updates] !== undefined
+    );
+    const onlyCallbackTarget = allKeys.length === 1 && allKeys[0] === 'callbackTarget';
+    if (metadata.initiatedAt && !onlyCallbackTarget) {
       return { success: false, error: 'Session has already been initiated' };
     }
 
@@ -884,7 +893,15 @@ export class CloudAgentSession extends DurableObject {
   async alarm(): Promise<void> {
     const now = Date.now();
 
+    logger
+      .withFields({ doId: this.ctx.id.toString(), sessionId: this.sessionId })
+      .info('Alarm fired');
+
     try {
+      // Check disconnect grace period first — this alarm may have been
+      // rescheduled specifically for the grace deadline.
+      await this.checkDisconnectGrace();
+
       // Check if session should be deleted due to inactivity (90 days)
       const lastActivity = await this.ctx.storage.get<number>(LAST_ACTIVITY_KEY);
       if (lastActivity && now - lastActivity > Limits.SESSION_TTL_MS) {
@@ -897,18 +914,41 @@ export class CloudAgentSession extends DurableObject {
         return;
       }
 
+      logger
+        .withFields({ sessionId: this.sessionId, lastActivity, elapsedMs: Date.now() - now })
+        .debug('TTL check passed');
+
       // Run cleanup tasks
+      logger
+        .withFields({ sessionId: this.sessionId, elapsedMs: Date.now() - now })
+        .debug('Starting cleanupStaleExecutions');
       await this.cleanupStaleExecutions(now);
+
+      logger
+        .withFields({ sessionId: this.sessionId, elapsedMs: Date.now() - now })
+        .debug('Starting cleanupOldEvents');
       this.cleanupOldEvents(now);
+
+      logger
+        .withFields({ sessionId: this.sessionId, elapsedMs: Date.now() - now })
+        .debug('Starting cleanupExpiredLeases');
       this.cleanupExpiredLeases(now);
 
       // Check if kilo server should be stopped due to inactivity
+      logger
+        .withFields({ sessionId: this.sessionId, elapsedMs: Date.now() - now })
+        .debug('Starting cleanupIdleKiloServer');
       await this.cleanupIdleKiloServer(now);
+
+      logger
+        .withFields({ sessionId: this.sessionId, elapsedMs: Date.now() - now })
+        .debug('All cleanup steps completed');
     } catch (error) {
       logger
         .withFields({
           doId: this.ctx.id.toString(),
           sessionId: this.sessionId,
+          elapsedMs: Date.now() - now,
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined,
         })
@@ -926,6 +966,9 @@ export class CloudAgentSession extends DurableObject {
     } catch {
       // Fall through with default interval
     }
+    logger
+      .withFields({ sessionId: this.sessionId, nextInterval, elapsedMs: Date.now() - now })
+      .info('Rescheduling alarm');
     await this.ctx.storage.setAlarm(now + nextInterval);
   }
 
@@ -985,40 +1028,11 @@ export class CloudAgentSession extends DurableObject {
           })
           .info('Marking stale execution as failed');
 
-        // Mark as failed — if another codepath already moved it to a terminal
-        // state (e.g. webSocketClose), skip cleanup and broadcast.
-        const statusResult = await this.updateExecutionStatus({
+        await this.failExecution({
           executionId: activeExecutionId,
           status: 'failed',
           error: 'Execution timeout - no heartbeat received',
-          completedAt: now,
-        });
-
-        if (!statusResult.ok) {
-          logger
-            .withFields({ executionId: activeExecutionId, error: statusResult.error })
-            .info('Skipping reaper cleanup - status transition failed');
-          return;
-        }
-
-        // Clear active execution (updateStatus should do this, but ensure it)
-        await this.executionQueries.clearActiveExecution();
-
-        // Clear interrupt flag if set
-        await this.executionQueries.clearInterrupt();
-
-        // Notify /stream clients that the execution was reaped
-        const sessionId = await this.requireSessionId();
-        const errorPayload = JSON.stringify({
-          error: 'Execution timeout - no heartbeat received',
-          fatal: true,
-        });
-        this.insertAndBroadcastEvent({
-          executionId: activeExecutionId,
-          sessionId,
           streamEventType: 'error',
-          payload: errorPayload,
-          timestamp: now,
         });
       }
     }
@@ -1037,37 +1051,11 @@ export class CloudAgentSession extends DurableObject {
           })
           .info('Marking stuck pending execution as failed');
 
-        // Mark as failed — if another codepath already moved it to a terminal
-        // state, skip cleanup and broadcast.
-        const statusResult = await this.updateExecutionStatus({
+        await this.failExecution({
           executionId: activeExecutionId,
           status: 'failed',
           error: 'Execution timeout - wrapper never connected',
-          completedAt: now,
-        });
-
-        if (!statusResult.ok) {
-          logger
-            .withFields({ executionId: activeExecutionId, error: statusResult.error })
-            .info('Skipping pending timeout cleanup - status transition failed');
-          return;
-        }
-
-        await this.executionQueries.clearActiveExecution();
-        await this.executionQueries.clearInterrupt();
-
-        // Notify /stream clients that the pending execution timed out
-        const sessionId = await this.requireSessionId();
-        const errorPayload = JSON.stringify({
-          error: 'Execution timeout - wrapper never connected',
-          fatal: true,
-        });
-        this.insertAndBroadcastEvent({
-          executionId: activeExecutionId,
-          sessionId,
           streamEventType: 'error',
-          payload: errorPayload,
-          timestamp: now,
         });
       }
     }
@@ -1168,7 +1156,16 @@ export class CloudAgentSession extends DurableObject {
       const sandboxId = await generateSandboxId(metadata.orgId, metadata.userId, metadata.botId);
       const sandbox = getSandbox((this.env as unknown as WorkerEnv).Sandbox, sandboxId);
 
+      const rpcStart = Date.now();
+      logger
+        .withFields({ sessionId: this.sessionId, sandboxId })
+        .debug('Starting stopKiloServer RPC');
+
       await stopKiloServer(sandbox, metadata.sessionId);
+
+      logger
+        .withFields({ sessionId: this.sessionId, sandboxId, rpcElapsedMs: Date.now() - rpcStart })
+        .debug('stopKiloServer RPC completed');
 
       // Clear the activity timestamp since server is stopped
       // Must merge with existing metadata since updateMetadata validates the full schema
@@ -1193,6 +1190,36 @@ export class CloudAgentSession extends DurableObject {
     }
   }
 
+  /**
+   * Reset the sandbox container's sleep timer so it stays alive during an
+   * active execution.
+   *
+   * The wrapper heartbeat travels over an outbound WebSocket that bypasses
+   * `containerFetch()`, so it never calls `renewActivityTimeout()`.  Calling
+   * `setSleepAfter()` with the same value is a lightweight RPC that resets
+   * the timer without changing the configuration.
+   *
+   * Called from the DO context's `updateHeartbeat` callback (debounced
+   * to every 30 s by the ingest handler) while an execution is running.
+   */
+  private async keepContainerAlive(): Promise<void> {
+    try {
+      const metadata = await this.getMetadata();
+      if (!metadata) return;
+
+      const sandboxId = await generateSandboxId(metadata.orgId, metadata.userId, metadata.botId);
+      const sandbox = getSandbox((this.env as unknown as WorkerEnv).Sandbox, sandboxId);
+      await sandbox.setSleepAfter(SANDBOX_SLEEP_AFTER_SECONDS);
+    } catch (error) {
+      logger
+        .withFields({
+          sessionId: this.sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        .warn('Failed to reset sandbox sleep timer');
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Execution Management RPC Methods
   // ---------------------------------------------------------------------------
@@ -1208,17 +1235,205 @@ export class CloudAgentSession extends DurableObject {
 
   /**
    * Update execution status with state machine validation.
+   *
+   * When `suppressCallback` is true the status is persisted but no callback
+   * notification is enqueued.  Used on the followup path where the caller
+   * (orchestrator) handles the error synchronously and enqueuing a callback
+   * would race with a fallback session's callbacks.
    */
   async updateExecutionStatus(
-    params: UpdateExecutionStatusParams
+    params: UpdateExecutionStatusParams,
+    opts?: { suppressCallback?: boolean }
   ): Promise<Result<ExecutionMetadata, UpdateStatusError>> {
     const result = await this.executionQueries.updateStatus(params);
 
-    if (result.ok && this.isTerminalStatus(params.status)) {
-      await this.enqueueCallbackNotification(params.executionId, params.status, params.error);
+    if (result.ok && this.isTerminalStatus(params.status) && !opts?.suppressCallback) {
+      await this.enqueueCallbackNotification(
+        params.executionId,
+        params.status,
+        params.error,
+        params.gateResult
+      );
     }
 
     return result;
+  }
+
+  /**
+   * Cancel any pending disconnect grace period.
+   * Clears the storage-persisted state so the next alarm ignores it.
+   * Called when the wrapper reconnects or when another codepath fails
+   * the execution.
+   */
+  private async cancelDisconnectGrace(): Promise<void> {
+    await this.ctx.storage.delete(DISCONNECT_GRACE_KEY);
+  }
+
+  /**
+   * Start the disconnect grace period for a wrapper that just disconnected.
+   * Persists state to DO storage (survives hibernation) and reschedules the
+   * alarm to fire at the grace deadline so it runs even if the DO sleeps.
+   */
+  private async startDisconnectGrace(
+    executionId: ExecutionId,
+    wsCloseCode: number,
+    wsCloseReason: string
+  ): Promise<void> {
+    const now = Date.now();
+
+    logger
+      .withFields({
+        sessionId: this.sessionId,
+        executionId,
+        wsCloseCode,
+        wsCloseReason,
+        graceMs: DISCONNECT_GRACE_MS,
+      })
+      .warn('Wrapper disconnected — starting grace period before marking as failed');
+
+    const graceState: DisconnectGraceState = {
+      executionId,
+      disconnectedAt: now,
+      wsCloseCode,
+      wsCloseReason,
+    };
+    await this.ctx.storage.put(DISCONNECT_GRACE_KEY, graceState);
+
+    // Reschedule alarm to fire at the grace deadline. The alarm handler
+    // always reschedules itself afterward, so the normal reaper cadence
+    // self-heals once this fires.
+    await this.ctx.storage.setAlarm(now + DISCONNECT_GRACE_MS);
+  }
+
+  /**
+   * Check and handle an expired disconnect grace period.
+   * Called from alarm() before normal reaper duties.
+   * Re-checks whether the wrapper reconnected or the execution completed
+   * during the grace window before failing it.
+   */
+  private async checkDisconnectGrace(): Promise<void> {
+    const graceState = await this.ctx.storage.get<DisconnectGraceState>(DISCONNECT_GRACE_KEY);
+    if (!graceState) return;
+
+    const elapsed = Date.now() - graceState.disconnectedAt;
+    if (elapsed < DISCONNECT_GRACE_MS) return; // alarm fired early (e.g. reaper cadence)
+
+    // Grace period has elapsed — clear the state first to avoid re-processing
+    await this.ctx.storage.delete(DISCONNECT_GRACE_KEY);
+
+    const { executionId, wsCloseCode, wsCloseReason } = graceState;
+
+    // Re-check: wrapper may have reconnected during grace period
+    const ingestHandler = await this.getIngestHandler();
+    if (ingestHandler.hasActiveConnection(executionId)) {
+      logger
+        .withFields({ executionId })
+        .info('Wrapper reconnected during grace period — skipping failure');
+      return;
+    }
+
+    // Re-check execution state (may have completed normally during grace period)
+    const currentExecution = await this.executionQueries.get(executionId);
+    if (
+      !currentExecution ||
+      (currentExecution.status !== 'running' && currentExecution.status !== 'pending')
+    ) {
+      logger
+        .withFields({
+          executionId,
+          status: currentExecution?.status,
+        })
+        .info('Execution no longer active during grace period — skipping failure');
+      return;
+    }
+
+    logger.withFields({ executionId }).warn('Grace period expired — marking execution as failed');
+
+    await this.failExecution({
+      executionId,
+      status: 'failed',
+      error: 'Wrapper disconnected',
+      streamEventType: 'wrapper_disconnected',
+      streamPayload: { wsCloseCode, wsCloseReason },
+    });
+  }
+
+  /**
+   * Fail an execution with full cleanup.
+   * Idempotent — safe to call if execution is already terminal.
+   *
+   * Performs:
+   * 1. Update execution status to terminal (enqueues callback)
+   * 2. Clear active execution (safety net)
+   * 3. Clear interrupt flag
+   * 4. Broadcast event to /stream clients
+   *
+   * Returns false if the execution was already terminal (no-op).
+   */
+  private async failExecution(params: {
+    executionId: ExecutionId;
+    status: 'failed' | 'interrupted';
+    error: string;
+    streamEventType: string;
+    streamPayload?: Record<string, unknown>;
+    /** When true, skip enqueuing the callback notification. */
+    suppressCallback?: boolean;
+  }): Promise<boolean> {
+    const { executionId, status, error, streamEventType, streamPayload } = params;
+
+    // Clear disconnect grace state — prevents double-failure if another codepath
+    // already failed the execution while a grace period was pending.
+    await this.cancelDisconnectGrace();
+
+    // Snapshot active execution before updateStatus clears it — we need this to
+    // decide whether to clean up the interrupt flag afterward.
+    const wasActive = (await this.executionQueries.getActiveExecutionId()) === executionId;
+
+    // 1. Update status (enqueues callback notification on terminal unless suppressed)
+    const statusResult = await this.updateExecutionStatus(
+      {
+        executionId,
+        status,
+        error,
+        completedAt: Date.now(),
+      },
+      { suppressCallback: params.suppressCallback }
+    );
+
+    if (!statusResult.ok) {
+      logger
+        .withFields({ executionId, error: statusResult.error })
+        .info('failExecution: status transition rejected (already terminal?)');
+      return false;
+    }
+
+    // 2. Clear active execution + interrupt only if this was the active execution.
+    //    updateStatus already clears active_execution_id internally when it matches,
+    //    so the clear here is a safety net. We skip both clears when this execution
+    //    wasn't active to avoid clobbering a newer execution that started in between.
+    if (wasActive) {
+      const activeId = await this.executionQueries.getActiveExecutionId();
+      if (activeId === executionId) {
+        await this.executionQueries.clearActiveExecution();
+      }
+      await this.executionQueries.clearInterrupt();
+    }
+
+    // 4. Broadcast to /stream clients
+    const sessionId = await this.requireSessionId();
+    this.insertAndBroadcastEvent({
+      executionId,
+      sessionId,
+      streamEventType,
+      payload: JSON.stringify({
+        error,
+        fatal: true,
+        ...streamPayload,
+      }),
+      timestamp: Date.now(),
+    });
+
+    return true;
   }
 
   /**
@@ -1266,6 +1481,23 @@ export class CloudAgentSession extends DurableObject {
       streamEventType: 'error',
       payload,
       timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * RPC wrapper for failExecution — allows external callers (e.g. interrupt
+   * handler) to perform a full execution failure with cleanup.
+   */
+  async failExecutionRpc(params: {
+    executionId: string;
+    error: string;
+    streamEventType?: string;
+  }): Promise<boolean> {
+    return this.failExecution({
+      executionId: params.executionId as ExecutionId,
+      status: 'failed',
+      error: params.error,
+      streamEventType: params.streamEventType ?? 'error',
     });
   }
 
@@ -1453,7 +1685,9 @@ export class CloudAgentSession extends DurableObject {
     if (!this.orchestrator) {
       const deps: OrchestratorDeps = {
         getSandbox: async (sandboxId: string) =>
-          getSandbox((this.env as unknown as WorkerEnv).Sandbox, sandboxId, { sleepAfter: 900 }),
+          getSandbox((this.env as unknown as WorkerEnv).Sandbox, sandboxId, {
+            sleepAfter: SANDBOX_SLEEP_AFTER_SECONDS,
+          }),
         getSessionStub: (userId, sessionId) => {
           const doKey = `${userId}:${sessionId}`;
           const id = (this.env as unknown as WorkerEnv).CLOUD_AGENT_SESSION.idFromName(doKey);
@@ -1736,7 +1970,6 @@ export class CloudAgentSession extends DurableObject {
         await this.updateGitToken(request.tokenOverrides.gitToken);
         metadata.gitToken = request.tokenOverrides.gitToken;
       }
-
       const mode = (request.mode ?? metadata.mode ?? 'code') as ExecutionMode;
       const model = normalizeKilocodeModel(request.model ?? metadata.model);
       const variant = request.variant ?? metadata.variant;
@@ -1788,7 +2021,12 @@ export class CloudAgentSession extends DurableObject {
         kiloSessionId: metadata.kiloSessionId,
       });
 
-      return await this.executeDirectly(plan);
+      // Suppress failure callback for followup executions: the caller
+      // (orchestrator) receives the error synchronously via the tRPC
+      // response and has its own fallback logic.  Enqueuing a callback
+      // here would race with the fallback session's callbacks and
+      // corrupt the new review's state (see PLAN-callback-race-fix.md).
+      return await this.executeDirectly(plan, { suppressCallbackOnError: true });
     } catch (error) {
       // Handle ExecutionError specifically for proper error code mapping
       if (isExecutionError(error)) {
@@ -1822,8 +2060,16 @@ export class CloudAgentSession extends DurableObject {
   /**
    * Execute a plan directly using the orchestrator.
    * This replaces the queue-based enqueueExecution pattern.
+   *
+   * @param suppressCallbackOnError — when true, a pre-start failure (e.g.
+   *   workspace restore) will NOT enqueue a callback notification.  The caller
+   *   is expected to handle the error synchronously (used by the followup path
+   *   where the orchestrator falls back to a fresh session on failure).
    */
-  private async executeDirectly(plan: ExecutionPlan): Promise<StartExecutionV2Result> {
+  private async executeDirectly(
+    plan: ExecutionPlan,
+    opts?: { suppressCallbackOnError?: boolean }
+  ): Promise<StartExecutionV2Result> {
     const { executionId, sessionId, mode } = plan;
 
     logger.withFields({ sessionId, executionId }).info('executeDirectly called');
@@ -1863,18 +2109,17 @@ export class CloudAgentSession extends DurableObject {
 
       return this.buildStartResult(executionId);
     } catch (error) {
-      // Execution failed - clear active execution
-      await this.executionQueries.clearActiveExecution();
+      const errorMessage = error instanceof Error ? error.message : String(error);
 
-      // Mark execution as failed
-      await this.executionQueries.updateStatus({
+      await this.failExecution({
         executionId,
         status: 'failed',
-        error: error instanceof Error ? error.message : String(error),
-        completedAt: Date.now(),
+        error: errorMessage,
+        streamEventType: 'error',
+        suppressCallback: opts?.suppressCallbackOnError,
       });
 
-      throw error; // Re-throw for caller handling
+      throw error;
     }
   }
 
@@ -1896,6 +2141,10 @@ export class CloudAgentSession extends DurableObject {
     const sessionId = await this.resolveSessionId();
     logger.withFields({ sessionId, executionId, status, error }).info('onExecutionComplete called');
 
+    // Snapshot active execution before updateStatus clears it — we need this to
+    // decide whether to clean up the interrupt flag afterward.
+    const wasActive = (await this.executionQueries.getActiveExecutionId()) === executionId;
+
     // Update execution status
     const updateResult = await this.updateExecutionStatus({
       executionId,
@@ -1910,15 +2159,17 @@ export class CloudAgentSession extends DurableObject {
         .warn('Failed to update execution status');
     }
 
-    // Check if this was the active execution
-    const activeExecutionId = await this.executionQueries.getActiveExecutionId();
-    if (activeExecutionId === executionId) {
-      // Clear the active execution
-      await this.executionQueries.clearActiveExecution();
+    // Clear active execution + interrupt only if this was the active execution.
+    // updateStatus already clears active_execution_id internally when it matches,
+    // so the clear here is a safety net. We skip both clears when this execution
+    // wasn't active to avoid clobbering a newer execution that started in between.
+    if (wasActive) {
+      const activeExecutionId = await this.executionQueries.getActiveExecutionId();
+      if (activeExecutionId === executionId) {
+        await this.executionQueries.clearActiveExecution();
+      }
+      await this.executionQueries.clearInterrupt();
     }
-
-    // Clear any interrupt flag that may have been set
-    await this.executionQueries.clearInterrupt();
 
     logger.withFields({ sessionId, executionId }).info('Execution complete - session is idle');
   }

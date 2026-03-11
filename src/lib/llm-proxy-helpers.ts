@@ -20,7 +20,6 @@ import type {
   OrganizationPlan,
 } from '@/lib/organizations/organization-types';
 import type { OpenRouterProviderConfig } from '@/lib/providers/openrouter/types';
-import { extraRequiredProviders } from '@/lib/models';
 import { getFraudDetectionHeaders } from '@/lib/utils';
 import { normalizeProjectId } from '@/lib/normalizeProjectId';
 import { getXKiloCodeVersionNumber } from '@/lib/userAgent';
@@ -294,47 +293,25 @@ export function checkOrganizationModelRestrictions(params: {
 
   const normalizedModelId = normalizeModelId(params.modelId);
 
-  // Model allow list restrictions only apply to Enterprise plans
+  // Model deny list restrictions only apply to Enterprise plans
   // Teams plans should allow all models by default
   if (params.organizationPlan === 'enterprise') {
-    const modelAllowList = params.settings.model_allow_list || [];
-
-    // If there are model restrictions, check them
-    if (modelAllowList.length > 0) {
-      // Check for exact model match
-      const isExactMatch = modelAllowList.includes(normalizedModelId);
-
-      // Check for wildcard match (e.g., "anthropic/*" matches "anthropic/claude-3-opus")
-      const providerSlug = normalizedModelId.split('/')[0];
-      const wildcardEntry = `${providerSlug}/*`;
-      const isWildcardMatch = modelAllowList.includes(wildcardEntry);
-
-      if (!isExactMatch && !isWildcardMatch) {
-        return { error: modelNotAllowedResponse() };
-      }
+    const modelDenyList = params.settings.model_deny_list;
+    if (
+      modelDenyList &&
+      modelDenyList.some(entry => normalizeModelId(entry) === normalizedModelId)
+    ) {
+      return { error: modelNotAllowedResponse() };
     }
   }
 
-  const providerAllowList = params.settings.provider_allow_list || [];
+  const providerDenyList = params.settings.provider_deny_list;
   const dataCollection = params.settings.data_collection;
 
   const providerConfig: OpenRouterProviderConfig = {};
 
-  if (params.organizationPlan === 'enterprise' && providerAllowList.length > 0) {
-    // Check if the model requires specific providers that aren't in the allow list
-    const requiredProviders = extraRequiredProviders(normalizedModelId);
-    if (
-      requiredProviders.length > 0 &&
-      !requiredProviders.every(p => providerAllowList.includes(p))
-    ) {
-      console.error(
-        `This FREE model requires ALL of these providers to be allowed: ${requiredProviders.join(', ')}`
-      );
-      // This is overly strict, but checking for just one of them is not enough,
-      // because this list overrides the org allow list
-      return { error: modelNotAllowedResponse() };
-    }
-    providerConfig.only = providerAllowList;
+  if (params.organizationPlan === 'enterprise' && providerDenyList && providerDenyList.length > 0) {
+    providerConfig.ignore = providerDenyList;
   }
 
   // Setting this only if it's set as an override on the organization settings
@@ -373,47 +350,6 @@ export function extractFimPromptInfo(body: { prompt: string; suffix?: string | n
     system_prompt_prefix: wrapFimSuffixIntoSystemPrompt(body.suffix || ''), // suffix = context
     system_prompt_length: (body.suffix || '').length + body.prompt.length,
     user_prompt_prefix: body.prompt.slice(0, 100), // prompt = user input
-  };
-}
-
-export function estimateChatTokens_ignoringToolDefinitions(body: OpenRouterChatCompletionRequest): {
-  estimatedInputTokens: number;
-  estimatedOutputTokens: number;
-} {
-  if (!body.messages || !Array.isArray(body.messages)) {
-    return { estimatedInputTokens: 0, estimatedOutputTokens: 0 };
-  }
-  const overallLength = body.messages.reduce(
-    (sum, m) =>
-      sum +
-      (typeof m.content === 'string'
-        ? m.content?.length
-        : Array.isArray(m.content)
-          ? m.content
-              .filter(c => c.type === 'text')
-              .map(c => (c.text ?? '').length)
-              .reduce((l, str) => str + 1 + l, 0)
-          : 0),
-    0
-  );
-  return {
-    estimatedInputTokens: overallLength / 4,
-    estimatedOutputTokens: overallLength / 4, // Conservative estimate
-  };
-}
-
-export function estimateFimTokens(body: {
-  prompt: string;
-  suffix?: string | null;
-  max_tokens?: number | null;
-}): {
-  estimatedInputTokens: number;
-  estimatedOutputTokens: number;
-} {
-  const promptLength = body.prompt.length + (body.suffix?.length || 0);
-  return {
-    estimatedInputTokens: promptLength / 4,
-    estimatedOutputTokens: (body.max_tokens || 1024) / 2,
   };
 }
 

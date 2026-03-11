@@ -184,5 +184,49 @@ export function createTools(client: GastownClient) {
         return `Advanced to step ${result.currentStep + 1} of ${result.totalSteps}.`;
       },
     }),
+
+    gt_triage_resolve: tool({
+      description:
+        'Resolve a triage request with your chosen action. The TownDO will execute ' +
+        'the action (restart agent, close bead, escalate, etc.) and close the triage request.',
+      args: {
+        triage_request_bead_id: tool.schema
+          .string()
+          .describe('The UUID of the triage_request bead to resolve'),
+        action: tool.schema
+          .string()
+          .describe(
+            'The chosen action from the available options (e.g. RESTART, ESCALATE_TO_MAYOR, CLOSE_BEAD)'
+          ),
+        resolution_notes: tool.schema
+          .string()
+          .describe('Brief explanation of your reasoning for choosing this action'),
+      },
+      async execute(args) {
+        await client.resolveTriage({
+          triage_request_bead_id: args.triage_request_bead_id,
+          action: args.action,
+          resolution_notes: args.resolution_notes,
+        });
+        return `Triage request ${args.triage_request_bead_id} resolved with action: ${args.action}`;
+      },
+    }),
+
+    gt_status: tool({
+      description:
+        'Emit a plain-language status update visible on the dashboard. ' +
+        'Call this when starting a new phase of work (e.g. "Installing dependencies", ' +
+        '"Writing tests", "Fixing lint errors"). Write it as a brief sentence for a teammate, ' +
+        'not a log line. Do NOT call this on every tool use â only at meaningful phase transitions.',
+      args: {
+        message: tool.schema
+          .string()
+          .describe('A 1-2 sentence plain-language description of what you are currently doing.'),
+      },
+      async execute(args) {
+        await client.updateAgentStatusMessage(args.message);
+        return 'Status updated.';
+      },
+    }),
   };
 }

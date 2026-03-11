@@ -36,10 +36,12 @@ import type {
   GitLabDiffContext,
 } from '../prompts/generate-prompt';
 import { getIntegrationById } from '@/lib/integrations/db/platform-integrations';
-import { getCodeReviewById } from '../db/code-reviews';
+import { getCodeReviewById, findPreviousCompletedReview } from '../db/code-reviews';
+import { isFeatureFlagEnabled } from '@/lib/posthog-feature-flags';
 import {
   DEFAULT_CODE_REVIEW_MODEL,
   DEFAULT_CODE_REVIEW_MODE,
+  FEATURE_FLAG_INCREMENTAL_REVIEW,
   isActiveReviewPromo,
   REVIEW_PROMO_START,
   REVIEW_PROMO_END,
@@ -80,6 +82,8 @@ export type SessionInput = {
   gitToken?: string;
   /** Git platform type for correct token/env var handling */
   platform?: 'github' | 'gitlab';
+  /** Gate threshold — when not 'off', the agent should report gateResult in its callback */
+  gateThreshold?: 'off' | 'all' | 'warning' | 'critical';
 };
 
 export type CodeReviewPayload = {
@@ -90,6 +94,8 @@ export type CodeReviewPayload = {
   skipBalanceCheck?: boolean;
   /** Which cloud agent backend to use: 'v1' (cloud-agent SSE) or 'v2' (cloud-agent-next) */
   agentVersion?: string;
+  /** Cloud-agent session ID from a previous completed review, for session continuation */
+  previousCloudAgentSessionId?: string;
 };
 
 /**
@@ -311,18 +317,62 @@ export async function prepareReviewPayload(
       }
     }
 
-    // 4. Generate auth token for cloud agent with bot identifier
+    // 4. Check for previous completed review (incremental review optimization)
+    // Both previousHeadSha (for diff base) and previousCloudAgentSessionId (for session
+    // continuation) are derived from the same review row to avoid mismatches.
+    let previousHeadSha: string | null = null;
+    let previousCloudAgentSessionId: string | undefined;
+    const incrementalEnabled = await isFeatureFlagEnabled(FEATURE_FLAG_INCREMENTAL_REVIEW);
+
+    if (incrementalEnabled) {
+      try {
+        const previousReview = await findPreviousCompletedReview(
+          review.repo_full_name,
+          review.pr_number,
+          existingReviewState?.headCommitSha ?? review.head_sha,
+          platform
+        );
+        previousHeadSha = previousReview?.head_sha ?? null;
+        previousCloudAgentSessionId = previousReview?.session_id ?? undefined;
+
+        if (previousHeadSha) {
+          logExceptInTest(
+            '[prepareReviewPayload] Found previous completed review for incremental mode',
+            {
+              reviewId,
+              previousHeadSha: previousHeadSha.substring(0, 8),
+              currentHeadSha: review.head_sha.substring(0, 8),
+              previousCloudAgentSessionId,
+            }
+          );
+        }
+      } catch (error) {
+        // Non-critical - fall back to full review
+        logExceptInTest(
+          '[prepareReviewPayload] Failed to fetch previous review, falling back to full review:',
+          {
+            reviewId,
+            error,
+          }
+        );
+      }
+    }
+
+    // 5. Generate auth token for cloud agent with bot identifier
     const authToken = generateApiToken(user, { botId: 'reviewer' });
 
-    // 5. Generate dynamic review prompt (include reviewId for fix link and review state)
+    // 6. Generate dynamic review prompt
     const { prompt, version, source } = await generateReviewPrompt(
       agentConfig.config as CodeReviewAgentConfig,
       review.repo_full_name,
       review.pr_number,
-      reviewId,
-      existingReviewState,
-      platform,
-      gitlabContext
+      {
+        reviewId,
+        existingReviewState,
+        platform,
+        gitlabContext,
+        previousHeadSha,
+      }
     );
 
     logExceptInTest('[prepareReviewPayload] Generated prompt:', {
@@ -333,7 +383,7 @@ export async function prepareReviewPayload(
       promptLength: prompt.length,
     });
 
-    // 6. Prepare session input
+    // 7. Prepare session input
     // Note: cloud-agent automatically sets GH_TOKEN/GITLAB_TOKEN from token parameters
     const config = agentConfig.config as CodeReviewAgentConfig;
 
@@ -341,6 +391,12 @@ export async function prepareReviewPayload(
     // GitHub: uses githubRepo (owner/repo format) + githubToken
     // GitLab: uses gitUrl (full HTTPS URL) + gitToken
     const variant = config.thinking_effort ?? undefined;
+    // Defense-in-depth: only send gateThreshold to the agent when the PR gate flag is enabled.
+    // This prevents a stale non-'off' config from activating gating after the flag is turned off.
+    const isPrGateEnabled =
+      process.env.NODE_ENV === 'development' ||
+      (await isFeatureFlagEnabled('code-review-pr-gate', owner.userId));
+    const gateThreshold = isPrGateEnabled ? (config.gate_threshold ?? 'off') : 'off';
     const sessionInput: SessionInput =
       platform === PLATFORM.GITLAB
         ? {
@@ -354,6 +410,7 @@ export async function prepareReviewPayload(
             model: config.model_slug || DEFAULT_CODE_REVIEW_MODEL,
             variant,
             upstreamBranch: review.head_ref,
+            ...(gateThreshold !== 'off' ? { gateThreshold } : {}),
           }
         : {
             // GitHub: use owner/repo format
@@ -366,6 +423,7 @@ export async function prepareReviewPayload(
             model: config.model_slug || DEFAULT_CODE_REVIEW_MODEL,
             variant,
             upstreamBranch: review.head_ref,
+            ...(gateThreshold !== 'off' ? { gateThreshold } : {}),
           };
 
     if (isActiveReviewPromo('reviewer', sessionInput.model)) {
@@ -395,12 +453,13 @@ export async function prepareReviewPayload(
       });
     }
 
-    // 7. Build complete payload
+    // 8. Build complete payload
     const payload: CodeReviewPayload = {
       reviewId,
       authToken,
       sessionInput,
       owner,
+      previousCloudAgentSessionId,
     };
 
     logExceptInTest('[prepareReviewPayload] Prepared payload', {

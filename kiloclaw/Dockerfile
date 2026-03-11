@@ -5,7 +5,7 @@ ENV NODE_VERSION=22.13.1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        ca-certificates curl gnupg git xz-utils unzip jq ripgrep rsync zstd \
-       build-essential python3 ffmpeg tmux \
+       build-essential python3 ffmpeg tmux chromium \
     && ARCH="$(dpkg --print-architecture)" \
     && case "${ARCH}" in \
          amd64) NODE_ARCH="x64" ;; \
@@ -42,7 +42,7 @@ RUN npm install -g pnpm
 
 # Install OpenClaw
 # Pin to specific version for reproducible builds
-RUN npm install -g openclaw@2026.3.2 \
+RUN npm install -g openclaw@2026.3.8 \
     && openclaw --version
 
 # Install ClawHub CLI
@@ -53,6 +53,7 @@ RUN npm install -g mcporter@0.7.3
 
 # Install summarize (web page summarization CLI)
 RUN npm install -g @steipete/summarize@0.11.1
+
 
 # Install Go (available at runtime for users to `go install` additional tools)
 ENV GO_VERSION=1.26.0
@@ -76,6 +77,11 @@ RUN GOBIN=/usr/local/bin go install github.com/steipete/gogcli/cmd/gog@v0.11.0 \
     && GOBIN=/usr/local/bin go install github.com/steipete/gifgrep/cmd/gifgrep@v0.2.3 \
     && go clean -cache -modcache
 
+# Install uv (Python package manager, available at runtime).
+# Install to /usr/local/bin so the binary survives the Fly Volume mount at /root.
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh \
+    && uv --version
+
 # Install pinned Bun (build-time only) and compile the controller bundle.
 ARG BUN_VERSION=1.2.4
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
@@ -90,8 +96,8 @@ RUN cd /tmp/controller-build \
     && bun install --frozen-lockfile \
     && CONTROLLER_VERSION="$(date -u +'%Y.%-m.%-d')" \
     && bun build src/index.ts --outfile=/usr/local/bin/kiloclaw-controller.js --target=node --minify \
-       --define "KILOCLAW_CONTROLLER_VERSION='\"${CONTROLLER_VERSION}\"'" \
-       --define "KILOCLAW_CONTROLLER_COMMIT='\"${CONTROLLER_COMMIT}\"'" \
+       --define "KILOCLAW_CONTROLLER_VERSION=\"${CONTROLLER_VERSION}\"" \
+       --define "KILOCLAW_CONTROLLER_COMMIT=\"${CONTROLLER_COMMIT}\"" \
     && rm -rf /tmp/controller-build
 
 # Create OpenClaw directories
@@ -101,8 +107,8 @@ RUN mkdir -p /root/.openclaw \
     && mkdir -p /root/clawd/skills
 
 # Copy startup script
-# Build cache bust: 2026-02-27-v57-openclaw-2026.2.26-1password-arch-fix
-RUN echo "7"
+# Build cache bust: 2026-03-11-v60-tools-md
+RUN echo "9"
 COPY start-openclaw.sh /usr/local/bin/start-openclaw.sh
 COPY openclaw-pairing-list.js /usr/local/bin/openclaw-pairing-list.js
 COPY openclaw-device-pairing-list.js /usr/local/bin/openclaw-device-pairing-list.js
@@ -114,6 +120,10 @@ RUN ls -l /usr/local/bin/start-openclaw.sh \
 
 # Copy custom skills
 COPY skills/ /root/clawd/skills/
+
+# Stage TOOLS.md outside /root so it survives the Fly Volume mount.
+# start-openclaw.sh copies it to /root/.openclaw/workspace/TOOLS.md on first boot.
+COPY container/TOOLS.md /usr/local/share/kiloclaw/TOOLS.md
 
 # Expose the gateway port
 EXPOSE 18789

@@ -22,7 +22,6 @@ import {
   captureProxyError,
   checkOrganizationModelRestrictions,
   dataCollectionRequiredResponse,
-  estimateChatTokens_ignoringToolDefinitions,
   extractFraudAndProjectHeaders,
   invalidPathResponse,
   invalidRequestResponse,
@@ -114,9 +113,6 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   const requestedModel = requestBodyParsed.model.trim();
   const requestedModelLowerCased = requestedModel.toLowerCase();
 
-  // "kilo/auto" is a quasi-model id that resolves to a real model based on x-kilocode-mode.
-  // After this resolution, the rest of the proxy flow behaves as if the client requested
-  // the resolved model directly.
   const modeHeader = extractHeaderAndLimitLength(request, 'x-kilocode-mode');
   let autoModel: string | null = null;
   if (isKiloAutoModel(requestedModelLowerCased)) {
@@ -237,6 +233,11 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
 
   console.debug(`Routing request to ${provider.id}`);
 
+  const isLegacyOpenRouterPath = url.pathname.includes('/openrouter');
+  const feature = validateFeatureHeader(
+    request.headers.get(FEATURE_HEADER) || (isLegacyOpenRouterPath ? '' : 'direct-gateway')
+  );
+
   // Start abuse classification early (non-blocking) - we'll await it before creating usage context
   const classifyPromise = classifyAbuse(request, requestBodyParsed, {
     kiloUserId: user.id,
@@ -244,6 +245,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     projectId,
     provider: provider.id,
     isByok: !!userByok,
+    feature,
   });
 
   // large responses may run longer than the 800s serverless function timeout, usually this value is set to 8192 tokens
@@ -265,9 +267,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   }
 
   // Extract properties for usage context
-  const tokenEstimates = estimateChatTokens_ignoringToolDefinitions(requestBodyParsed);
   const promptInfo = extractPromptInfo(requestBodyParsed);
-  const isLegacyOpenRouterPath = url.pathname.includes('/openrouter');
 
   const usageContext: MicrodollarUsageContext = {
     kiloUserId: user.id,
@@ -276,8 +276,6 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     promptInfo,
     max_tokens: requestBodyParsed.max_tokens ?? null,
     has_middle_out_transform: requestBodyParsed.transforms?.includes('middle-out') ?? false,
-    estimatedInputTokens: tokenEstimates.estimatedInputTokens,
-    estimatedOutputTokens: tokenEstimates.estimatedOutputTokens,
     fraudHeaders,
     isStreaming: requestBodyParsed.stream === true,
     organizationId,
@@ -291,9 +289,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     has_tools: (requestBodyParsed.tools?.length ?? 0) > 0,
     botId,
     tokenSource,
-    feature: validateFeatureHeader(
-      request.headers.get(FEATURE_HEADER) || (isLegacyOpenRouterPath ? '' : 'direct-gateway')
-    ),
+    feature,
     session_id: taskId ?? null,
     mode: modeHeader,
     auto_model: autoModel,
@@ -376,13 +372,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   );
 
   const response = customLlm
-    ? await customLlmRequest(
-        customLlm,
-        requestBodyParsed,
-        user.id,
-        taskId,
-        isRooCodeBasedClient(fraudHeaders)
-      )
+    ? await customLlmRequest(customLlm, requestBodyParsed, isRooCodeBasedClient(fraudHeaders))
     : await openRouterRequest({
         path,
         search: url.search,
