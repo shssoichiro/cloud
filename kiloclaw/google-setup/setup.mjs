@@ -276,6 +276,8 @@ if (!clientId || !clientSecret) {
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 
+// plaintext is base64-encoded binary data, but cipher.update('utf8') is fine
+// because base64 is a strict ASCII subset — no encoding ambiguity.
 function encryptEnvelope(plaintext, pemKey) {
   const dek = crypto.randomBytes(32);
   const iv = crypto.randomBytes(16);
