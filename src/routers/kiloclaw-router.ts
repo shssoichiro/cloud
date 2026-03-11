@@ -220,6 +220,11 @@ export const kiloclawRouter = createTRPCRouter({
     return fetchKiloClawServiceDegraded();
   }),
 
+  latestVersion: baseProcedure.query(async () => {
+    const client = new KiloClawInternalClient();
+    return client.getLatestVersion();
+  }),
+
   // Status + gateway token (two internal client calls, merged for the dashboard)
   getStatus: baseProcedure.query(async ({ ctx }) => {
     const client = new KiloClawInternalClient();

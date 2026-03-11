@@ -232,3 +232,12 @@ export function useKiloClawMyPin() {
     })
   );
 }
+
+export function useKiloClawLatestVersion() {
+  const trpc = useTRPC();
+  return useQuery(
+    trpc.kiloclaw.latestVersion.queryOptions(undefined, {
+      staleTime: 60_000, // latest changes infrequently
+    })
+  );
+}
