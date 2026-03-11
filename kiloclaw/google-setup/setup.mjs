@@ -203,14 +203,36 @@ const projectChoice = await ask('Choose (1 or 2): ');
 let projectId;
 
 if (projectChoice === '2') {
-  // List existing projects
+  // List existing projects as a numbered menu
   console.log('\nFetching your projects...');
+  let projects = [];
   try {
-    await runCommand('gcloud', ['projects', 'list', '--format=table(projectId,name)']);
+    const projectsJson = runCommandOutput('gcloud', [
+      'projects', 'list', '--format=json(projectId,name)', '--sort-by=name',
+    ]);
+    projects = JSON.parse(projectsJson);
   } catch {
-    console.warn('Could not list projects. You can still enter a project ID manually.');
+    // fall through — empty list triggers manual entry
   }
-  projectId = await ask('\nEnter your project ID: ');
+
+  if (projects.length > 0) {
+    console.log('');
+    projects.forEach((p, i) => {
+      const label = p.name ? `${p.projectId} (${p.name})` : p.projectId;
+      console.log(`  ${i + 1}. ${label}`);
+    });
+    console.log('');
+    const pick = await ask('Enter number (or project ID): ');
+    const idx = parseInt(pick, 10);
+    if (idx >= 1 && idx <= projects.length) {
+      projectId = projects[idx - 1].projectId;
+    } else {
+      projectId = pick;
+    }
+  } else {
+    console.warn('Could not list projects. You can still enter a project ID manually.');
+    projectId = await ask('\nEnter your project ID: ');
+  }
 } else {
   // Generate a project ID based on date
   const now = new Date();
