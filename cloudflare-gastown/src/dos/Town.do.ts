@@ -93,6 +93,8 @@ function formatEventMessage(row: Record<string, unknown>): string {
       return `PR creation failed for ${target}`;
     case 'escalation_created':
       return `Escalation created: ${target}`;
+    case 'agent_status':
+      return `${actor}: ${newValue ?? 'status update'}`;
     default:
       return `${eventType}: ${target}`;
   }
@@ -288,6 +290,29 @@ export class TownDO extends DurableObject<Env> {
     if (sockets.length === 0) return;
 
     const payload = JSON.stringify(snapshot);
+    for (const ws of sockets) {
+      try {
+        ws.send(payload);
+      } catch {
+        // Client disconnected — will be cleaned up by webSocketClose
+      }
+    }
+  }
+
+  /**
+   * Broadcast a lightweight agent_status event to all connected status
+   * WebSocket clients. Called whenever an agent updates its status message.
+   */
+  private broadcastAgentStatus(agentId: string, message: string): void {
+    const sockets = this.ctx.getWebSockets('status');
+    if (sockets.length === 0) return;
+
+    const payload = JSON.stringify({
+      type: 'agent_status',
+      agentId,
+      message,
+      timestamp: now(),
+    });
     for (const ws of sockets) {
       try {
         ws.send(payload);
@@ -651,6 +676,29 @@ export class TownDO extends DurableObject<Env> {
     await this.ensureInitialized();
     agents.touchAgent(this.sql, agentId);
     await this.armAlarmIfNeeded();
+  }
+
+  async updateAgentStatusMessage(agentId: string, message: string): Promise<void> {
+    await this.ensureInitialized();
+    agents.updateAgentStatusMessage(this.sql, agentId, message);
+    const agent = agents.getAgent(this.sql, agentId);
+    if (agent?.current_hook_bead_id) {
+      const rig = agent.rig_id ? rigs.getRig(this.sql, agent.rig_id) : null;
+      beadOps.logBeadEvent(this.sql, {
+        beadId: agent.current_hook_bead_id,
+        agentId,
+        eventType: 'agent_status',
+        newValue: message,
+        metadata: {
+          agentId,
+          message,
+          agent_name: agent.name,
+          rig_id: agent.rig_id,
+          rig_name: rig?.name,
+        },
+      });
+    }
+    this.broadcastAgentStatus(agentId, message);
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -2270,7 +2318,8 @@ export class TownDO extends DurableObject<Env> {
                  ${agent_metadata.status} AS status,
                  ${agent_metadata.current_hook_bead_id},
                  ${agent_metadata.dispatch_attempts}, ${agent_metadata.last_activity_at},
-                 ${agent_metadata.checkpoint}
+                 ${agent_metadata.checkpoint},
+                 ${agent_metadata.agent_status_message}, ${agent_metadata.agent_status_updated_at}
           FROM ${beads}
           INNER JOIN ${agent_metadata} ON ${beads.bead_id} = ${agent_metadata.bead_id}
           WHERE ${agent_metadata.status} = 'idle'
@@ -2294,6 +2343,8 @@ export class TownDO extends DurableObject<Env> {
         last_activity_at: row.last_activity_at,
         checkpoint: row.checkpoint,
         created_at: row.created_at,
+        agent_status_message: row.agent_status_message,
+        agent_status_updated_at: row.agent_status_updated_at,
       }));
 
     console.log(`${TOWN_LOG} schedulePendingWork: found ${pendingAgents.length} pending agents`);
