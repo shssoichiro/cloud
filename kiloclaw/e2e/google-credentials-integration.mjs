@@ -9,8 +9,8 @@
  * The test creates a temporary user in the DB for JWT auth tests, and cleans up after.
  *
  * Usage:
- *   node kiloclaw/test/google-credentials-integration.mjs
- *   DATABASE_URL=postgres://... WORKER_URL=http://localhost:9000 node kiloclaw/test/google-credentials-integration.mjs
+ *   node kiloclaw/e2e/google-credentials-integration.mjs
+ *   DATABASE_URL=postgres://... WORKER_URL=http://localhost:9000 node kiloclaw/e2e/google-credentials-integration.mjs
  */
 
 import { SignJWT } from 'jose';

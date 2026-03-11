@@ -16,7 +16,7 @@
  *   6. Cleans up
  *
  * Usage:
- *   node kiloclaw/test/google-setup-e2e.mjs
+ *   node kiloclaw/e2e/google-setup-e2e.mjs
  */
 
 import { SignJWT } from 'jose';
@@ -34,7 +34,7 @@ const USER_ID = `test-google-setup-${Date.now()}`;
 const DOCKER_IMAGE = 'kilocode/google-setup';
 const DOCKER_CONTEXT = path.resolve(__dirname, '../google-setup');
 
-// We use --network host so the gws CLI's random OAuth callback port is reachable
+// We use --network host so the OAuth callback port is reachable
 // from the browser. This also means localhost in the container reaches the host,
 // so we don't need host.docker.internal.
 const DOCKER_WORKER_URL = WORKER_URL;
