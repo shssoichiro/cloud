@@ -76,7 +76,7 @@ const normalUnconditionalNotifications: KiloNotification[] = [
     id: 'nvidia-nemotron-3-super-launch-mar-11',
     title: 'NVIDIA Nemotron 3 Super is live in Kilo!',
     message:
-      'NVIDIA Nemotron 3 Super is now free to use for a limited time in Kilo — 120B parameter model with 1M context window!',
+      'NVIDIA Nemotron 3 Super is now free to use for a limited time in Kilo — 120B parameter model with 256k context window!',
     action: {
       actionText: 'Learn more',
       actionURL: 'https://blog.kilo.ai/nvidia-nemotron-3-super-launch',
