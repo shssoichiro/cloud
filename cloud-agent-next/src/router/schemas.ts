@@ -109,9 +109,6 @@ export const SendMessageV2Input = z
     images: ImagesSchema.optional().describe(
       'Optional image attachments to download from R2 to the sandbox'
     ),
-    callbackTarget: CallbackTargetSchema.optional().describe(
-      'Optional callback target override - updates the stored callback before executing'
-    ),
   })
   .extend(PromptPayload.shape)
   .refine(rejectCustomMode, {

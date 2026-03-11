@@ -731,21 +731,48 @@ export class CodeReviewOrchestrator extends DurableObject<Env> {
     try {
       await this.updateStatus('running');
 
-      // Build headers for sendMessageV2 (protectedProcedure — Bearer token only)
-      const headers: Record<string, string> = {
+      // Build internal headers (internalApiProtectedProcedure — API key + Bearer token)
+      const internalHeaders: Record<string, string> = {
         Authorization: `Bearer ${this.state.authToken}`,
         'Content-Type': 'application/json',
+        'x-internal-api-key': this.env.INTERNAL_API_SECRET,
       };
       if (this.state.skipBalanceCheck) {
-        headers['x-skip-balance-check'] = 'true';
+        internalHeaders['x-skip-balance-check'] = 'true';
       }
 
+      // Step 1: Update callback target via updateSession (internal-only endpoint).
+      // callbackTarget must be set through an internal procedure, not the
+      // user-facing sendMessageV2, to prevent SSRF via arbitrary callback URLs.
       const callbackTarget = {
         url: `${this.env.API_URL}/api/internal/code-review-status/${this.state.reviewId}`,
         headers: {
           'X-Internal-Secret': this.env.INTERNAL_API_SECRET,
         },
       };
+
+      const updateResponse = await fetch(`${this.env.CLOUD_AGENT_NEXT_URL}/trpc/updateSession`, {
+        method: 'POST',
+        headers: internalHeaders,
+        body: JSON.stringify({
+          cloudAgentSessionId: previousSessionId,
+          callbackTarget,
+        }),
+      });
+
+      if (!updateResponse.ok) {
+        const errorText = await updateResponse.text();
+        throw new Error(`updateSession (callback) failed (${updateResponse.status}): ${errorText}`);
+      }
+
+      // Step 2: Send follow-up message (user-facing, no callbackTarget)
+      const userHeaders: Record<string, string> = {
+        Authorization: `Bearer ${this.state.authToken}`,
+        'Content-Type': 'application/json',
+      };
+      if (this.state.skipBalanceCheck) {
+        userHeaders['x-skip-balance-check'] = 'true';
+      }
 
       const sendMessageInput = {
         cloudAgentSessionId: previousSessionId,
@@ -755,7 +782,6 @@ export class CodeReviewOrchestrator extends DurableObject<Env> {
         variant: this.state.sessionInput.variant,
         githubToken: this.state.sessionInput.githubToken,
         gitToken: this.state.sessionInput.gitToken,
-        callbackTarget,
       };
 
       console.log('[CodeReviewOrchestrator] Calling sendMessageV2', {
@@ -766,7 +792,7 @@ export class CodeReviewOrchestrator extends DurableObject<Env> {
 
       const response = await fetch(`${this.env.CLOUD_AGENT_NEXT_URL}/trpc/sendMessageV2`, {
         method: 'POST',
-        headers,
+        headers: userHeaders,
         body: JSON.stringify(sendMessageInput),
       });
 
@@ -801,14 +827,11 @@ export class CodeReviewOrchestrator extends DurableObject<Env> {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-      console.warn(
-        '[CodeReviewOrchestrator] sendMessageV2 failed, falling back to fresh session',
-        {
-          reviewId: this.state.reviewId,
-          previousCloudAgentSessionId: previousSessionId,
-          error: errorMessage,
-        }
-      );
+      console.warn('[CodeReviewOrchestrator] sendMessageV2 failed, falling back to fresh session', {
+        reviewId: this.state.reviewId,
+        previousCloudAgentSessionId: previousSessionId,
+        error: errorMessage,
+      });
 
       // Reset status to running (it may have been set to running already, but ensure clean state)
       // Clear previousCloudAgentSessionId so the fresh session path doesn't try followup again
@@ -821,13 +844,10 @@ export class CodeReviewOrchestrator extends DurableObject<Env> {
         // is only for unexpected throws that bypass its internal error handling
         const freshErrorMessage =
           freshError instanceof Error ? freshError.message : 'Unknown error';
-        console.error(
-          '[CodeReviewOrchestrator] Fresh session fallback also failed',
-          {
-            reviewId: this.state.reviewId,
-            error: freshErrorMessage,
-          }
-        );
+        console.error('[CodeReviewOrchestrator] Fresh session fallback also failed', {
+          reviewId: this.state.reviewId,
+          error: freshErrorMessage,
+        });
       }
     }
   }

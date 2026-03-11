@@ -56,7 +56,6 @@ import type { CodeReviewAgentConfig } from '@/lib/agent-config/core/types';
 import { logExceptInTest, errorExceptInTest } from '@/lib/utils.server';
 import type { CodeReviewPlatform } from '../core/schemas';
 import { PLATFORM } from '@/lib/integrations/core/constants';
-import { isFeatureFlagEnabled } from '@/lib/posthog-feature-flags';
 
 export type PreparePayloadParams = {
   reviewId: string;
@@ -371,14 +370,11 @@ export async function prepareReviewPayload(
         previousCloudAgentSessionId = previousSession?.session_id;
 
         if (previousCloudAgentSessionId) {
-          logExceptInTest(
-            '[prepareReviewPayload] Found previous session for continuation',
-            {
-              reviewId,
-              previousCloudAgentSessionId,
-              previousHeadSha: previousSession?.head_sha.substring(0, 8),
-            }
-          );
+          logExceptInTest('[prepareReviewPayload] Found previous session for continuation', {
+            reviewId,
+            previousCloudAgentSessionId,
+            previousHeadSha: previousSession?.head_sha.substring(0, 8),
+          });
         }
       } catch (error) {
         // Non-critical - fall back to fresh session

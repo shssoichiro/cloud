@@ -804,7 +804,15 @@ export class CloudAgentSession extends DurableObject {
     if (!metadata?.preparedAt) {
       return { success: false, error: 'Session has not been prepared' };
     }
-    if (metadata.initiatedAt) {
+
+    // callbackTarget can be updated even after initiation (needed for follow-up
+    // reviews that reuse an existing session with a new callback URL).
+    // All other fields are immutable once initiated.
+    const allKeys = Object.keys(updates).filter(
+      k => updates[k as keyof typeof updates] !== undefined
+    );
+    const onlyCallbackTarget = allKeys.length === 1 && allKeys[0] === 'callbackTarget';
+    if (metadata.initiatedAt && !onlyCallbackTarget) {
       return { success: false, error: 'Session has already been initiated' };
     }
 
@@ -1951,11 +1959,6 @@ export class CloudAgentSession extends DurableObject {
         await this.updateGitToken(request.tokenOverrides.gitToken);
         metadata.gitToken = request.tokenOverrides.gitToken;
       }
-      if (request.callbackTarget) {
-        await this.updateCallbackTarget(request.callbackTarget);
-        metadata.callbackTarget = request.callbackTarget;
-      }
-
       const mode = (request.mode ?? metadata.mode ?? 'code') as ExecutionMode;
       const model = normalizeKilocodeModel(request.model ?? metadata.model);
       const variant = request.variant ?? metadata.variant;

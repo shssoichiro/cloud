@@ -23,9 +23,7 @@ describe('findPreviousCompletedReviewSession', () => {
   afterAll(async () => {
     // Clean up reviews then user
     for (const id of createdReviewIds) {
-      await db
-        .delete(cloud_agent_code_reviews)
-        .where(eq(cloud_agent_code_reviews.id, id));
+      await db.delete(cloud_agent_code_reviews).where(eq(cloud_agent_code_reviews.id, id));
     }
     await db.delete(kilocode_users).where(eq(kilocode_users.id, testUser.id));
   });
@@ -41,6 +39,7 @@ describe('findPreviousCompletedReviewSession', () => {
       baseRef: 'main',
       headRef: 'feature/test',
       headSha,
+      platform: 'github',
     });
     createdReviewIds.push(id);
     return id;
@@ -72,11 +71,7 @@ describe('findPreviousCompletedReviewSession', () => {
   });
 
   it('excludes the current SHA', async () => {
-    const result = await findPreviousCompletedReviewSession(
-      REPO,
-      42,
-      'sha-with-session'
-    );
+    const result = await findPreviousCompletedReviewSession(REPO, 42, 'sha-with-session');
     // Should not find itself — only reviews with a different SHA
     // The "sha-no-session" review has no session_id, so only "sha-with-session" would match
     // but it's excluded by excludeSha
@@ -108,11 +103,7 @@ describe('findPreviousCompletedReviewSession', () => {
   });
 
   it('is consistent with findPreviousCompletedReview on head_sha', async () => {
-    const sessionResult = await findPreviousCompletedReviewSession(
-      REPO,
-      42,
-      'other-sha'
-    );
+    const sessionResult = await findPreviousCompletedReviewSession(REPO, 42, 'other-sha');
     const shaResult = await findPreviousCompletedReview(REPO, 42, 'other-sha');
 
     // Both should find a completed review (sessionResult is more restrictive)
