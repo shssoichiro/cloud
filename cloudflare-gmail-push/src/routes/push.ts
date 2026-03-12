@@ -8,10 +8,7 @@ pushRoute.post('/user/:userId', async c => {
   const userId = c.req.param('userId');
 
   // Validate Google OIDC token
-  const oidcResult = await validateOidcToken(
-    c.req.header('authorization'),
-    c.env.OIDC_AUDIENCE
-  );
+  const oidcResult = await validateOidcToken(c.req.header('authorization'), c.env.OIDC_AUDIENCE);
 
   if (!oidcResult.valid) {
     console.warn(`[gmail-push] OIDC validation failed for user ${userId}: ${oidcResult.error}`);
@@ -31,12 +28,12 @@ pushRoute.post('/user/:userId', async c => {
       return c.json({ ok: true, skipped: 'status-lookup-failed' }, 200);
     }
 
-    const status = (await statusRes.json()) as {
+    const status: {
       flyAppName: string | null;
       flyMachineId: string | null;
       sandboxId: string | null;
       status: string | null;
-    };
+    } = await statusRes.json();
 
     if (!status.flyAppName || !status.flyMachineId || status.status !== 'running') {
       return c.json({ ok: true, skipped: 'machine-not-running' }, 200);
@@ -44,17 +41,23 @@ pushRoute.post('/user/:userId', async c => {
 
     // Get gateway token
     const tokenRes = await c.env.KILOCLAW.fetch(
-      new Request(`https://kiloclaw/api/platform/gateway-token?userId=${encodeURIComponent(userId)}`, {
-        headers: { 'x-internal-api-key': 'service-binding' },
-      })
+      new Request(
+        `https://kiloclaw/api/platform/gateway-token?userId=${encodeURIComponent(userId)}`,
+        {
+          headers: { 'x-internal-api-key': 'service-binding' },
+        }
+      )
     );
 
     if (!tokenRes.ok) {
-      console.error(`[gmail-push] Gateway token lookup failed for user ${userId}: ${tokenRes.status}`);
+      console.error(
+        `[gmail-push] Gateway token lookup failed for user ${userId}: ${tokenRes.status}`
+      );
       return c.json({ error: 'Token lookup failed' }, 500);
     }
 
-    const { gatewayToken } = (await tokenRes.json()) as { gatewayToken: string };
+    const tokenJson: { gatewayToken: string } = await tokenRes.json();
+    const { gatewayToken } = tokenJson;
 
     // Forward push body to controller
     const machineUrl = `https://${status.flyAppName}.fly.dev`;

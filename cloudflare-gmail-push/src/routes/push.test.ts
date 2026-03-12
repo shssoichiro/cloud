@@ -49,7 +49,10 @@ describe('POST /push/user/:userId', () => {
   });
 
   it('returns 200 when machine is not running', async () => {
-    mockValidateOidc.mockResolvedValue({ valid: true, email: 'gmail-api-push@system.gserviceaccount.com' });
+    mockValidateOidc.mockResolvedValue({
+      valid: true,
+      email: 'gmail-api-push@system.gserviceaccount.com',
+    });
     const { app, mockKiloclaw } = createApp();
 
     mockKiloclaw.fetch.mockResolvedValue(
@@ -70,12 +73,15 @@ describe('POST /push/user/:userId', () => {
     });
 
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body: { skipped: string } = await res.json();
     expect(body.skipped).toBe('machine-not-running');
   });
 
   it('forwards push to controller and returns 200 on success', async () => {
-    mockValidateOidc.mockResolvedValue({ valid: true, email: 'gmail-api-push@system.gserviceaccount.com' });
+    mockValidateOidc.mockResolvedValue({
+      valid: true,
+      email: 'gmail-api-push@system.gserviceaccount.com',
+    });
     const { app, mockKiloclaw } = createApp();
 
     mockKiloclaw.fetch.mockImplementation((req: Request) => {
@@ -116,7 +122,8 @@ describe('POST /push/user/:userId', () => {
 
       expect(res.status).toBe(200);
       expect(globalThis.fetch).toHaveBeenCalledOnce();
-      const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const mockFetchCalls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+      const url: unknown = mockFetchCalls[0]?.[0];
       expect(url).toContain('/_kilo/gmail-pubsub');
     } finally {
       globalThis.fetch = originalFetch;

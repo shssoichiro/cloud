@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Hono } from 'hono';
+import type { SupervisorState } from '../supervisor';
 import { registerGmailPushRoute } from './gmail-push';
 
-function createMockSupervisor(state = 'running') {
+function createMockSupervisor(state: SupervisorState = 'running') {
   return {
     getState: vi.fn(() => state),
     start: vi.fn(),

@@ -45,9 +45,11 @@ type ClawMutations = ReturnType<typeof useKiloClawMutations>;
 
 function GoogleAccountSection({
   connected,
+  gmailNotificationsEnabled,
   mutations,
 }: {
   connected: boolean;
+  gmailNotificationsEnabled: boolean;
   mutations: ClawMutations;
 }) {
   const trpc = useTRPC();
@@ -140,6 +142,45 @@ function GoogleAccountSection({
           });
         }}
       />
+
+      {connected && (
+        <div className="mt-4 border-t pt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-foreground text-sm font-medium">Gmail Notifications</h4>
+              <p className="text-muted-foreground text-xs">
+                Notify your bot when new emails arrive
+              </p>
+            </div>
+            <Button
+              variant={gmailNotificationsEnabled ? 'default' : 'outline'}
+              size="sm"
+              disabled={mutations.setGmailNotifications.isPending}
+              onClick={() => {
+                mutations.setGmailNotifications.mutate(
+                  { enabled: !gmailNotificationsEnabled },
+                  {
+                    onSuccess: () => {
+                      toast.success(
+                        gmailNotificationsEnabled
+                          ? 'Gmail notifications disabled. Restarting...'
+                          : 'Gmail notifications enabled. Restarting...'
+                      );
+                    },
+                    onError: err => toast.error(`Failed: ${err.message}`),
+                  }
+                );
+              }}
+            >
+              {mutations.setGmailNotifications.isPending
+                ? 'Restarting...'
+                : gmailNotificationsEnabled
+                  ? 'Enabled'
+                  : 'Disabled'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -449,7 +490,11 @@ export function SettingsTab({
 
       <Separator />
 
-      <GoogleAccountSection connected={status.googleConnected} mutations={mutations} />
+      <GoogleAccountSection
+        connected={status.googleConnected}
+        gmailNotificationsEnabled={status.gmailNotificationsEnabled}
+        mutations={mutations}
+      />
 
       <Separator />
 
