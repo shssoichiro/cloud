@@ -13,6 +13,7 @@ import type { Supervisor } from './supervisor';
 import { registerHealthRoute } from './routes/health';
 import { registerGatewayRoutes } from './routes/gateway';
 import { registerConfigRoutes } from './routes/config';
+import { registerGmailPushRoute } from './routes/gmail-push';
 import { CONTROLLER_COMMIT, CONTROLLER_VERSION } from './version';
 import { writeGogCredentials } from './gog-credentials';
 
@@ -170,6 +171,7 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
   registerHealthRoute(app, supervisor, config.expectedToken);
   registerGatewayRoutes(app, supervisor, config.expectedToken);
   registerConfigRoutes(app, supervisor, config.expectedToken);
+  registerGmailPushRoute(app, gmailWatchSupervisor, config.expectedToken);
   app.all(
     '*',
     createHttpProxy({
