@@ -220,6 +220,11 @@ export const kiloclawRouter = createTRPCRouter({
     return fetchKiloClawServiceDegraded();
   }),
 
+  latestVersion: baseProcedure.query(async () => {
+    const client = new KiloClawInternalClient();
+    return client.getLatestVersion();
+  }),
+
   // Status + gateway token (two internal client calls, merged for the dashboard)
   getStatus: baseProcedure.query(async ({ ctx }) => {
     const client = new KiloClawInternalClient();
@@ -374,7 +379,7 @@ export const kiloclawRouter = createTRPCRouter({
     return client.getConfig();
   }),
 
-  restartGateway: baseProcedure
+  restartMachine: baseProcedure
     .input(
       z
         .object({
@@ -393,7 +398,7 @@ export const kiloclawRouter = createTRPCRouter({
       const client = new KiloClawUserClient(
         generateApiToken(ctx.user, undefined, { expiresIn: TOKEN_EXPIRY.fiveMinutes })
       );
-      return client.restartGateway(input?.imageTag ? { imageTag: input.imageTag } : undefined);
+      return client.restartMachine(input?.imageTag ? { imageTag: input.imageTag } : undefined);
     }),
 
   listPairingRequests: baseProcedure
@@ -461,6 +466,24 @@ export const kiloclawRouter = createTRPCRouter({
   restoreConfig: baseProcedure.mutation(async ({ ctx }) => {
     const client = new KiloClawInternalClient();
     return client.restoreConfig(ctx.user.id);
+  }),
+
+  getGoogleSetupCommand: baseProcedure.query(({ ctx }) => {
+    // Short-lived token — the user should run the setup command promptly.
+    // Regenerated on each page load, so 1 hour is sufficient.
+    const token = generateApiToken(ctx.user, undefined, {
+      expiresIn: TOKEN_EXPIRY.oneHour,
+    });
+    const isDev = process.env.NODE_ENV === 'development';
+    const workerFlag = isDev ? ' --worker-url=http://localhost:8795' : '';
+    return {
+      command: `docker run -it --network host ghcr.io/kilo-org/google-setup --token="${token}"${workerFlag}`,
+    };
+  }),
+
+  disconnectGoogle: baseProcedure.mutation(async ({ ctx }) => {
+    const client = new KiloClawInternalClient();
+    return client.clearGoogleCredentials(ctx.user.id);
   }),
 
   getEarlybirdStatus: baseProcedure

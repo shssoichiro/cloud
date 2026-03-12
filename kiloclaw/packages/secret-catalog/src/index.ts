@@ -27,7 +27,9 @@ export {
   ENV_VAR_TO_FIELD_KEY,
   FIELD_KEY_TO_ENTRY,
   ALL_SECRET_ENV_VARS,
+  INTERNAL_SENSITIVE_ENV_VARS,
   getEntriesByCategory,
+  getFieldKeysByCategory,
 } from './catalog';
 
 export type { SecretFieldKey } from './catalog';
