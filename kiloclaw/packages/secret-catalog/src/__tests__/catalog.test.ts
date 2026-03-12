@@ -6,7 +6,10 @@ import {
   FIELD_KEY_TO_ENV_VAR,
   ENV_VAR_TO_FIELD_KEY,
   FIELD_KEY_TO_ENTRY,
+  ALL_SECRET_ENV_VARS,
+  INTERNAL_SENSITIVE_ENV_VARS,
   getEntriesByCategory,
+  getFieldKeysByCategory,
 } from '../catalog.js';
 import { validateFieldValue } from '../validation.js';
 import type { SecretIconKey, SecretCatalogEntry } from '../types.js';
@@ -175,6 +178,22 @@ describe('Secret Catalog', () => {
     });
   });
 
+  describe('getFieldKeysByCategory', () => {
+    it('returns all channel field keys', () => {
+      const keys = getFieldKeysByCategory('channel');
+      expect(keys).toContain('telegramBotToken');
+      expect(keys).toContain('discordBotToken');
+      expect(keys).toContain('slackBotToken');
+      expect(keys).toContain('slackAppToken');
+      expect(keys.size).toBe(4);
+    });
+
+    it('returns empty set for categories with no entries', () => {
+      const keys = getFieldKeysByCategory('tool');
+      expect(keys.size).toBe(0);
+    });
+  });
+
   describe('getInjectionMethod', () => {
     const baseEntry: SecretCatalogEntry = {
       id: 'test',
@@ -309,6 +328,18 @@ describe('Secret Catalog', () => {
       expect(botEntry).toBeDefined();
       expect(botEntry).toBe(appEntry);
       expect(botEntry?.allFieldsRequired).toBe(true);
+    });
+  });
+
+  describe('INTERNAL_SENSITIVE_ENV_VARS', () => {
+    it('contains Google credential env vars', () => {
+      expect(INTERNAL_SENSITIVE_ENV_VARS.has('GOOGLE_GOG_CONFIG_TARBALL')).toBe(true);
+    });
+
+    it('does not overlap with catalog-derived ALL_SECRET_ENV_VARS', () => {
+      for (const envVar of INTERNAL_SENSITIVE_ENV_VARS) {
+        expect(ALL_SECRET_ENV_VARS.has(envVar)).toBe(false);
+      }
     });
   });
 

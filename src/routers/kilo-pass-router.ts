@@ -954,6 +954,7 @@ export const kiloPassRouter = createTRPCRouter({
             kiloUserId: ctx.user.id,
             tier,
             cadence,
+            rewardful: 'false',
           },
         },
         metadata: {

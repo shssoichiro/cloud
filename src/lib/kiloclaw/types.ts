@@ -135,6 +135,7 @@ export type PlatformStatusResponse = {
   imageVariant: string | null;
   trackedImageTag: string | null;
   trackedImageDigest: string | null;
+  googleConnected: boolean;
 };
 
 /** Response from GET /api/platform/debug-status (internal/admin only). */
@@ -174,12 +175,8 @@ export type UserConfigResponse = {
   kilocodeDefaultModel: string | null;
   hasKiloCodeApiKey: boolean;
   kilocodeApiKeyExpiresAt?: string | null;
-  channels: {
-    telegram: boolean;
-    discord: boolean;
-    slackBot: boolean;
-    slackApp: boolean;
-  };
+  /** Per catalog entry ID → whether all fields for that entry are configured. */
+  configuredSecrets: Record<string, boolean>;
 };
 
 /** Response from POST /api/platform/doctor */
@@ -231,6 +228,19 @@ export type ControllerVersionResponse = {
 export type OpenclawConfigResponse = {
   config: Record<string, unknown>;
   etag: string;
+};
+
+/** Input to POST /api/platform/google-credentials */
+export type GoogleCredentialsInput = {
+  googleCredentials: {
+    gogConfigTarball: EncryptedEnvelope;
+    email?: string;
+  };
+};
+
+/** Response from POST/DELETE /api/platform/google-credentials */
+export type GoogleCredentialsResponse = {
+  googleConnected: boolean;
 };
 
 /** Combined status + gateway token returned by tRPC getStatus */
