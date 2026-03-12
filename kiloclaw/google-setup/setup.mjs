@@ -429,3 +429,84 @@ if (userEmail) {
 }
 console.log('\nYour bot can now use Gmail, Calendar, Drive, Docs, Sheets, and more.');
 console.log('Redeploy your kiloclaw instance to activate.');
+
+// ---------------------------------------------------------------------------
+// Gmail Pub/Sub setup (for push notifications)
+// ---------------------------------------------------------------------------
+
+console.log('\nSetting up Gmail push notifications...');
+
+// Step 1: Create Pub/Sub topic (idempotent)
+console.log('Creating Pub/Sub topic gog-gmail-watch...');
+try {
+  execSync('gcloud pubsub topics create gog-gmail-watch --quiet', {
+    stdio: 'pipe',
+  });
+  console.log('Topic created.');
+} catch {
+  console.log('Topic already exists (ok).');
+}
+
+// Step 2: Grant Gmail API push publisher role
+console.log('Granting Gmail push publisher role...');
+try {
+  execSync(
+    'gcloud pubsub topics add-iam-policy-binding gog-gmail-watch ' +
+    '--member="serviceAccount:gmail-api-push@system.gserviceaccount.com" ' +
+    '--role="roles/pubsub.publisher" --quiet',
+    { stdio: 'pipe' }
+  );
+  console.log('Publisher role granted.');
+} catch (err) {
+  console.warn('Warning: Could not grant publisher role:', err.message);
+}
+
+// Step 3: Get GCP project ID for topic path
+const gcpProject = execSync('gcloud config get-value project', { encoding: 'utf8' }).trim();
+console.log(`GCP project: ${gcpProject}`);
+
+// Step 4: Create or update push subscription
+// Extract userId from JWT for the push subscription URL
+const [, jwtPayload] = token.split('.');
+const { sub: pushUserId } = JSON.parse(Buffer.from(jwtPayload, 'base64url').toString());
+const gmailPushWorkerUrl = workerUrl.replace(/\/api\/admin$/, '').replace('kiloclaw', 'cloudflare-gmail-push');
+const pushEndpoint = `${gmailPushWorkerUrl}/push/user/${pushUserId}`;
+console.log(`Creating push subscription → ${pushEndpoint}`);
+try {
+  execSync(
+    `gcloud pubsub subscriptions create gog-gmail-push ` +
+    `--topic=gog-gmail-watch ` +
+    `--push-endpoint="${pushEndpoint}" ` +
+    `--ack-deadline=30 --quiet`,
+    { stdio: 'pipe' }
+  );
+  console.log('Push subscription created.');
+} catch {
+  // Subscription may already exist — update it
+  try {
+    execSync(
+      `gcloud pubsub subscriptions update gog-gmail-push ` +
+      `--push-endpoint="${pushEndpoint}" --quiet`,
+      { stdio: 'pipe' }
+    );
+    console.log('Push subscription updated.');
+  } catch (err) {
+    console.warn('Warning: Could not create/update push subscription:', err.message);
+  }
+}
+
+// Step 5: Register Gmail watch
+console.log('Registering Gmail watch...');
+try {
+  execSync(
+    `gog gmail watch start --account="${userEmail}" ` +
+    `--topic="projects/${gcpProject}/topics/gog-gmail-watch"`,
+    { stdio: 'inherit' }
+  );
+  console.log('Gmail watch registered successfully.');
+} catch (err) {
+  console.warn('Warning: Gmail watch registration failed:', err.message);
+  console.warn('You can register manually later with: gog gmail watch start');
+}
+
+console.log('\nGmail push notification setup complete.');
