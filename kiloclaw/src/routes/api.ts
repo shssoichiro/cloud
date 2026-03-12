@@ -62,6 +62,32 @@ adminApi.post('/machine/restart', async c => {
   }
 });
 
+// TODO: Remove after frontend rollout to /api/admin/machine/restart
+// POST /api/admin/gateway/restart - Backward-compat alias for machine restart
+adminApi.post('/gateway/restart', async c => {
+  const stub = resolveStub(c);
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const rawTag = typeof body.imageTag === 'string' ? body.imageTag : undefined;
+
+  if (rawTag && !isValidImageTag(rawTag)) {
+    return c.json({ success: false, error: 'Invalid image tag format' }, 400);
+  }
+
+  const imageTag = rawTag;
+  const result = await stub.restartMachine(imageTag ? { imageTag } : undefined);
+
+  if (result.success) {
+    return c.json({
+      success: true,
+      message: imageTag
+        ? `Machine restarting with image tag: ${imageTag}...`
+        : 'Machine restarting with updated configuration...',
+    });
+  } else {
+    return c.json({ success: false, error: result.error }, 500);
+  }
+});
+
 // Mount admin API routes under /admin
 api.route('/admin', adminApi);
 
