@@ -1,8 +1,9 @@
 import type { BYOKResult } from '@/lib/byok';
-import { kiloFreeModels, preferredModels } from '@/lib/models';
-import { isAnthropicModel } from '@/lib/providers/anthropic';
+import { kiloFreeModels } from '@/lib/models';
 import { getGatewayErrorRate } from '@/lib/providers/gateway-error-rate';
-import { isOpenAiModel } from '@/lib/providers/openai';
+import { isGeminiModel } from '@/lib/providers/google';
+import { isMinimaxModel } from '@/lib/providers/minimax';
+import { isMoonshotModel } from '@/lib/providers/moonshotai';
 import type { VercelUserByokInferenceProviderId } from '@/lib/providers/openrouter/inference-provider-id';
 import {
   AutocompleteUserByokProviderIdSchema,
@@ -17,6 +18,7 @@ import type {
   VercelProviderConfig,
 } from '@/lib/providers/openrouter/types';
 import { mapModelIdToVercel } from '@/lib/providers/vercel/mapModelIdToVercel';
+import { isZaiModel } from '@/lib/providers/zai';
 import * as crypto from 'crypto';
 
 // EMERGENCY SWITCH
@@ -80,26 +82,14 @@ export async function shouldRouteToVercel(
     return true;
   }
 
-  if (isAnthropicModel(requestedModel)) {
-    // cost calculated by Vercel seems to be wrong: https://kilo-code.slack.com/archives/C08UR25T02V/p1773219248747909
-    console.debug(`[shouldRouteToVercel] Anthropic models are not routed to Vercel`);
-    return false;
-  }
-
-  if (isOpenAiModel(requestedModel)) {
-    // pending safety identifier clarification: https://kilo-code.slack.com/archives/C08UR25T02V/p1772486004882759
-    console.debug(`[shouldRouteToVercel] OpenAI models are not routed to Vercel`);
-    return false;
-  }
-
-  if (requestedModel.startsWith('nvidia/')) {
-    // 2026-03-11: nemotron-3-super-120b-a12b was not available
-    console.debug(`[shouldRouteToVercel] NVIDIA models are not routed to Vercel`);
-    return false;
-  }
-
-  if (!preferredModels.includes(requestedModel)) {
-    console.debug(`[shouldRouteToVercel] only recommended models are tested for Vercel routing`);
+  if (
+    !requestedModel.startsWith('arcee-ai/') &&
+    !isGeminiModel(requestedModel) &&
+    !isMinimaxModel(requestedModel) &&
+    !isMoonshotModel(requestedModel) &&
+    !isZaiModel(requestedModel)
+  ) {
+    console.debug(`[shouldRouteToVercel] model family not allowed for randomized Vercel routing`);
     return false;
   }
 

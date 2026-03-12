@@ -41,6 +41,7 @@ import { isOpenAiModel } from '@/lib/providers/openai';
 import { applyQwenModelSettings, isQwenModel } from '@/lib/providers/qwen';
 import type { ProviderId } from '@/lib/providers/provider-id';
 import { isZaiModel } from '@/lib/providers/zai';
+import { isMinimaxModel } from '@/lib/providers/minimax';
 
 export type Provider = {
   id: ProviderId;
@@ -205,7 +206,7 @@ function getPreferredProviderOrder(requestedModel: string): string[] {
       OpenRouterInferenceProviderIdSchema.enum.anthropic,
     ];
   }
-  if (requestedModel.startsWith('minimax/')) {
+  if (isMinimaxModel(requestedModel)) {
     return ['minimax/fp8']; // do not prefer minimax/highspeed
   }
   if (isMistralModel(requestedModel)) {
