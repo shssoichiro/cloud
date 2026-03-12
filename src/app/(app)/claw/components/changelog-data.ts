@@ -12,8 +12,7 @@ export type ChangelogEntry = {
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-03-12',
-    description:
-      'Updated OpenClaw to 2026.3.11, summarize CLI to 0.12.0, and gogcli to 0.12.0.',
+    description: 'Updated OpenClaw to 2026.3.11, summarize CLI to 0.12.0, and gogcli to 0.12.0.',
     category: 'feature',
     deployHint: 'redeploy_suggested',
   },
