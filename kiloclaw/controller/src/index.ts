@@ -9,6 +9,7 @@ import {
   handleWebSocketUpgrade,
 } from './proxy';
 import { createSupervisor } from './supervisor';
+import type { Supervisor } from './supervisor';
 import { registerHealthRoute } from './routes/health';
 import { registerGatewayRoutes } from './routes/gateway';
 import { registerConfigRoutes } from './routes/config';
@@ -126,6 +127,45 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
     args: ['gateway', ...config.gatewayArgs],
   });
 
+  let gmailWatchSupervisor: Supervisor | null = null;
+  const gmailNotificationsEnabled = env.GMAIL_NOTIFICATIONS_ENABLED === 'true';
+  const hasGogCredentials = Boolean(env.GOOGLE_GOG_CONFIG_TARBALL);
+
+  if (gmailNotificationsEnabled && hasGogCredentials) {
+    const googleAccountEmail = env.GOOGLE_ACCOUNT_EMAIL;
+    if (!googleAccountEmail) {
+      console.warn(
+        '[controller] GMAIL_NOTIFICATIONS_ENABLED=true but GOOGLE_ACCOUNT_EMAIL missing, skipping gmail watch'
+      );
+    } else {
+      gmailWatchSupervisor = createSupervisor({
+        command: 'gog',
+        args: [
+          'gmail',
+          'watch',
+          'serve',
+          '--account',
+          googleAccountEmail,
+          '--bind',
+          '127.0.0.1',
+          '--port',
+          '3002',
+          '--hook-url',
+          `http://127.0.0.1:3001/hooks/wake`,
+          '--hook-token',
+          config.expectedToken,
+          '--include-body',
+          '--max-bytes',
+          '4096',
+        ],
+      });
+    }
+  } else if (gmailNotificationsEnabled && !hasGogCredentials) {
+    console.warn(
+      '[controller] GMAIL_NOTIFICATIONS_ENABLED=true but no Google credentials, skipping gmail watch'
+    );
+  }
+
   const app = new Hono();
   registerHealthRoute(app, supervisor, config.expectedToken);
   registerGatewayRoutes(app, supervisor, config.expectedToken);
@@ -162,6 +202,10 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
   });
 
   await supervisor.start();
+  if (gmailWatchSupervisor) {
+    await gmailWatchSupervisor.start();
+    console.log('[controller] Gmail watch process started');
+  }
 
   await new Promise<void>(resolve => {
     server.listen(config.port, '0.0.0.0', () => {
@@ -180,7 +224,9 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
     shuttingDown = true;
     console.log(`[controller] Received ${signal}, shutting down`);
 
-    await supervisor.shutdown(signal);
+    await Promise.all(
+      [supervisor.shutdown(signal), gmailWatchSupervisor?.shutdown(signal)].filter(Boolean)
+    );
     await new Promise<void>(resolve => {
       server.close(() => resolve());
     });
