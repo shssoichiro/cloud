@@ -87,6 +87,12 @@ export const PROVIDERS = {
     apiKey: getEnvVariable('MORPH_API_KEY'),
     hasGenerationEndpoint: false,
   },
+  OPENAI: {
+    id: 'openai',
+    apiUrl: 'https://api.openai.com/v1',
+    apiKey: getEnvVariable('OPENAI_API_KEY'),
+    hasGenerationEndpoint: false,
+  },
   VERCEL_AI_GATEWAY: {
     id: 'vercel',
     apiUrl: 'https://ai-gateway.vercel.sh/v1',
@@ -171,6 +177,39 @@ export async function getProvider(
     userByok: null,
     customLlm: null,
   };
+}
+
+export async function getEmbeddingProvider(
+  requestedModel: string,
+  user: User | AnonymousUserContext,
+  organizationId: string | undefined
+): Promise<{ provider: Provider; userByok: BYOKResult[] | null }> {
+  // 1. BYOK check (same as chat completions)
+  if (!isAnonymousContext(user)) {
+    const modelProviders = await getModelUserByokProviders(requestedModel);
+    const userByok =
+      modelProviders.length === 0
+        ? null
+        : organizationId
+          ? await getBYOKforOrganization(db, organizationId, modelProviders)
+          : await getBYOKforUser(db, user.id, modelProviders);
+    if (userByok) {
+      return { provider: PROVIDERS.VERCEL_AI_GATEWAY, userByok };
+    }
+  }
+
+  // 2. Mistral direct for mistralai/* models
+  if (isMistralModel(requestedModel)) {
+    return { provider: PROVIDERS.MISTRAL, userByok: null };
+  }
+
+  // 3. OpenAI direct for openai/* models
+  if (isOpenAiModel(requestedModel)) {
+    return { provider: PROVIDERS.OPENAI, userByok: null };
+  }
+
+  // 4. Default to OpenRouter
+  return { provider: PROVIDERS.OPENROUTER, userByok: null };
 }
 
 function applyToolChoiceSetting(

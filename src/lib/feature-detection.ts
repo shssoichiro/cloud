@@ -31,6 +31,7 @@ export const FEATURE_VALUES = [
   'kiloclaw',
   'openclaw',
   'direct-gateway',
+  'embeddings',
 ] as const;
 
 const featureSchema = z.enum(FEATURE_VALUES);

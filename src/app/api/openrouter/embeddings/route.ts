@@ -1,0 +1,402 @@
+import { NextResponse, type NextResponse as NextResponseType } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { generateProviderSpecificHash } from '@/lib/providerHash';
+import type { MicrodollarUsageContext } from '@/lib/processUsage';
+import { validateFeatureHeader, FEATURE_HEADER } from '@/lib/feature-detection';
+import { getEmbeddingProvider, type Provider } from '@/lib/providers';
+import { debugSaveProxyRequest } from '@/lib/debugUtils';
+import { captureException, setTag, startInactiveSpan } from '@sentry/nextjs';
+import { getUserFromAuth } from '@/lib/user.server';
+import { sentryRootSpan } from '@/lib/getRootSpan';
+import { isFreeModel, isKiloFreeModel } from '@/lib/models';
+import {
+  captureProxyError,
+  checkOrganizationModelRestrictions,
+  countAndStoreEmbeddingUsage,
+  extractEmbeddingPromptInfo,
+  extractFraudAndProjectHeaders,
+  extractHeaderAndLimitLength,
+  invalidRequestResponse,
+  modelDoesNotExistResponse,
+  temporarilyUnavailableResponse,
+  usageLimitExceededResponse,
+  wrapInSafeNextResponse,
+} from '@/lib/llm-proxy-helpers';
+import { getBalanceAndOrgSettings } from '@/lib/organizations/organization-usage';
+import {
+  createAnonymousContext,
+  isAnonymousContext,
+  type AnonymousUserContext,
+} from '@/lib/anonymous';
+import {
+  checkFreeModelRateLimit,
+  logFreeModelRequest,
+  checkPromotionLimit,
+} from '@/lib/free-model-rate-limiter';
+import { PROMOTION_MAX_REQUESTS, PROMOTION_WINDOW_HOURS } from '@/lib/constants';
+import { emitApiMetricsForResponse } from '@/lib/o11y/api-metrics.server';
+import { normalizeModelId } from '@/lib/model-utils';
+import type { OpenRouterProviderConfig } from '@/lib/providers/openrouter/types';
+
+export const maxDuration = 300;
+
+const PAID_MODEL_AUTH_REQUIRED = 'PAID_MODEL_AUTH_REQUIRED';
+const PROMOTION_MODEL_LIMIT_REACHED = 'PROMOTION_MODEL_LIMIT_REACHED';
+
+type EmbeddingProxyRequest = {
+  model: string;
+  input: unknown;
+  encoding_format?: string;
+  dimensions?: number;
+  user?: string;
+  provider?: OpenRouterProviderConfig;
+  input_type?: string;
+  // Mistral-specific
+  output_dtype?: string;
+  output_dimension?: number;
+};
+
+/**
+ * Build the upstream request body for the target provider.
+ * Strips fields the target doesn't understand and translates field names where necessary.
+ */
+function buildUpstreamBody(
+  body: EmbeddingProxyRequest,
+  provider: Provider
+): Record<string, unknown> {
+  if (provider.id === 'mistral') {
+    // Mistral API: strip OpenRouter-only fields, map dimensions → output_dimension
+    const mistralBody: Record<string, unknown> = {
+      model: body.model,
+      input: body.input,
+    };
+    if (body.encoding_format != null) mistralBody.encoding_format = body.encoding_format;
+    if (body.output_dimension != null) {
+      mistralBody.output_dimension = body.output_dimension;
+    } else if (body.dimensions != null) {
+      mistralBody.output_dimension = body.dimensions;
+    }
+    if (body.output_dtype != null) mistralBody.output_dtype = body.output_dtype;
+    return mistralBody;
+  }
+
+  if (provider.id === 'openai') {
+    // OpenAI API: same field names as OpenRouter, strip Mistral-only and provider routing fields
+    const openaiBody: Record<string, unknown> = {
+      model: body.model,
+      input: body.input,
+    };
+    if (body.encoding_format != null) openaiBody.encoding_format = body.encoding_format;
+    if (body.dimensions != null) openaiBody.dimensions = body.dimensions;
+    if (body.user != null) openaiBody.user = body.user;
+    return openaiBody;
+  }
+
+  // OpenRouter / Vercel: forward body as-is, strip Mistral-only fields
+  const { output_dtype: _, output_dimension: __, ...openRouterBody } = body;
+  return openRouterBody;
+}
+
+/**
+ * Strip the provider prefix from a model ID.
+ * e.g. "mistralai/mistral-embed" → "mistral-embed", "openai/text-embedding-3-small" → "text-embedding-3-small"
+ */
+function stripModelPrefix(model: string): string {
+  const slashIndex = model.indexOf('/');
+  return slashIndex >= 0 ? model.slice(slashIndex + 1) : model;
+}
+
+async function embeddingProxyRequest(params: {
+  body: Record<string, unknown>;
+  provider: Provider;
+  signal?: AbortSignal;
+}) {
+  const { body, provider, signal } = params;
+  const headers = new Headers();
+  headers.set('Content-Type', 'application/json');
+  headers.set('Authorization', `Bearer ${provider.apiKey}`);
+
+  // OpenRouter needs these identification headers (same as openRouterRequest)
+  if (provider.id === 'openrouter' || provider.id === 'vercel') {
+    headers.set('HTTP-Referer', 'https://kilocode.ai');
+    headers.set('X-Title', 'Kilo Code');
+  }
+
+  const targetUrl = `${provider.apiUrl}/embeddings`;
+
+  const TEN_MINUTES_MS = 10 * 60 * 1000;
+  const timeoutSignal = AbortSignal.timeout(TEN_MINUTES_MS);
+  const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+
+  return await fetch(targetUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal: combinedSignal,
+  });
+}
+
+export async function POST(request: NextRequest): Promise<NextResponseType<unknown>> {
+  const requestStartedAt = performance.now();
+
+  // Parse body first to check model before auth (needed for anonymous access)
+  const requestBodyText = await request.text();
+  debugSaveProxyRequest(requestBodyText);
+  let requestBodyParsed: EmbeddingProxyRequest;
+  try {
+    requestBodyParsed = JSON.parse(requestBodyText);
+  } catch (e) {
+    captureException(e, {
+      extra: { requestBodyText },
+      tags: { source: 'embedding-proxy' },
+    });
+    return invalidRequestResponse();
+  }
+
+  if (typeof requestBodyParsed.model !== 'string' || requestBodyParsed.model.trim().length === 0) {
+    return modelDoesNotExistResponse();
+  }
+
+  const requestedModel = requestBodyParsed.model.trim();
+  const requestedModelLowerCased = requestedModel.toLowerCase();
+
+  // Extract IP for all requests (needed for free model rate limiting)
+  const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  if (!ipAddress) {
+    return NextResponse.json({ error: 'Unable to determine client IP' }, { status: 400 });
+  }
+
+  // For FREE models: check IP rate limit BEFORE auth
+  if (isKiloFreeModel(requestedModelLowerCased)) {
+    const rateLimitResult = await checkFreeModelRateLimit(ipAddress);
+    if (!rateLimitResult.allowed) {
+      console.warn(
+        `Free model rate limit exceeded, ip address: ${ipAddress}, model: ${requestedModelLowerCased}, request count: ${rateLimitResult.requestCount}`
+      );
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message:
+            'Free model usage limit reached. Please try again later or upgrade to a paid model.',
+        },
+        { status: 429 }
+      );
+    }
+  }
+
+  // Auth check
+  const authSpan = startInactiveSpan({ name: 'auth-check' });
+  const {
+    user: maybeUser,
+    authFailedResponse,
+    organizationId: authOrganizationId,
+    botId: authBotId,
+    tokenSource: authTokenSource,
+  } = await getUserFromAuth({ adminOnly: false });
+  authSpan.end();
+
+  let user: typeof maybeUser | AnonymousUserContext;
+  let organizationId: string | undefined = authOrganizationId;
+  const botId: string | undefined = authBotId;
+  const tokenSource: string | undefined = authTokenSource;
+
+  if (authFailedResponse) {
+    if (!isFreeModel(requestedModelLowerCased)) {
+      return NextResponse.json(
+        {
+          error: {
+            code: PAID_MODEL_AUTH_REQUIRED,
+            message: 'You need to sign in to use this model.',
+          },
+        },
+        { status: 401 }
+      );
+    }
+
+    const promotionLimit = await checkPromotionLimit(ipAddress);
+    if (!promotionLimit.allowed) {
+      console.warn(
+        `Promotion model limit exceeded, ip: ${ipAddress}, ` +
+          `model: ${requestedModelLowerCased}, ` +
+          `requests: ${promotionLimit.requestCount}/${PROMOTION_MAX_REQUESTS} ` +
+          `in ${PROMOTION_WINDOW_HOURS}h window`
+      );
+      return NextResponse.json(
+        {
+          error: {
+            code: PROMOTION_MODEL_LIMIT_REACHED,
+            message:
+              'Sign up for free to continue and explore 500 other models. ' +
+              'Takes 2 minutes, no credit card required. Or come back later.',
+          },
+        },
+        { status: 401 }
+      );
+    }
+
+    user = createAnonymousContext(ipAddress);
+    organizationId = undefined;
+  } else {
+    user = maybeUser;
+  }
+
+  // Log to free_model_usage for rate limiting (at request start, before processing)
+  if (isKiloFreeModel(requestedModelLowerCased)) {
+    await logFreeModelRequest(
+      ipAddress,
+      requestedModelLowerCased,
+      isAnonymousContext(user) ? undefined : user.id
+    );
+  }
+
+  // Extract fraud/project headers
+  const { fraudHeaders, projectId } = extractFraudAndProjectHeaders(request);
+
+  const { provider, userByok } = await getEmbeddingProvider(
+    requestedModelLowerCased,
+    user,
+    organizationId
+  );
+
+  console.debug(`Embedding request routing to ${provider.id}`);
+
+  const feature = validateFeatureHeader(request.headers.get(FEATURE_HEADER) || 'embeddings');
+
+  // Build usage context
+  const promptInfo = extractEmbeddingPromptInfo(requestBodyParsed);
+
+  const usageContext: MicrodollarUsageContext = {
+    kiloUserId: user.id,
+    provider: provider.id,
+    requested_model: requestedModelLowerCased,
+    promptInfo,
+    max_tokens: null,
+    has_middle_out_transform: null,
+    fraudHeaders,
+    isStreaming: false,
+    organizationId,
+    prior_microdollar_usage: user.microdollars_used,
+    posthog_distinct_id: isAnonymousContext(user) ? undefined : user.google_user_email,
+    project_id: projectId,
+    status_code: null,
+    editor_name: extractHeaderAndLimitLength(request, 'x-kilocode-editorname'),
+    machine_id: extractHeaderAndLimitLength(request, 'x-kilocode-machineid'),
+    user_byok: !!userByok,
+    has_tools: false,
+    botId,
+    tokenSource,
+    feature,
+    session_id: null,
+    mode: null,
+    auto_model: null,
+  };
+
+  setTag('ui.ai_model', requestBodyParsed.model);
+
+  // Skip balance/org checks for anonymous users — they can only use free models
+  if (!isAnonymousContext(user)) {
+    const { balance, settings, plan } = await getBalanceAndOrgSettings(organizationId, user);
+
+    if (balance <= 0 && !isFreeModel(requestedModelLowerCased) && !userByok) {
+      return await usageLimitExceededResponse(user, balance);
+    }
+
+    const { error: modelRestrictionError, providerConfig } = checkOrganizationModelRestrictions({
+      modelId: requestedModelLowerCased,
+      settings,
+      organizationPlan: plan,
+    });
+    if (modelRestrictionError) return modelRestrictionError;
+
+    if (providerConfig) {
+      requestBodyParsed.provider = providerConfig;
+    }
+  }
+
+  sentryRootSpan()?.setAttribute(
+    'embedding.time_to_request_start_ms',
+    performance.now() - requestStartedAt
+  );
+
+  const embeddingRequestSpan = startInactiveSpan({
+    name: 'embedding-request-start',
+    op: 'http.client',
+  });
+
+  // For direct providers (Mistral, OpenAI), strip the provider prefix from the model ID
+  // and set the safety identifier for OpenRouter
+  const isDirectProvider = provider.id === 'mistral' || provider.id === 'openai';
+  if (isDirectProvider) {
+    requestBodyParsed.model = stripModelPrefix(requestBodyParsed.model);
+  } else {
+    requestBodyParsed.user = generateProviderSpecificHash(user.id, provider);
+  }
+
+  // If BYOK, use the user's key
+  const effectiveProvider =
+    userByok && userByok.length > 0
+      ? { ...provider, apiKey: userByok[0].decryptedAPIKey }
+      : provider;
+
+  const upstreamBody = buildUpstreamBody(requestBodyParsed, effectiveProvider);
+
+  const response = await embeddingProxyRequest({
+    body: upstreamBody,
+    provider: effectiveProvider,
+    signal: request.signal,
+  });
+
+  const ttfbMs = Math.max(0, Math.round(performance.now() - requestStartedAt));
+
+  emitApiMetricsForResponse(
+    {
+      kiloUserId: user.id,
+      organizationId,
+      isAnonymous: isAnonymousContext(user),
+      isStreaming: false,
+      userByok: !!userByok,
+      provider: provider.id,
+      requestedModel: requestedModelLowerCased,
+      resolvedModel: normalizeModelId(requestedModelLowerCased),
+      toolsAvailable: [],
+      toolsUsed: [],
+      ttfbMs,
+      statusCode: response.status,
+    },
+    response.clone(),
+    requestStartedAt
+  );
+
+  usageContext.status_code = response.status;
+
+  // Handle upstream 402 — don't pass through to client (same as chat completions)
+  if (response.status === 402 && !userByok) {
+    await captureProxyError({
+      user,
+      request: upstreamBody,
+      response,
+      organizationId,
+      model: requestedModelLowerCased,
+      errorMessage: `${provider.id} returned 402 Payment Required`,
+      trackInSentry: true,
+    });
+    return temporarilyUnavailableResponse();
+  }
+
+  if (response.status >= 400) {
+    await captureProxyError({
+      user,
+      request: upstreamBody,
+      response,
+      organizationId,
+      model: requestedModelLowerCased,
+      errorMessage: `${provider.id} returned error ${response.status}`,
+      trackInSentry: response.status >= 500,
+    });
+  }
+
+  const clonedResponse = response.clone();
+  countAndStoreEmbeddingUsage(clonedResponse, usageContext, embeddingRequestSpan, isDirectProvider);
+
+  return wrapInSafeNextResponse(response);
+}
