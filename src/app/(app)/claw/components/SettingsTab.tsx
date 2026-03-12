@@ -1,7 +1,19 @@
 'use client';
 
-import { AlertTriangle, Hash, Package, RotateCcw, Save, Square } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  FileCode,
+  Hash,
+  Package,
+  RotateCcw,
+  Save,
+  Square,
+  X,
+} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
 import { useOpenRouterModels } from '@/app/api/openrouter/hooks';
@@ -15,6 +27,7 @@ import {
   useKiloClawLatestVersion,
   useKiloClawMyPin,
 } from '@/hooks/useKiloClaw';
+import { useTRPC } from '@/lib/trpc/utils';
 import { useDefaultModelSelection } from '../hooks/useDefaultModelSelection';
 import { getSettingsModelOptions } from './modelSupport';
 
@@ -28,8 +41,110 @@ import { getEntriesByCategory } from '@kilocode/kiloclaw-secret-catalog';
 import { SecretEntrySection } from './SecretEntrySection';
 import { ConfirmActionDialog } from './ConfirmActionDialog';
 import { VersionPinCard } from './VersionPinCard';
+import { OpenclawConfigEditor } from './OpenclawConfigEditor';
 
 type ClawMutations = ReturnType<typeof useKiloClawMutations>;
+
+function GoogleAccountSection({
+  connected,
+  mutations,
+}: {
+  connected: boolean;
+  mutations: ClawMutations;
+}) {
+  const trpc = useTRPC();
+  const { data: setupData } = useQuery(
+    trpc.kiloclaw.getGoogleSetupCommand.queryOptions(undefined, {
+      enabled: !connected,
+      refetchInterval: 50 * 60 * 1000,
+      refetchOnWindowFocus: false,
+    })
+  );
+  const [copied, setCopied] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const isDisconnecting = mutations.disconnectGoogle.isPending;
+  const command = setupData?.command;
+
+  function handleCopy() {
+    if (!command) return;
+    void navigator.clipboard.writeText(command);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div>
+      <h3 className="text-foreground mb-1 text-sm font-medium">Google Account</h3>
+      <p className="text-muted-foreground mb-4 text-xs">
+        Connect your Google account to give your bot access to Gmail, Calendar, and Docs.
+      </p>
+
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Badge variant={connected ? 'default' : 'secondary'}>
+            {connected ? 'Connected' : 'Not connected'}
+          </Badge>
+          {connected && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isDisconnecting}
+              onClick={() => setConfirmDisconnect(true)}
+            >
+              <X className="h-4 w-4" />
+              {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
+            </Button>
+          )}
+        </div>
+
+        {!connected && command && (
+          <div className="space-y-2">
+            <p className="text-muted-foreground text-xs">
+              Run this command in your terminal to connect your Google account:
+            </p>
+            <div className="relative">
+              <pre className="bg-muted overflow-x-auto rounded-md p-3 pr-10 text-xs">
+                <code>{command}</code>
+              </pre>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute top-1 right-1 h-7 w-7 p-0"
+                onClick={handleCopy}
+              >
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-green-500" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <ConfirmActionDialog
+        open={confirmDisconnect}
+        onOpenChange={setConfirmDisconnect}
+        title="Disconnect Google Account"
+        description="This will remove your Google credentials. Reconnecting requires re-running the Docker setup flow (gcloud login, project setup, OAuth consent). Redeploy after disconnecting to apply."
+        confirmLabel="Disconnect"
+        confirmIcon={<X className="mr-1 h-4 w-4" />}
+        isPending={isDisconnecting}
+        pendingLabel="Disconnecting..."
+        onConfirm={() => {
+          mutations.disconnectGoogle.mutate(undefined, {
+            onSuccess: () => {
+              toast.success('Google account disconnected. Redeploy to apply.');
+              setConfirmDisconnect(false);
+            },
+            onError: err => toast.error(`Failed to disconnect: ${err.message}`),
+          });
+        }}
+      />
+    </div>
+  );
+}
 
 export function SettingsTab({
   status,
@@ -63,6 +178,7 @@ export function SettingsTab({
     ? 'Failed to load the running OpenClaw version. Retry before changing the default model.'
     : undefined;
   const isLoadingModelSelection = isLoadingModels || (isRunning && isLoadingControllerVersion);
+  const [editConfigOpen, setEditConfigOpen] = useState(false);
 
   const modelOptions = useMemo<ModelOption[]>(
     () =>
@@ -124,6 +240,10 @@ export function SettingsTab({
       }
     );
   }
+
+  useEffect(() => {
+    if (!isRunning) setEditConfigOpen(false);
+  }, [isRunning]);
 
   // Determine if running version differs from tracked version
   // Old image: the DO returns null when the controller lacks /_kilo/version,
@@ -336,6 +456,10 @@ export function SettingsTab({
 
       <Separator />
 
+      <GoogleAccountSection connected={status.googleConnected} mutations={mutations} />
+
+      <Separator />
+
       <VersionPinCard />
 
       <Separator />
@@ -379,6 +503,16 @@ export function SettingsTab({
                   <TooltipContent>Unavailable until redeploy</TooltipContent>
                 )}
               </Tooltip>
+
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!isRunning || isDestroying}
+                onClick={() => setEditConfigOpen(prev => !prev)}
+              >
+                <FileCode className="h-4 w-4" />
+                Edit Config
+              </Button>
 
               <Button
                 variant="outline"
@@ -447,6 +581,16 @@ export function SettingsTab({
                 </>
               )}
             </div>
+
+            {editConfigOpen && (
+              <div className="mt-4">
+                <OpenclawConfigEditor
+                  enabled={isRunning}
+                  mutations={mutations}
+                  onOpenChange={setEditConfigOpen}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -467,6 +611,7 @@ export function SettingsTab({
             });
             mutations.restoreConfig.mutate(undefined, {
               onSuccess: data => {
+                setEditConfigOpen(false);
                 if (data.signaled) {
                   toast.success('Config restored and gateway restarting');
                 } else {

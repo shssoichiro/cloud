@@ -27,3 +27,7 @@ export const minimax_m21_free_model: KiloFreeModel = {
   internal_id: 'minimax/minimax-m2.1',
   inference_provider: null,
 };
+
+export function isMinimaxModel(model: string) {
+  return model.startsWith('minimax/');
+}
