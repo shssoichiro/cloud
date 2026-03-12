@@ -621,11 +621,13 @@ export function parseEmbeddingUsageFromResponse(
 
 export function extractEmbeddingPromptInfo(body: { input: unknown }): PromptInfo {
   const inputStr =
-    typeof body.input === 'string'
-      ? body.input
-      : Array.isArray(body.input) && typeof body.input[0] === 'string'
-        ? body.input[0]
-        : JSON.stringify(body.input).slice(0, 100);
+    body.input == null
+      ? ''
+      : typeof body.input === 'string'
+        ? body.input
+        : Array.isArray(body.input) && typeof body.input[0] === 'string'
+          ? body.input[0]
+          : JSON.stringify(body.input).slice(0, 100);
   return {
     system_prompt_prefix: '',
     system_prompt_length: 0,

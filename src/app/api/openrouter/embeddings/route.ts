@@ -41,6 +41,8 @@ import {
   stripModelPrefix,
   type EmbeddingProxyRequest,
 } from '@/lib/embeddings/embedding-request';
+import { mapModelIdToVercel } from '@/lib/providers/vercel/mapModelIdToVercel';
+import { getVercelInferenceProviderConfigForUserByok } from '@/lib/providers/vercel';
 
 export const maxDuration = 300;
 
@@ -96,6 +98,10 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
 
   if (typeof requestBodyParsed.model !== 'string' || requestBodyParsed.model.trim().length === 0) {
     return modelDoesNotExistResponse();
+  }
+
+  if (requestBodyParsed.input == null) {
+    return invalidRequestResponse();
   }
 
   const requestedModel = requestBodyParsed.model.trim();
@@ -273,13 +279,32 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     requestBodyParsed.user = generateProviderSpecificHash(user.id, provider);
   }
 
-  // If BYOK, use the user's key
+  // BYOK: for Vercel gateway, pass the user's key via providerOptions (same as chat completions).
+  // For direct providers, substitute the API key in the Authorization header.
   const effectiveProvider =
-    userByok && userByok.length > 0
+    userByok && userByok.length > 0 && provider.id !== 'vercel'
       ? { ...provider, apiKey: userByok[0].decryptedAPIKey }
       : provider;
 
+  if (userByok && userByok.length > 0 && provider.id === 'vercel') {
+    requestBodyParsed.model = mapModelIdToVercel(requestBodyParsed.model);
+  }
+
   const upstreamBody = buildUpstreamBody(requestBodyParsed, effectiveProvider.id);
+
+  if (userByok && userByok.length > 0 && provider.id === 'vercel') {
+    const byokProviders: Record<string, unknown[]> = {};
+    for (const byokEntry of userByok) {
+      const [key, list] = getVercelInferenceProviderConfigForUserByok(byokEntry);
+      byokProviders[key] = [...(byokProviders[key] ?? []), ...list];
+    }
+    upstreamBody.providerOptions = {
+      gateway: {
+        only: Object.keys(byokProviders),
+        byok: byokProviders,
+      },
+    };
+  }
 
   const response = await embeddingProxyRequest({
     body: upstreamBody,
