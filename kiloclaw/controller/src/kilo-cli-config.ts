@@ -51,7 +51,7 @@ export function writeKiloCliConfig(
   if (isFreshInstall && !deps.existsSync(configPath)) {
     const config = {
       $schema: 'https://app.kilo.ai/config.json',
-      permission: { write: 'allow', bash: 'allow' },
+      permission: { edit: 'allow', bash: 'allow' },
     };
     deps.mkdirSync(configDir, { recursive: true });
     deps.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });

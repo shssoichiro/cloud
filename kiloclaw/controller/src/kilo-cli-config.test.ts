@@ -74,13 +74,13 @@ describe('writeKiloCliConfig', () => {
     expect(seedConfig.provider).toBeUndefined();
     // No model — CLI defaults to kilo-auto/small, user picks their own
     expect(seedConfig.model).toBeUndefined();
-    expect(seedConfig.permission.write).toBe('allow');
+    expect(seedConfig.permission.edit).toBe('allow');
     expect(seedConfig.permission.bash).toBe('allow');
     expect(written[0].mode).toBe(0o600);
   });
 
   it('does not seed config on fresh install when config already exists', () => {
-    const existing = JSON.stringify({ permission: { write: 'allow', bash: 'allow' } });
+    const existing = JSON.stringify({ permission: { edit: 'allow', bash: 'allow' } });
     const { deps, written } = fakeDeps(existing);
     const result = writeKiloCliConfig(baseEnv(), '/tmp/kilo', deps);
 
@@ -100,7 +100,7 @@ describe('writeKiloCliConfig', () => {
   });
 
   it('patches base URL on existing config using provider.kilo', () => {
-    const existing = JSON.stringify({ permission: { write: 'allow', bash: 'allow' } });
+    const existing = JSON.stringify({ permission: { edit: 'allow', bash: 'allow' } });
     const { deps, written } = fakeDeps(existing);
     const env = baseEnv({
       KILOCLAW_FRESH_INSTALL: 'false',
@@ -115,7 +115,7 @@ describe('writeKiloCliConfig', () => {
   });
 
   it('does not set model from KILOCODE_DEFAULT_MODEL', () => {
-    const existing = JSON.stringify({ permission: { write: 'allow', bash: 'allow' } });
+    const existing = JSON.stringify({ permission: { edit: 'allow', bash: 'allow' } });
     const { deps, written } = fakeDeps(existing);
     const env = baseEnv({
       KILOCLAW_FRESH_INSTALL: 'false',
@@ -148,7 +148,7 @@ describe('writeKiloCliConfig', () => {
   });
 
   it('does not write when no env overrides set', () => {
-    const existing = JSON.stringify({ permission: { write: 'allow' } });
+    const existing = JSON.stringify({ permission: { edit: 'allow' } });
     const { deps, written } = fakeDeps(existing);
     const env = baseEnv({ KILOCLAW_FRESH_INSTALL: 'false' });
 
