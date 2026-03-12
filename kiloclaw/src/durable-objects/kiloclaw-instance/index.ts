@@ -513,15 +513,17 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     await this.persist({ gmailNotificationsEnabled: enabled });
 
     // Restart machine so controller picks up the new env var
+    let restartFailed = false;
     if (this.s.status === 'running' && this.s.flyMachineId) {
       try {
         await this.restartMachine();
       } catch (err) {
+        restartFailed = true;
         console.warn('[DO] Gmail notification toggle saved but restart failed:', err);
       }
     }
 
-    return { gmailNotificationsEnabled: enabled };
+    return { gmailNotificationsEnabled: enabled, restartFailed };
   }
 
   // ── Pairing ─────────────────────────────────────────────────────────

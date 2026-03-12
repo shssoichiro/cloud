@@ -49,6 +49,31 @@ describe('POST /push/user/:userId', () => {
     expect(res.status).toBe(401);
   });
 
+  it('proceeds without auth header (warns but does not reject)', async () => {
+    const { app, mockKiloclaw } = createApp();
+
+    mockKiloclaw.fetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          flyAppName: null,
+          flyMachineId: null,
+          sandboxId: 'sandbox-123',
+          status: 'stopped',
+        })
+      )
+    );
+
+    const res = await app.request('/push/user/user123', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: { data: 'dGVzdA==' } }),
+    });
+
+    // Should proceed (not 401) — OIDC is optional when no header present
+    expect(res.status).toBe(200);
+    expect(mockValidateOidc).not.toHaveBeenCalled();
+  });
+
   it('returns 200 when machine is not running', async () => {
     mockValidateOidc.mockResolvedValue({
       valid: true,

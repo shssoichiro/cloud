@@ -7,12 +7,18 @@ export const pushRoute = new Hono<HonoContext>();
 pushRoute.post('/user/:userId', async c => {
   const userId = c.req.param('userId');
 
-  // Validate Google OIDC token
-  const oidcResult = await validateOidcToken(c.req.header('authorization'), c.env.OIDC_AUDIENCE);
-
-  if (!oidcResult.valid) {
-    console.warn(`[gmail-push] OIDC validation failed for user ${userId}: ${oidcResult.error}`);
-    return c.json({ error: 'Unauthorized' }, 401);
+  // Validate Google OIDC token if present. Pub/Sub push subscriptions may not
+  // have OIDC auth configured (requires a user-owned SA), so we warn but proceed
+  // when no auth header is provided. Invalid tokens are still rejected.
+  const authHeader = c.req.header('authorization');
+  if (authHeader) {
+    const oidcResult = await validateOidcToken(authHeader, c.env.OIDC_AUDIENCE);
+    if (!oidcResult.valid) {
+      console.warn(`[gmail-push] OIDC validation failed for user ${userId}: ${oidcResult.error}`);
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+  } else {
+    console.warn(`[gmail-push] No OIDC token for user ${userId} push — proceeding without auth`);
   }
 
   try {
