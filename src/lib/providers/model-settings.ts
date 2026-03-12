@@ -73,6 +73,12 @@ export function getModelVariants(model: string): OpenCodeSettings['variants'] {
       high: { reasoning: { enabled: true, effort: 'high' } },
     };
   }
+  if (model.startsWith('x-ai/grok-4')) {
+    return {
+      'non-reasoning': { reasoning: { enabled: false } },
+      reasoning: { reasoning: { enabled: true } },
+    };
+  }
   return undefined;
 }
 
