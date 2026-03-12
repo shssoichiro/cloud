@@ -132,7 +132,7 @@ const extractMessageTextContent = (m: Message) =>
           .join('\n')
       : '';
 
-type NotYetCostedUsageStats = {
+export type NotYetCostedUsageStats = {
   messageId: string | null;
   model: string | null;
   responseContent: string;
@@ -147,7 +147,7 @@ type NotYetCostedUsageStats = {
   cancelled: boolean | null;
 };
 
-type JustTheCostsUsageStats = {
+export type JustTheCostsUsageStats = {
   cost_mUsd: number;
   cacheDiscount_mUsd?: number;
   /** The real cost before any free/BYOK/promo zeroing. Set by processTokenData. */

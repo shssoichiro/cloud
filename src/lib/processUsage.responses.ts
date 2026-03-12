@@ -1,0 +1,295 @@
+import type { OpenAI } from 'openai';
+import { createParser, type EventSourceMessage } from 'eventsource-parser';
+import { captureException, captureMessage, startInactiveSpan } from '@sentry/nextjs';
+import type { Span } from '@sentry/nextjs';
+import { toMicrodollars } from './utils';
+import { sentryRootSpan } from './getRootSpan';
+import type { MicrodollarUsageStats } from './processUsage';
+import type { NotYetCostedUsageStats, JustTheCostsUsageStats } from './processUsage';
+import type { ProviderId } from '@/lib/providers/provider-id';
+
+// OpenRouter adds cost fields to the standard Responses API usage object.
+// ref: https://openrouter.ai/docs/use-cases/usage-accounting#response-format
+type ResponsesApiUsage = OpenAI.Responses.ResponseUsage & {
+  cost?: number;
+  is_byok?: boolean | null;
+  cost_details?: { upstream_inference_cost: number };
+};
+
+// Vercel AI Gateway adds provider_metadata to the response with routing and cost info.
+type VercelProviderMetadata = {
+  gateway?: {
+    routing?: { finalProvider?: string };
+    cost?: string;
+    marketCost?: string;
+  };
+};
+
+type MaybeHasVercelProviderMetadata = {
+  provider_metadata?: VercelProviderMetadata;
+};
+
+type ResponsesApiResponse = OpenAI.Responses.Response &
+  MaybeHasVercelProviderMetadata & {
+    // OpenRouter may return a top-level usage with cost fields
+    usage?: ResponsesApiUsage | null;
+  };
+
+type ResponsesApiStreamEvent = {
+  type: string;
+  delta?: string;
+  response?: ResponsesApiResponse;
+  error?: { message: string; code: string };
+};
+
+// For BYOK (Bring Your Own Key) requests, OpenRouter only reports 5% of the actual cost.
+// See processUsage.ts for the authoritative constant and rationale.
+const OPENROUTER_BYOK_COST_MULTIPLIER = 20.0;
+
+export function processResponsesApiUsage(
+  usage: ResponsesApiUsage | null | undefined,
+  providerMetadata: VercelProviderMetadata | null | undefined,
+  coreProps: NotYetCostedUsageStats
+): JustTheCostsUsageStats {
+  const inputTokens = usage?.input_tokens ?? 0;
+  const outputTokens = usage?.output_tokens ?? 0;
+  const cacheHitTokens = usage?.input_tokens_details?.cached_tokens ?? 0;
+
+  // OpenRouter path: cost fields are present directly in usage
+  if (usage?.cost != null || usage?.is_byok != null) {
+    const is_byok = usage.is_byok ?? null;
+    const openrouterCost_USD = usage.cost ?? 0;
+    const upstream_inference_cost_USD = usage.cost_details?.upstream_inference_cost ?? 0;
+    const cost_mUsd = toMicrodollars(is_byok ? upstream_inference_cost_USD : openrouterCost_USD);
+    const inferredUpstream_USD = openrouterCost_USD * OPENROUTER_BYOK_COST_MULTIPLIER;
+    const microdollar_error = (inferredUpstream_USD - upstream_inference_cost_USD) * 1000000;
+    if (
+      (is_byok == null && (openrouterCost_USD || upstream_inference_cost_USD)) ||
+      (is_byok && usage.cost !== 0 && 1.1 < Math.abs(microdollar_error))
+    ) {
+      const { responseContent: _ignore, ...corePropsCopy } = coreProps;
+      captureMessage("SUSPICIOUS: openrouters cost accounting doesn't make sense", {
+        level: 'error',
+        tags: { source: 'responses_sse_processing' },
+        extra: {
+          ...corePropsCopy,
+          cost_mUsd,
+          is_byok,
+          openrouterCost_USD,
+          upstream_inference_cost_USD,
+          inferredUpstream_USD,
+          microdollar_error,
+        },
+      });
+    }
+    return { inputTokens, outputTokens, cacheHitTokens, cacheWriteTokens: 0, cost_mUsd, is_byok };
+  }
+
+  // Vercel path: cost is in provider_metadata.gateway
+  const vercelGateway = providerMetadata?.gateway;
+  if (vercelGateway?.marketCost != null || vercelGateway?.cost != null) {
+    const marketCost_USD = parseFloat(vercelGateway.marketCost ?? vercelGateway.cost ?? '0');
+    const cost_mUsd = toMicrodollars(isNaN(marketCost_USD) ? 0 : marketCost_USD);
+    return {
+      inputTokens,
+      outputTokens,
+      cacheHitTokens,
+      cacheWriteTokens: 0,
+      cost_mUsd,
+      is_byok: null,
+    };
+  }
+
+  // No cost info available
+  return {
+    inputTokens,
+    outputTokens,
+    cacheHitTokens,
+    cacheWriteTokens: 0,
+    cost_mUsd: 0,
+    is_byok: null,
+  };
+}
+
+function extractResponseContent(output: OpenAI.Responses.ResponseOutputItem[]): string {
+  return output
+    .flatMap(item =>
+      item.type === 'message'
+        ? item.content
+            .filter((c): c is OpenAI.Responses.ResponseOutputText => c.type === 'output_text')
+            .map(c => c.text)
+        : []
+    )
+    .join('');
+}
+
+export async function parseMicrodollarUsageFromStream(
+  stream: ReadableStream,
+  kiloUserId: string,
+  openrouterRequestSpan: Span | undefined,
+  provider: ProviderId,
+  statusCode: number
+): Promise<MicrodollarUsageStats> {
+  openrouterRequestSpan?.end();
+  const streamProcessingSpan = startInactiveSpan({
+    name: 'responses-stream-processing',
+    op: 'performance',
+  });
+  const timeToFirstTokenSpan = startInactiveSpan({
+    name: 'time-to-first-token',
+    op: 'performance',
+  });
+
+  let messageId: string | null = null;
+  let model: string | null = null;
+  let responseContent = '';
+  let reportedError = statusCode >= 400;
+  const startedAt = performance.now();
+  let firstTokenReceived = false;
+  let usage: ResponsesApiUsage | null = null;
+  let providerMetadata: VercelProviderMetadata | null = null;
+  let inference_provider: string | null = null;
+  let finish_reason: string | null = null;
+
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+
+  const sseStreamParser = createParser({
+    onEvent(event: EventSourceMessage) {
+      if (!firstTokenReceived) {
+        sentryRootSpan()?.setAttribute(
+          'responses.time_to_first_token_ms',
+          performance.now() - startedAt
+        );
+        firstTokenReceived = true;
+        timeToFirstTokenSpan.end();
+      }
+
+      if (event.data === '[DONE]') {
+        return;
+      }
+
+      const json = JSON.parse(event.data) as ResponsesApiStreamEvent;
+
+      if (!json) {
+        captureException(new Error('SUSPICIOUS: No JSON in SSE event'), {
+          extra: { event },
+        });
+        return;
+      }
+
+      if ('error' in json && json.error) {
+        reportedError = true;
+        captureException(new Error(`Responses API error: ${json.error.message}`), {
+          tags: { source: 'responses_sse_processing' },
+          extra: { json, event },
+        });
+      }
+
+      if (json.type === 'response.output_text.delta' && json.delta) {
+        responseContent += json.delta;
+      }
+
+      if (
+        json.type === 'response.completed' ||
+        json.type === 'response.failed' ||
+        json.type === 'response.incomplete'
+      ) {
+        const response = json.response;
+        if (response) {
+          messageId = response.id ?? messageId;
+          model = response.model ?? model;
+          if (response.usage) {
+            usage = response.usage as ResponsesApiUsage;
+          }
+          const meta = response.provider_metadata;
+          if (meta) {
+            providerMetadata = meta;
+            inference_provider = meta.gateway?.routing?.finalProvider ?? inference_provider;
+          }
+          finish_reason = response.status ?? finish_reason;
+        }
+        if (json.type === 'response.failed' || json.type === 'response.incomplete') {
+          reportedError = true;
+        }
+      }
+    },
+  });
+
+  let wasAborted = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      sseStreamParser.feed(decoder.decode(value, { stream: true }));
+    }
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ResponseAborted') {
+      wasAborted = true;
+    } else {
+      throw error;
+    }
+  } finally {
+    reader.releaseLock();
+    streamProcessingSpan.end();
+  }
+
+  if (!reportedError && !usage) {
+    captureMessage('SUSPICIOUS: No usage in Responses API stream', {
+      level: 'warning',
+      tags: { source: 'responses_usage_processing' },
+      extra: { kiloUserId, provider, messageId, model },
+    });
+  }
+
+  const coreProps = {
+    messageId,
+    hasError: reportedError || wasAborted,
+    model,
+    responseContent,
+    inference_provider,
+    finish_reason,
+    upstream_id: null,
+    latency: null,
+    moderation_latency: null,
+    generation_time: null,
+    streamed: true,
+    cancelled: null,
+  } satisfies NotYetCostedUsageStats;
+
+  const costs = processResponsesApiUsage(usage, providerMetadata, coreProps);
+  return { ...coreProps, ...costs };
+}
+
+export function parseMicrodollarUsageFromString(
+  fullResponse: string,
+  kiloUserId: string,
+  statusCode: number
+): MicrodollarUsageStats {
+  const responseJson = JSON.parse(fullResponse) as ResponsesApiResponse | null;
+
+  const usage = responseJson?.usage;
+  const providerMetadata = responseJson?.provider_metadata ?? null;
+
+  const inference_provider = providerMetadata?.gateway?.routing?.finalProvider ?? null;
+
+  const coreProps = {
+    messageId: responseJson?.id ?? null,
+    hasError: !responseJson?.model || statusCode >= 400,
+    model: responseJson?.model ?? null,
+    responseContent: responseJson?.output ? extractResponseContent(responseJson.output) : '',
+    inference_provider,
+    upstream_id: null,
+    finish_reason: responseJson?.status ?? null,
+    latency: null,
+    moderation_latency: null,
+    generation_time: null,
+    streamed: false,
+    cancelled: null,
+  } satisfies NotYetCostedUsageStats;
+
+  const costs = processResponsesApiUsage(usage, providerMetadata, coreProps);
+  return { ...coreProps, ...costs };
+}
