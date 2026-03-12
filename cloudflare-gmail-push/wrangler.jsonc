@@ -15,6 +15,13 @@
       "service": "kiloclaw"
     }
   ],
+  "secrets_store_secrets": [
+    {
+      "binding": "INTERNAL_API_SECRET",
+      "store_id": "342a86d9e3a94da698e82d0c6e2a36f0",
+      "secret_name": "INTERNAL_API_SECRET_PROD"
+    }
+  ],
   "env": {
     "dev": {
       "name": "cloudflare-gmail-push-dev",
@@ -25,6 +32,13 @@
         {
           "binding": "KILOCLAW",
           "service": "kiloclaw-dev"
+        }
+      ],
+      "secrets_store_secrets": [
+        {
+          "binding": "INTERNAL_API_SECRET",
+          "store_id": "342a86d9e3a94da698e82d0c6e2a36f0",
+          "secret_name": "INTERNAL_API_SECRET_DEV"
         }
       ]
     }

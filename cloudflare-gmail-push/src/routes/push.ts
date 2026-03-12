@@ -19,7 +19,7 @@ pushRoute.post('/user/:userId', async c => {
     // Look up machine status via service binding
     const statusRes = await c.env.KILOCLAW.fetch(
       new Request(`https://kiloclaw/api/platform/status?userId=${encodeURIComponent(userId)}`, {
-        headers: { 'x-internal-api-key': 'service-binding' },
+        headers: { 'x-internal-api-key': c.env.INTERNAL_API_SECRET },
       })
     );
 
@@ -44,7 +44,7 @@ pushRoute.post('/user/:userId', async c => {
       new Request(
         `https://kiloclaw/api/platform/gateway-token?userId=${encodeURIComponent(userId)}`,
         {
-          headers: { 'x-internal-api-key': 'service-binding' },
+          headers: { 'x-internal-api-key': c.env.INTERNAL_API_SECRET },
         }
       )
     );

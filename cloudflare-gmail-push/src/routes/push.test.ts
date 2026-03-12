@@ -22,6 +22,7 @@ function createApp() {
     c.env = {
       KILOCLAW: mockKiloclaw as unknown as Fetcher,
       OIDC_AUDIENCE: 'https://test-audience.example.com',
+      INTERNAL_API_SECRET: 'test-internal-secret',
     };
     await next();
   });
