@@ -22,18 +22,22 @@ function createApp() {
   const mockKiloclaw = {
     fetch: vi.fn(),
   };
+  const mockQueue = {
+    send: vi.fn(),
+  };
 
   app.use('*', async (c, next) => {
     c.env = {
       KILOCLAW: mockKiloclaw as unknown as Fetcher,
       OIDC_AUDIENCE: 'https://test-audience.example.com',
       INTERNAL_API_SECRET: 'test-internal-secret',
+      GMAIL_PUSH_QUEUE: mockQueue as unknown as Queue,
     };
     await next();
   });
 
   app.route('/push', pushRoute);
-  return { app, mockKiloclaw };
+  return { app, mockKiloclaw, mockQueue };
 }
 
 describe('POST /push/user/:userId/:token', () => {
@@ -66,108 +70,43 @@ describe('POST /push/user/:userId/:token', () => {
     expect(res.status).toBe(401);
   });
 
-  it('proceeds without OIDC auth header (warns but does not reject)', async () => {
-    const { app, mockKiloclaw } = createApp();
-
-    mockKiloclaw.fetch.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          flyAppName: null,
-          flyMachineId: null,
-          sandboxId: 'sandbox-123',
-          status: 'stopped',
-        })
-      )
-    );
-
-    const res = await app.request(`/push/user/${TEST_USER}/${validToken}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message: { data: 'dGVzdA==' } }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(mockValidateOidc).not.toHaveBeenCalled();
-  });
-
-  it('returns 200 when machine is not running', async () => {
-    const { app, mockKiloclaw } = createApp();
-
-    mockKiloclaw.fetch.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          flyAppName: null,
-          flyMachineId: null,
-          sandboxId: 'sandbox-123',
-          status: 'stopped',
-        })
-      )
-    );
-
-    const res = await app.request(`/push/user/${TEST_USER}/${validToken}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message: { data: 'dGVzdA==' } }),
-    });
-
-    expect(res.status).toBe(200);
-    const body: { skipped: string } = await res.json();
-    expect(body.skipped).toBe('machine-not-running');
-  });
-
-  it('forwards push to controller and returns 200 on success', async () => {
+  it('enqueues message and returns 200 for valid auth (with OIDC)', async () => {
     mockValidateOidc.mockResolvedValue({
       valid: true,
       email: 'gmail-api-push@system.gserviceaccount.com',
     });
-    const { app, mockKiloclaw } = createApp();
+    const { app, mockQueue } = createApp();
+    const pubSubBody = JSON.stringify({ message: { data: 'dGVzdA==', messageId: '123' } });
 
-    mockKiloclaw.fetch.mockImplementation((req: Request) => {
-      const url = new URL(req.url);
-      if (url.pathname.includes('status')) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              flyAppName: 'test-app',
-              flyMachineId: 'machine-abc',
-              sandboxId: 'sandbox-123',
-              status: 'running',
-            })
-          )
-        );
-      }
-      if (url.pathname.includes('gateway-token')) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              gatewayToken: 'gw-token-xyz',
-            })
-          )
-        );
-      }
-      return Promise.resolve(new Response('not found', { status: 404 }));
+    const res = await app.request(`/push/user/${TEST_USER}/${validToken}`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer valid-token',
+        'content-type': 'application/json',
+      },
+      body: pubSubBody,
     });
 
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+    expect(res.status).toBe(200);
+    expect(mockQueue.send).toHaveBeenCalledOnce();
+    expect(mockQueue.send).toHaveBeenCalledWith({
+      userId: TEST_USER,
+      pubSubBody,
+    });
+  });
 
-    try {
-      const res = await app.request(`/push/user/${TEST_USER}/${validToken}`, {
-        method: 'POST',
-        headers: { authorization: 'Bearer valid-token', 'content-type': 'application/json' },
-        body: JSON.stringify({ message: { data: 'dGVzdA==', messageId: '123' } }),
-      });
+  it('proceeds without OIDC auth header (warns but does not reject)', async () => {
+    const { app, mockQueue } = createApp();
+    const pubSubBody = JSON.stringify({ message: { data: 'dGVzdA==' } });
 
-      expect(res.status).toBe(200);
-      expect(globalThis.fetch).toHaveBeenCalledOnce();
-      const mockFetchCalls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
-      const [url, fetchInit]: [unknown, RequestInit] = mockFetchCalls[0];
-      expect(url).toContain('/_kilo/gmail-pubsub');
-      const headers = fetchInit?.headers as Record<string, string>;
-      expect(headers?.['fly-force-instance-id']).toBe('machine-abc');
-      expect(headers?.['authorization']).toBe('Bearer gw-token-xyz');
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const res = await app.request(`/push/user/${TEST_USER}/${validToken}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: pubSubBody,
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockValidateOidc).not.toHaveBeenCalled();
+    expect(mockQueue.send).toHaveBeenCalledOnce();
   });
 });
