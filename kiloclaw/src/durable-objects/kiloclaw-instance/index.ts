@@ -497,7 +497,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
    */
   async updateGmailNotifications(
     enabled: boolean
-  ): Promise<{ gmailNotificationsEnabled: boolean }> {
+  ): Promise<{ gmailNotificationsEnabled: boolean; restartFailed?: boolean }> {
     await this.loadState();
 
     if (!this.s.userId || !this.s.sandboxId) {
