@@ -1,6 +1,7 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   useOrganizationUsageDetails,
   useOrganizationUsageTimeseries,
@@ -59,6 +60,7 @@ const METRIC_KEY_TO_FILTER_METRIC: Record<string, OrganizationUsageMetric> = {
   outputTokens: 'output_tokens',
   users: 'active_users',
 };
+type GroupBy = 'day' | 'model';
 
 export function OrganizationUsageDetailsPage({ organizationId }: { organizationId: string }) {
   return (
@@ -69,15 +71,33 @@ export function OrganizationUsageDetailsPage({ organizationId }: { organizationI
 }
 
 export function OrganizationUsageDetails({ organizationId }: { organizationId: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   // State management
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('week');
-  const [groupByModel, setGroupByModel] = useState(false);
+  const groupByParam = searchParams.get('groupBy');
+  const groupBy: GroupBy = groupByParam === 'model' ? 'model' : 'day';
+  const groupByModel = groupBy === 'model';
   const [selectedMetric, setSelectedMetric] = useState('cost');
   const [chartSplitBy, setChartSplitBy] = useState<ChartSplitBy>({
     provider: false,
     model: false,
     tokenType: false,
   });
+
+  const handleGroupByChange = (nextGroupBy: GroupBy) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextGroupBy === 'day') {
+      params.delete('groupBy');
+    } else {
+      params.set('groupBy', nextGroupBy);
+    }
+
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
 
   // Context and session
   const { data: session } = useSession();
@@ -374,14 +394,14 @@ export function OrganizationUsageDetails({ organizationId }: { organizationId: s
                     <Button
                       variant={groupByModel ? 'outline' : 'default'}
                       size="sm"
-                      onClick={() => setGroupByModel(false)}
+                      onClick={() => handleGroupByChange('day')}
                     >
                       By Day
                     </Button>
                     <Button
                       variant={groupByModel ? 'default' : 'outline'}
                       size="sm"
-                      onClick={() => setGroupByModel(true)}
+                      onClick={() => handleGroupByChange('model')}
                     >
                       By Model & Day
                     </Button>

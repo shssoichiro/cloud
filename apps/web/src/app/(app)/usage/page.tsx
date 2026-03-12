@@ -19,7 +19,7 @@ import {
   formatLargeNumber,
 } from '@/lib/utils';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { StreakCalendar } from '@/components/profile/StreakCalendar';
 import { UsageWarning } from '@/components/usage/UsageWarning';
 import type { UsageTableColumn, UsageTableRow } from '@/components/usage/UsageTableBase';
@@ -29,6 +29,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { useTRPC } from '@/lib/trpc/utils';
 
 type Period = 'week' | 'month' | 'year' | 'all';
+type GroupBy = 'day' | 'model';
 
 type UsageData = {
   date: string;
@@ -148,10 +149,26 @@ const PERIOD_LABELS: Record<Period, string> = {
 
 export default function UsagePage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const trpc = useTRPC();
-  const [groupByModel, setGroupByModel] = useState(false);
+  const groupByParam = searchParams.get('groupBy');
+  const groupBy: GroupBy = groupByParam === 'model' ? 'model' : 'day';
+  const groupByModel = groupBy === 'model';
   const [viewType, setViewType] = useState<string>('personal');
   const [period, setPeriod] = useState<Period>('week');
+
+  const handleGroupByChange = (nextGroupBy: GroupBy) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextGroupBy === 'day') {
+      params.delete('groupBy');
+    } else {
+      params.set('groupBy', nextGroupBy);
+    }
+
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
 
   const {
     data: usageData,
@@ -569,14 +586,14 @@ export default function UsagePage() {
             <Button
               variant={groupByModel ? 'outline' : 'default'}
               size="sm"
-              onClick={() => setGroupByModel(false)}
+              onClick={() => handleGroupByChange('day')}
             >
               By Day
             </Button>
             <Button
               variant={groupByModel ? 'default' : 'outline'}
               size="sm"
-              onClick={() => setGroupByModel(true)}
+              onClick={() => handleGroupByChange('model')}
             >
               By Model & Day
             </Button>
