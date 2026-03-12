@@ -88,7 +88,6 @@ export async function shouldRouteToVercel(
     !isGeminiModel(requestedModel) &&
     !isMinimaxModel(requestedModel) &&
     !isMoonshotModel(requestedModel) &&
-    !isXaiModel(requestedModel) &&
     !isZaiModel(requestedModel)
   ) {
     console.debug(`[shouldRouteToVercel] model family not allowed for randomized Vercel routing`);
