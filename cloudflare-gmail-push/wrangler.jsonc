@@ -23,6 +23,10 @@
       "secret_name": "INTERNAL_API_SECRET_PROD"
     }
   ],
+  "queues": {
+    "producers": [{ "binding": "GMAIL_PUSH_QUEUE", "queue": "gmail-push-notifications" }],
+    "consumers": [{ "queue": "gmail-push-notifications", "max_retries": 10, "retry_delay": 60 }]
+  },
   "env": {
     "dev": {
       "name": "cloudflare-gmail-push-dev",
@@ -42,7 +46,11 @@
           "store_id": "342a86d9e3a94da698e82d0c6e2a36f0",
           "secret_name": "INTERNAL_API_SECRET_DEV"
         }
-      ]
+      ],
+      "queues": {
+        "producers": [{ "binding": "GMAIL_PUSH_QUEUE", "queue": "gmail-push-notifications-dev" }],
+        "consumers": [{ "queue": "gmail-push-notifications-dev", "max_retries": 10, "retry_delay": 60 }]
+      }
     }
   }
 }
