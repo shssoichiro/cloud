@@ -1879,6 +1879,72 @@ describe('clearGoogleCredentials', () => {
 });
 
 // ============================================================================
+// updateGmailNotifications
+// ============================================================================
+
+describe('updateGmailNotifications', () => {
+  const fakeCredentials = {
+    gogConfigTarball: {
+      encryptedData: 'enc-data',
+      encryptedDEK: 'enc-dek',
+      algorithm: 'rsa-aes-256-gcm' as const,
+      version: 1 as const,
+    },
+    email: 'user@example.com',
+  };
+
+  it('enables notifications when Google credentials exist', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      googleCredentials: fakeCredentials,
+      gmailNotificationsEnabled: false,
+    });
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    const result = await instance.updateGmailNotifications(true);
+
+    expect(result.gmailNotificationsEnabled).toBe(true);
+    expect(putSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gmailNotificationsEnabled: true,
+      })
+    );
+    expect(storage._store.get('gmailNotificationsEnabled')).toBe(true);
+  });
+
+  it('throws when enabling without a connected Google account', async () => {
+    const { instance, storage } = createInstance();
+    // Seed without googleCredentials so it defaults to null
+    await seedProvisioned(storage, { gmailNotificationsEnabled: false });
+
+    await expect(instance.updateGmailNotifications(true)).rejects.toThrow(
+      'Cannot enable Gmail notifications without a connected Google account'
+    );
+  });
+
+  it('disables notifications regardless of credentials', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      googleCredentials: fakeCredentials,
+      gmailNotificationsEnabled: true,
+    });
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    const result = await instance.updateGmailNotifications(false);
+
+    expect(result.gmailNotificationsEnabled).toBe(false);
+    expect(putSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gmailNotificationsEnabled: false,
+      })
+    );
+    expect(storage._store.get('gmailNotificationsEnabled')).toBe(false);
+  });
+});
+
+// ============================================================================
 // parseRegions + deprioritizeRegion (pure functions)
 // ============================================================================
 
