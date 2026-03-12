@@ -65,6 +65,25 @@ export enum KiloPassScheduledChangeStatus {
   Canceled = 'canceled',
 }
 
+// --- Survey consts ---
+
+export const SurveyType = {
+  CustomerSourceV1: 'customer_source_v1',
+} as const;
+export type SurveyType = (typeof SurveyType)[keyof typeof SurveyType];
+
+export const SurveyStatus = {
+  Completed: 'completed',
+  Skipped: 'skipped',
+} as const;
+export type SurveyStatus = (typeof SurveyStatus)[keyof typeof SurveyStatus];
+
+export const SurveyPlatform = {
+  Web: 'web',
+  Extension: 'extension',
+} as const;
+export type SurveyPlatform = (typeof SurveyPlatform)[keyof typeof SurveyPlatform];
+
 // --- Feedback consts ---
 
 export const FeedbackFor = {
