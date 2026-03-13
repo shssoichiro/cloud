@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { TriangleAlert } from 'lucide-react';
+import { Zap, TriangleAlert } from 'lucide-react';
 import type { KiloClawDashboardStatus } from '@/lib/kiloclaw/types';
 import {
   useKiloClawGatewayStatus,
@@ -98,22 +98,28 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
       )}
 
       {configServiceNudgeVisible && (
-        <Alert>
-          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span>
-              Need help getting KiloClaw configured? Get up and running in one hour with 2 months
-              free KiloClaw hosting included.
-            </span>
-            <a
-              href="https://kilo.ai/kiloclaw/config-service"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex shrink-0 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors"
-            >
-              Learn more
-            </a>
-          </AlertDescription>
-        </Alert>
+        <div className="border-brand-primary/30 bg-brand-primary/5 flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <Zap className="text-brand-primary mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="text-brand-primary text-sm font-semibold">
+                Go from inbox chaos to an AI executive assistant — in one hour.
+              </p>
+              <p className="text-muted-foreground mt-0.5 text-sm">
+                A KiloClaw expert configures your email, calendar, and messaging live on a call.
+                Includes <b>2 months free</b> hosting.
+              </p>
+            </div>
+          </div>
+          <a
+            href="https://kilo.ai/kiloclaw/config-service"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-brand-primary text-primary-foreground hover:bg-brand-primary/90 inline-flex shrink-0 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors"
+          >
+            Book your session
+          </a>
+        </div>
       )}
 
       <Card className="mt-6">
