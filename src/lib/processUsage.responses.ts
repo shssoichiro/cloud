@@ -4,9 +4,13 @@ import { captureException, captureMessage, startInactiveSpan } from '@sentry/nex
 import type { Span } from '@sentry/nextjs';
 import { toMicrodollars } from './utils';
 import { sentryRootSpan } from './getRootSpan';
-import type { MicrodollarUsageStats } from './processUsage';
-import type { NotYetCostedUsageStats, JustTheCostsUsageStats } from './processUsage';
 import type { ProviderId } from '@/lib/providers/provider-id';
+import type {
+  JustTheCostsUsageStats,
+  MicrodollarUsageStats,
+  NotYetCostedUsageStats,
+  VercelProviderMetaData,
+} from '@/lib/processUsage.types';
 
 // OpenRouter adds cost fields to the standard Responses API usage object.
 // ref: https://openrouter.ai/docs/use-cases/usage-accounting#response-format
@@ -16,17 +20,8 @@ type ResponsesApiUsage = OpenAI.Responses.ResponseUsage & {
   cost_details?: { upstream_inference_cost: number };
 };
 
-// Vercel AI Gateway adds provider_metadata to the response with routing and cost info.
-type VercelProviderMetadata = {
-  gateway?: {
-    routing?: { finalProvider?: string };
-    cost?: string;
-    marketCost?: string;
-  };
-};
-
 type MaybeHasVercelProviderMetadata = {
-  provider_metadata?: VercelProviderMetadata;
+  provider_metadata?: VercelProviderMetaData;
 };
 
 type ResponsesApiResponse = OpenAI.Responses.Response &
@@ -48,7 +43,7 @@ const OPENROUTER_BYOK_COST_MULTIPLIER = 20.0;
 
 export function processResponsesApiUsage(
   usage: ResponsesApiUsage | null | undefined,
-  providerMetadata: VercelProviderMetadata | null | undefined,
+  providerMetadata: VercelProviderMetaData | null | undefined,
   coreProps: NotYetCostedUsageStats
 ): JustTheCostsUsageStats {
   const inputTokens = usage?.input_tokens ?? 0;
@@ -147,7 +142,7 @@ export async function parseMicrodollarUsageFromStream(
   const startedAt = performance.now();
   let firstTokenReceived = false;
   let usage: ResponsesApiUsage | null = null;
-  let providerMetadata: VercelProviderMetadata | null = null;
+  let providerMetadata: VercelProviderMetaData | null = null;
   let inference_provider: string | null = null;
   let finish_reason: string | null = null;
 

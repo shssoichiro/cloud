@@ -16,7 +16,9 @@ export type OpenRouterUsage = {
   total_tokens: number;
 }; //ref: https://openrouter.ai/docs/use-cases/usage-accounting#response-format
 
-export type VercelProviderMetaData = { gateway?: { routing?: { finalProvider?: string } } };
+export type VercelProviderMetaData = {
+  gateway?: { routing?: { finalProvider?: string }; cost?: string; marketCost?: string };
+};
 
 export type MaybeHasVercelProviderMetaData = {
   choices?: {
