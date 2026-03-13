@@ -479,28 +479,20 @@ try {
 }
 
 if (pushUserId) {
-  // Generate HMAC-SHA256 token so the push endpoint rejects unauthenticated callers.
-  // Must match cloudflare-gmail-push/src/auth/push-token.ts logic.
-  const internalApiSecret = process.env.INTERNAL_API_SECRET;
-  let pushToken = '';
-  if (internalApiSecret) {
-    const { createHmac } = await import('node:crypto');
-    pushToken = createHmac('sha256', internalApiSecret).update(pushUserId).digest('hex').slice(0, 32);
-  } else {
-    console.warn('Warning: INTERNAL_API_SECRET not set — push endpoint will be unauthenticated.');
-  }
-
-  const tokenPath = pushToken ? `/${pushToken}` : '';
-  const pushEndpoint = `${gmailPushWorkerUrl}/push/user/${pushUserId}${tokenPath}`;
-  console.log(`Creating push subscription → ${pushEndpoint}`);
+  const subscriptionName = `gog-gmail-push-${pushUserId.slice(0, 8)}`;
+  // Audience must exactly match the worker's OIDC_AUDIENCE env var.
+  // Default matches prod; override via OIDC_AUDIENCE env var for dev.
+  const oidcAudience = process.env.OIDC_AUDIENCE || 'https://gmail-push.kilocode.workers.dev';
+  const pushEndpoint = `${gmailPushWorkerUrl}/push/user/${pushUserId}`;
+  console.log(`Creating push subscription ${subscriptionName} → ${pushEndpoint}`);
+  console.log(`OIDC audience: ${oidcAudience}`);
   try {
-    // Push auth uses an HMAC URL token (derived from INTERNAL_API_SECRET).
-    // OIDC push auth (--push-auth-service-account) is omitted for simplicity
-    // but can be added later with a user-owned SA for defense-in-depth.
     execSync(
-      `gcloud pubsub subscriptions create gog-gmail-push ` +
+      `gcloud pubsub subscriptions create ${subscriptionName} ` +
       `--topic=gog-gmail-watch ` +
       `--push-endpoint="${pushEndpoint}" ` +
+      `--push-auth-service-account=gmail-api-push@system.gserviceaccount.com ` +
+      `--push-auth-token-audience="${oidcAudience}" ` +
       `--ack-deadline=30 --quiet`,
       { stdio: 'pipe' }
     );
@@ -509,8 +501,11 @@ if (pushUserId) {
     // Subscription may already exist — update it
     try {
       execSync(
-        `gcloud pubsub subscriptions update gog-gmail-push ` +
-        `--push-endpoint="${pushEndpoint}" --quiet`,
+        `gcloud pubsub subscriptions update ${subscriptionName} ` +
+        `--push-endpoint="${pushEndpoint}" ` +
+        `--push-auth-service-account=gmail-api-push@system.gserviceaccount.com ` +
+        `--push-auth-token-audience="${oidcAudience}" ` +
+        `--quiet`,
         { stdio: 'pipe' }
       );
       console.log('Push subscription updated.');
@@ -519,7 +514,7 @@ if (pushUserId) {
     }
   }
 
-  // Step 5: Register Gmail watch
+  // Register Gmail watch
   console.log('Registering Gmail watch...');
   try {
     execSync(
