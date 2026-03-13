@@ -554,87 +554,92 @@ if (pushUserId) {
   }
 
   // Grant the Pub/Sub service agent permission to create OIDC tokens for the SA
-  console.log('Granting Pub/Sub token creator role...');
-  try {
-    const projectNumber = execSync(
-      `gcloud projects describe ${gcpProject} --format="value(projectNumber)"`,
-      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-    ).trim();
-    execSync(
-      `gcloud iam service-accounts add-iam-policy-binding ${pushSaEmail} ` +
-        `--member="serviceAccount:service-${projectNumber}@gcp-sa-pubsub.iam.gserviceaccount.com" ` +
-        `--role="roles/iam.serviceAccountTokenCreator" --quiet`,
-      { stdio: 'pipe' }
-    );
-    console.log('Token creator role granted.');
-  } catch (tokenErr) {
-    console.error(
-      'Error: Could not grant token creator role. Pub/Sub will not be able to sign push requests.'
-    );
-    console.error(tokenErr.stderr?.toString() ?? tokenErr.message);
-    console.error('Gmail push notifications will not work.');
-    pushSetupOk = false;
-  }
-
-  const subscriptionName = `gog-gmail-push-${pushUserId.slice(0, 8)}`;
-  // Per-user audience: the worker validates OIDC_AUDIENCE + /push/user/<userId>,
-  // so the token is cryptographically bound to this specific user.
-  const oidcAudience = `${gmailPushWorkerUrl}/push/user/${pushUserId}`;
-  const pushEndpoint = `${gmailPushWorkerUrl}/push/user/${pushUserId}`;
-  console.log(`Creating push subscription ${subscriptionName} → ${pushEndpoint}`);
-  console.log(`OIDC audience: ${oidcAudience}`);
-  try {
-    execSync(
-      `gcloud pubsub subscriptions create ${subscriptionName} ` +
-        `--topic=gog-gmail-watch ` +
-        `--push-endpoint="${pushEndpoint}" ` +
-        `--push-auth-service-account="${pushSaEmail}" ` +
-        `--push-auth-token-audience="${oidcAudience}" ` +
-        `--ack-deadline=30 --quiet`,
-      { stdio: 'pipe' }
-    );
-    console.log('Push subscription created.');
-  } catch (createErr) {
-    const createOutput = createErr.stderr?.toString() ?? createErr.message;
-    if (createOutput.includes('ALREADY_EXISTS') || createOutput.includes('already exists')) {
-      // Subscription exists — update it
-      try {
-        execSync(
-          `gcloud pubsub subscriptions update ${subscriptionName} ` +
-            `--push-endpoint="${pushEndpoint}" ` +
-            `--push-auth-service-account="${pushSaEmail}" ` +
-            `--push-auth-token-audience="${oidcAudience}" ` +
-            `--quiet`,
-          { stdio: 'pipe' }
-        );
-        console.log('Push subscription updated.');
-      } catch (updateErr) {
-        console.error(
-          'Error: Could not update push subscription:',
-          updateErr.stderr?.toString() ?? updateErr.message
-        );
-        pushSetupOk = false;
-      }
-    } else {
-      console.error('Error: Could not create push subscription:');
-      console.error(createOutput);
+  if (pushSetupOk) {
+    console.log('Granting Pub/Sub token creator role...');
+    try {
+      const projectNumber = execSync(
+        `gcloud projects describe ${gcpProject} --format="value(projectNumber)"`,
+        { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+      ).trim();
+      execSync(
+        `gcloud iam service-accounts add-iam-policy-binding ${pushSaEmail} ` +
+          `--member="serviceAccount:service-${projectNumber}@gcp-sa-pubsub.iam.gserviceaccount.com" ` +
+          `--role="roles/iam.serviceAccountTokenCreator" --quiet`,
+        { stdio: 'pipe' }
+      );
+      console.log('Token creator role granted.');
+    } catch (tokenErr) {
+      console.error(
+        'Error: Could not grant token creator role. Pub/Sub will not be able to sign push requests.'
+      );
+      console.error(tokenErr.stderr?.toString() ?? tokenErr.message);
+      console.error('Gmail push notifications will not work.');
       pushSetupOk = false;
     }
   }
 
+  // Create or update push subscription
+  if (pushSetupOk) {
+    const subscriptionName = `gog-gmail-push-${pushUserId.slice(0, 8)}`;
+    // Per-user audience = push endpoint: the worker validates the OIDC audience
+    // against /push/user/<userId>, so the token is cryptographically bound to this user.
+    const pushEndpoint = `${gmailPushWorkerUrl}/push/user/${pushUserId}`;
+    console.log(`Creating push subscription ${subscriptionName} → ${pushEndpoint}`);
+    try {
+      execSync(
+        `gcloud pubsub subscriptions create ${subscriptionName} ` +
+          `--topic=gog-gmail-watch ` +
+          `--push-endpoint="${pushEndpoint}" ` +
+          `--push-auth-service-account="${pushSaEmail}" ` +
+          `--push-auth-token-audience="${pushEndpoint}" ` +
+          `--ack-deadline=30 --quiet`,
+        { stdio: 'pipe' }
+      );
+      console.log('Push subscription created.');
+    } catch (createErr) {
+      const createOutput = createErr.stderr?.toString() ?? createErr.message;
+      if (createOutput.includes('ALREADY_EXISTS') || createOutput.includes('already exists')) {
+        // Subscription exists — update it
+        try {
+          execSync(
+            `gcloud pubsub subscriptions update ${subscriptionName} ` +
+              `--push-endpoint="${pushEndpoint}" ` +
+              `--push-auth-service-account="${pushSaEmail}" ` +
+              `--push-auth-token-audience="${pushEndpoint}" ` +
+              `--quiet`,
+            { stdio: 'pipe' }
+          );
+          console.log('Push subscription updated.');
+        } catch (updateErr) {
+          console.error(
+            'Error: Could not update push subscription:',
+            updateErr.stderr?.toString() ?? updateErr.message
+          );
+          pushSetupOk = false;
+        }
+      } else {
+        console.error('Error: Could not create push subscription:');
+        console.error(createOutput);
+        pushSetupOk = false;
+      }
+    }
+  }
+
   // Register Gmail watch
-  console.log('Registering Gmail watch...');
-  try {
-    execSync(
-      `gog gmail watch start --account="${userEmail}" ` +
-        `--topic="projects/${gcpProject}/topics/gog-gmail-watch"`,
-      { stdio: 'inherit', env: gogEnv }
-    );
-    console.log('Gmail watch registered successfully.');
-  } catch (err) {
-    console.error('Error: Gmail watch registration failed:', err.message);
-    console.error('Re-run the setup to retry.');
-    pushSetupOk = false;
+  if (pushSetupOk) {
+    console.log('Registering Gmail watch...');
+    try {
+      execSync(
+        `gog gmail watch start --account="${userEmail}" ` +
+          `--topic="projects/${gcpProject}/topics/gog-gmail-watch"`,
+        { stdio: 'inherit', env: gogEnv }
+      );
+      console.log('Gmail watch registered successfully.');
+    } catch (err) {
+      console.error('Error: Gmail watch registration failed:', err.message);
+      console.error('Re-run the setup to retry.');
+      pushSetupOk = false;
+    }
   }
 }
 
