@@ -52,10 +52,30 @@ describe('validateOidcToken', () => {
       })
     );
 
-    const result = await validateOidcToken('Bearer valid-token', 'https://audience.example.com');
+    const result = await validateOidcToken(
+      'Bearer valid-token',
+      'https://audience.example.com',
+      'gmail-api-push@system.gserviceaccount.com'
+    );
     expect(result.valid).toBe(true);
     if (result.valid) {
       expect(result.email).toBe('gmail-api-push@system.gserviceaccount.com');
+    }
+  });
+
+  it('accepts valid token when allowedEmail is not specified', async () => {
+    mockJwtVerify.mockResolvedValue(
+      mockVerifyResult({
+        email: 'any-sa@my-project.iam.gserviceaccount.com',
+        email_verified: true,
+        iss: 'https://accounts.google.com',
+      })
+    );
+
+    const result = await validateOidcToken('Bearer valid-token', 'https://audience.example.com');
+    expect(result.valid).toBe(true);
+    if (result.valid) {
+      expect(result.email).toBe('any-sa@my-project.iam.gserviceaccount.com');
     }
   });
 
@@ -67,19 +87,30 @@ describe('validateOidcToken', () => {
       })
     );
 
-    const result = await validateOidcToken('Bearer valid-token', 'https://audience.example.com');
+    const result = await validateOidcToken(
+      'Bearer valid-token',
+      'https://audience.example.com',
+      'gmail-api-push@system.gserviceaccount.com'
+    );
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.error).toContain('not verified');
     }
   });
 
-  it('rejects valid token with wrong email', async () => {
+  it('rejects valid token with wrong email when allowedEmail is set', async () => {
     mockJwtVerify.mockResolvedValue(
-      mockVerifyResult({ email: 'attacker@evil-project.iam.gserviceaccount.com' })
+      mockVerifyResult({
+        email: 'attacker@evil-project.iam.gserviceaccount.com',
+        email_verified: true,
+      })
     );
 
-    const result = await validateOidcToken('Bearer valid-token', 'https://audience.example.com');
+    const result = await validateOidcToken(
+      'Bearer valid-token',
+      'https://audience.example.com',
+      'expected-sa@my-project.iam.gserviceaccount.com'
+    );
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.error).toContain('Unexpected email');

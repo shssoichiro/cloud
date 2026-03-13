@@ -3,9 +3,6 @@ import { jwtVerify, createRemoteJWKSet } from 'jose';
 const GOOGLE_ISSUER = 'https://accounts.google.com';
 const GOOGLE_JWKS_URL = new URL('https://www.googleapis.com/oauth2/v3/certs');
 
-// The exact service account Google uses for Gmail push notifications
-const ALLOWED_PUSH_EMAIL = 'gmail-api-push@system.gserviceaccount.com';
-
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 function getJwks() {
@@ -19,7 +16,8 @@ export type OidcResult = { valid: true; email: string } | { valid: false; error:
 
 export async function validateOidcToken(
   authHeader: string | null | undefined,
-  expectedAudience: string
+  expectedAudience: string,
+  allowedEmail?: string
 ): Promise<OidcResult> {
   if (!authHeader) {
     return { valid: false, error: 'Missing authorization header' };
@@ -41,7 +39,10 @@ export async function validateOidcToken(
     });
 
     const email = payload.email as string | undefined;
-    if (!email || email !== ALLOWED_PUSH_EMAIL) {
+    if (!email) {
+      return { valid: false, error: 'Missing email claim' };
+    }
+    if (allowedEmail && email !== allowedEmail) {
       return { valid: false, error: `Unexpected email: ${email}` };
     }
 
