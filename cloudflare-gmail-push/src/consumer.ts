@@ -48,7 +48,11 @@ async function reportHistoryId(
   }
 }
 
-function retryWithBackoff(env: AppEnv, msg: GmailPushQueueMessage, currentAttempt: number): void {
+async function retryWithBackoff(
+  env: AppEnv,
+  msg: GmailPushQueueMessage,
+  currentAttempt: number
+): Promise<void> {
   if (currentAttempt >= MAX_RETRIES) {
     console.error(
       `[gmail-push] Max retries (${MAX_RETRIES}) exceeded for message ${msg.messageId}, dropping`
@@ -56,7 +60,14 @@ function retryWithBackoff(env: AppEnv, msg: GmailPushQueueMessage, currentAttemp
     return;
   }
   const delay = BASE_DELAY_SECONDS * Math.pow(2, currentAttempt);
-  void env.GMAIL_PUSH_QUEUE.send({ ...msg, attempt: currentAttempt + 1 }, { delaySeconds: delay });
+  try {
+    await env.GMAIL_PUSH_QUEUE.send(
+      { ...msg, attempt: currentAttempt + 1 },
+      { delaySeconds: delay }
+    );
+  } catch (err) {
+    console.error(`[gmail-push] Failed to re-enqueue message ${msg.messageId} for retry:`, err);
+  }
 }
 
 export async function handleQueue(
@@ -99,7 +110,7 @@ async function processMessage(message: Message<GmailPushQueueMessage>, env: AppE
 
     if (!statusRes.ok) {
       console.warn(`[gmail-push] Status lookup failed for user ${userId}: ${statusRes.status}`);
-      retryWithBackoff(env, msg, attempt);
+      await retryWithBackoff(env, msg, attempt);
       message.ack();
       return;
     }
@@ -114,7 +125,7 @@ async function processMessage(message: Message<GmailPushQueueMessage>, env: AppE
 
     if (!status.flyAppName || !status.flyMachineId || status.status !== 'running') {
       console.warn(`[gmail-push] Machine not running for user ${userId}, retrying`);
-      retryWithBackoff(env, msg, attempt);
+      await retryWithBackoff(env, msg, attempt);
       message.ack();
       return;
     }
@@ -137,7 +148,7 @@ async function processMessage(message: Message<GmailPushQueueMessage>, env: AppE
       console.error(
         `[gmail-push] Gateway token lookup failed for user ${userId}: ${tokenRes.status}`
       );
-      retryWithBackoff(env, msg, attempt);
+      await retryWithBackoff(env, msg, attempt);
       message.ack();
       return;
     }
@@ -163,11 +174,11 @@ async function processMessage(message: Message<GmailPushQueueMessage>, env: AppE
     }
 
     console.error(`[gmail-push] Controller returned ${controllerRes.status} for user ${userId}`);
-    retryWithBackoff(env, msg, attempt);
+    await retryWithBackoff(env, msg, attempt);
     message.ack();
   } catch (err) {
     console.error(`[gmail-push] Error delivering to user ${userId}:`, err);
-    retryWithBackoff(env, msg, attempt);
+    await retryWithBackoff(env, msg, attempt);
     message.ack();
   }
 }
