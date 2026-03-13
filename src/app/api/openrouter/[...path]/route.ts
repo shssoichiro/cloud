@@ -74,11 +74,11 @@ const MAX_TOKENS_LIMIT = 99999999999; // GPT4.1 default is ~32k
 const PAID_MODEL_AUTH_REQUIRED = 'PAID_MODEL_AUTH_REQUIRED';
 const PROMOTION_MODEL_LIMIT_REACHED = 'PROMOTION_MODEL_LIMIT_REACHED';
 
-type ApiPath = '/chat/completions' | '/responses';
-
 function validatePath(
   url: URL
-): { path: ApiPath } | { errorResponse: ReturnType<typeof invalidPathResponse> } {
+):
+  | { path: '/chat/completions' | '/responses' }
+  | { errorResponse: ReturnType<typeof invalidPathResponse> } {
   const pathSuffix =
     stripRequiredPrefix(url.pathname, '/api/gateway') ??
     stripRequiredPrefix(url.pathname, '/api/openrouter');
