@@ -14,9 +14,8 @@ Insert a Cloudflare Queue between the HTTP handler (producer) and the delivery l
 Google Pub/Sub
   |
   v
-POST /push/user/:userId/:token
-  | Verify HMAC token
-  | Optionally verify OIDC JWT
+POST /push/user/:userId
+  | Verify OIDC JWT (mandatory)
   | Enqueue { userId, pubSubBody }
   | Return 200 OK
   |
@@ -52,16 +51,16 @@ No machine info is cached in the message. The consumer does a fresh kiloclaw loo
 
 Each message in a batch is handled independently using `message.ack()` and `message.retry()` — never `throw`, which would retry the entire batch.
 
-| Scenario | Action |
-|---|---|
-| Kiloclaw status lookup fails (network/5xx) | `message.retry()` |
-| Machine not running | `message.retry()` |
-| Gateway token lookup fails | `message.retry()` |
-| Controller returns 2xx | `message.ack()` |
-| Controller returns 4xx | `message.ack()` (permanent error, no retry) |
-| Controller returns 5xx | `message.retry()` |
-| Controller network error | `message.retry()` |
-| 10 retries exhausted | Message dropped, logged |
+| Scenario                                   | Action                                      |
+| ------------------------------------------ | ------------------------------------------- |
+| Kiloclaw status lookup fails (network/5xx) | `message.retry()`                           |
+| Machine not running                        | `message.retry()`                           |
+| Gateway token lookup fails                 | `message.retry()`                           |
+| Controller returns 2xx                     | `message.ack()`                             |
+| Controller returns 4xx                     | `message.ack()` (permanent error, no retry) |
+| Controller returns 5xx                     | `message.retry()`                           |
+| Controller network error                   | `message.retry()`                           |
+| 10 retries exhausted                       | Message dropped, logged                     |
 
 ## Retry Policy
 
@@ -99,7 +98,7 @@ Exports a queue handler matching the Cloudflare Workers queue handler signature:
 export async function handleQueue(
   batch: MessageBatch<GmailPushQueueMessage>,
   env: Env
-): Promise<void>
+): Promise<void>;
 ```
 
 Iterates over `batch.messages`, handling each independently with `message.ack()` / `message.retry()`:
@@ -128,26 +127,30 @@ The Hono app stays as the fetch handler. The queue handler is a separate export.
 ### `wrangler.jsonc` — Add queue producer + consumer config
 
 **Production:**
+
 ```jsonc
 {
   "queues": {
     "producers": [{ "binding": "GMAIL_PUSH_QUEUE", "queue": "gmail-push-notifications" }],
-    "consumers": [{ "queue": "gmail-push-notifications", "max_retries": 10, "retry_delay": 60 }]
-  }
+    "consumers": [{ "queue": "gmail-push-notifications", "max_retries": 10, "retry_delay": 60 }],
+  },
 }
 ```
 
 **Dev environment:**
+
 ```jsonc
 {
   "env": {
     "dev": {
       "queues": {
         "producers": [{ "binding": "GMAIL_PUSH_QUEUE", "queue": "gmail-push-notifications-dev" }],
-        "consumers": [{ "queue": "gmail-push-notifications-dev", "max_retries": 10, "retry_delay": 60 }]
-      }
-    }
-  }
+        "consumers": [
+          { "queue": "gmail-push-notifications-dev", "max_retries": 10, "retry_delay": 60 },
+        ],
+      },
+    },
+  },
 }
 ```
 
@@ -158,9 +161,7 @@ The Hono app stays as the fetch handler. The queue handler is a separate export.
 
 ## What Doesn't Change
 
-- Auth flow (HMAC + optional OIDC) — identical, just runs before enqueue instead of before delivery
-- Push token generation/verification
-- OIDC validation
+- OIDC validation logic (mandatory now instead of optional)
 - Health endpoint
 - Service binding to kiloclaw
 - The controller's `/_kilo/gmail-pubsub` API contract
