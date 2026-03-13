@@ -247,7 +247,6 @@ export type GoogleCredentialsResponse = {
 /** Response from POST/DELETE /api/platform/gmail-notifications */
 export type GmailNotificationsResponse = {
   gmailNotificationsEnabled: boolean;
-  restartFailed?: boolean;
 };
 
 /** Combined status + gateway token returned by tRPC getStatus */
