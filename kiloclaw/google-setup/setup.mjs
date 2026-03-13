@@ -434,7 +434,7 @@ try {
 console.log('\nSetting up Gmail push notifications...');
 
 const gmailPushWorkerUrl =
-  process.env.GMAIL_PUSH_WORKER_URL || 'https://kiloclaw-gmail-push.kiloapps.ai';
+  process.env.GMAIL_PUSH_WORKER_URL || 'https://kiloclaw-gmail.kiloapps.io';
 
 // Step 1: Create Pub/Sub topic (idempotent)
 console.log('Creating Pub/Sub topic gog-gmail-watch...');
