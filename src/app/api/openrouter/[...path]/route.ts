@@ -401,15 +401,8 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     }
   }
 
-  // TODO Responses API
-  const toolsAvailable =
-    requestBodyParsed.kind === 'chat_completions'
-      ? getToolsAvailable(requestBodyParsed.body.tools)
-      : [];
-  const toolsUsed =
-    requestBodyParsed.kind === 'chat_completions'
-      ? getToolsUsed(requestBodyParsed.body.messages)
-      : [];
+  const toolsAvailable = getToolsAvailable(requestBodyParsed);
+  const toolsUsed = getToolsUsed(requestBodyParsed);
 
   const extraHeaders: Record<string, string> = {};
   applyProviderSpecificLogic(
