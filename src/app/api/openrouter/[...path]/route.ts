@@ -546,7 +546,6 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     }
   }
 
-  // rewriteFreeModelResponse only handles Chat Completions format responses.
   if (
     provider.id !== 'custom' &&
     (isKiloFreeModel(originalModelIdLowerCased) ||
