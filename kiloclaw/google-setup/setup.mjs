@@ -579,7 +579,7 @@ if (pushUserId) {
   const subscriptionName = `gog-gmail-push-${pushUserId.slice(0, 8)}`;
   // Per-user audience: the worker validates OIDC_AUDIENCE + /push/user/<userId>,
   // so the token is cryptographically bound to this specific user.
-  const oidcAudience = `https://kiloclaw-gmail.kiloapps.io/push/user/${pushUserId}`;
+  const oidcAudience = `${gmailPushWorkerUrl}/push/user/${pushUserId}`;
   const pushEndpoint = `${gmailPushWorkerUrl}/push/user/${pushUserId}`;
   console.log(`Creating push subscription ${subscriptionName} → ${pushEndpoint}`);
   console.log(`OIDC audience: ${oidcAudience}`);
