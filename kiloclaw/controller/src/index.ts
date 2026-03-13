@@ -141,9 +141,10 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
 
   if (hasGogCredentials) {
     const googleAccountEmail = env.KILOCLAW_GOOGLE_ACCOUNT_EMAIL;
-    if (!googleAccountEmail) {
+    const hooksToken = env.KILOCLAW_HOOKS_TOKEN;
+    if (!googleAccountEmail || !hooksToken) {
       console.warn(
-        '[controller] KILOCLAW_GOG_CONFIG_TARBALL present but KILOCLAW_GOOGLE_ACCOUNT_EMAIL missing, skipping gmail watch'
+        `[controller] KILOCLAW_GOG_CONFIG_TARBALL present but missing: ${!googleAccountEmail ? 'KILOCLAW_GOOGLE_ACCOUNT_EMAIL' : ''} ${!hooksToken ? 'KILOCLAW_HOOKS_TOKEN' : ''}, skipping gmail watch`
       );
     } else {
       gmailWatchSupervisor = createSupervisor({
@@ -158,13 +159,17 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
           '127.0.0.1',
           '--port',
           '3002',
-          '--hook-url',
-          `http://127.0.0.1:3001/hooks/wake`,
-          '--hook-token',
+          '--path',
+          '/gmail-pubsub',
+          '--token',
           config.expectedToken,
+          '--hook-url',
+          `http://127.0.0.1:3001/hooks/gmail`,
+          '--hook-token',
+          hooksToken,
           '--include-body',
           '--max-bytes',
-          '4096',
+          '20000',
         ],
       });
     }

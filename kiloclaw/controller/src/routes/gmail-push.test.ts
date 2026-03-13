@@ -77,9 +77,34 @@ describe('registerGmailPushRoute', () => {
     });
 
     expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({ ok: true, gogStatus: 200 });
     expect(mockFetch).toHaveBeenCalledOnce();
     const [url] = mockFetch.mock.calls[0];
-    expect(url).toBe('http://127.0.0.1:3002/');
+    expect(url).toBe('http://127.0.0.1:3002/gmail-pubsub');
+  });
+
+  it('propagates 202 from gog (no new messages)', async () => {
+    const supervisor = createMockSupervisor('running');
+    registerGmailPushRoute(app, supervisor, TOKEN);
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('no new messages', { status: 202 }))
+    );
+
+    const res = await app.request('/_kilo/gmail-pubsub', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ message: {} }),
+    });
+
+    expect(res.status).toBe(202);
+    const json = await res.json();
+    expect(json).toEqual({ ok: true, gogStatus: 202 });
   });
 
   it('returns 200 on 4xx from downstream (permanently rejected)', async () => {
