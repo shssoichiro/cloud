@@ -38,7 +38,12 @@ function createBatch(
 }
 
 function mockKiloclawResponses(
-  status: { flyAppName: string | null; flyMachineId: string | null; status: string | null },
+  status: {
+    flyAppName: string | null;
+    flyMachineId: string | null;
+    status: string | null;
+    gmailNotificationsEnabled?: boolean;
+  },
   gatewayToken?: string
 ) {
   return vi.fn((req: Request) => {
@@ -81,6 +86,29 @@ describe('handleQueue', () => {
     expect(msg.ack).not.toHaveBeenCalled();
   });
 
+  it('acks without forwarding when gmail notifications are disabled', async () => {
+    const kiloclawFetch = mockKiloclawResponses(
+      {
+        flyAppName: 'test-app',
+        flyMachineId: 'machine-abc',
+        status: 'running',
+        gmailNotificationsEnabled: false,
+      },
+      'gw-token-xyz'
+    );
+    const env = createMockEnv(kiloclawFetch);
+    globalThis.fetch = vi.fn();
+    const msg = createMockMessage({ userId: TEST_USER, pubSubBody: TEST_PUBSUB_BODY });
+    const batch = createBatch([msg]);
+
+    await handleQueue(batch, env);
+
+    expect(msg.ack).toHaveBeenCalledOnce();
+    expect(msg.retry).not.toHaveBeenCalled();
+    // Should NOT forward to controller
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it('retries when kiloclaw status lookup fails', async () => {
     const kiloclawFetch = vi.fn().mockResolvedValue(new Response('error', { status: 500 }));
     const env = createMockEnv(kiloclawFetch);
@@ -103,6 +131,7 @@ describe('handleQueue', () => {
               flyAppName: 'test-app',
               flyMachineId: 'machine-abc',
               status: 'running',
+              gmailNotificationsEnabled: true,
             })
           )
         );
@@ -122,7 +151,12 @@ describe('handleQueue', () => {
 
   it('acks on successful controller delivery', async () => {
     const kiloclawFetch = mockKiloclawResponses(
-      { flyAppName: 'test-app', flyMachineId: 'machine-abc', status: 'running' },
+      {
+        flyAppName: 'test-app',
+        flyMachineId: 'machine-abc',
+        status: 'running',
+        gmailNotificationsEnabled: true,
+      },
       'gw-token-xyz'
     );
     const env = createMockEnv(kiloclawFetch);
@@ -148,7 +182,12 @@ describe('handleQueue', () => {
 
   it('acks on controller 4xx (permanent error)', async () => {
     const kiloclawFetch = mockKiloclawResponses(
-      { flyAppName: 'test-app', flyMachineId: 'machine-abc', status: 'running' },
+      {
+        flyAppName: 'test-app',
+        flyMachineId: 'machine-abc',
+        status: 'running',
+        gmailNotificationsEnabled: true,
+      },
       'gw-token-xyz'
     );
     const env = createMockEnv(kiloclawFetch);
@@ -164,7 +203,12 @@ describe('handleQueue', () => {
 
   it('retries on controller 5xx', async () => {
     const kiloclawFetch = mockKiloclawResponses(
-      { flyAppName: 'test-app', flyMachineId: 'machine-abc', status: 'running' },
+      {
+        flyAppName: 'test-app',
+        flyMachineId: 'machine-abc',
+        status: 'running',
+        gmailNotificationsEnabled: true,
+      },
       'gw-token-xyz'
     );
     const env = createMockEnv(kiloclawFetch);
@@ -180,7 +224,12 @@ describe('handleQueue', () => {
 
   it('retries on controller network error', async () => {
     const kiloclawFetch = mockKiloclawResponses(
-      { flyAppName: 'test-app', flyMachineId: 'machine-abc', status: 'running' },
+      {
+        flyAppName: 'test-app',
+        flyMachineId: 'machine-abc',
+        status: 'running',
+        gmailNotificationsEnabled: true,
+      },
       'gw-token-xyz'
     );
     const env = createMockEnv(kiloclawFetch);
@@ -206,6 +255,7 @@ describe('handleQueue', () => {
                 flyAppName: 'app-ok',
                 flyMachineId: 'machine-ok',
                 status: 'running',
+                gmailNotificationsEnabled: true,
               })
             )
           );

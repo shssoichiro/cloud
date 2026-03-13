@@ -31,11 +31,18 @@ async function processMessage(message: Message<GmailPushQueueMessage>, env: AppE
       flyMachineId: string | null;
       sandboxId: string | null;
       status: string | null;
+      gmailNotificationsEnabled: boolean;
     } = await statusRes.json();
 
     if (!status.flyAppName || !status.flyMachineId || status.status !== 'running') {
       console.warn(`[gmail-push] Machine not running for user ${userId}, retrying`);
       message.retry();
+      return;
+    }
+
+    if (!status.gmailNotificationsEnabled) {
+      console.log(`[gmail-push] Notifications disabled for user ${userId}, dropping message`);
+      message.ack();
       return;
     }
 
