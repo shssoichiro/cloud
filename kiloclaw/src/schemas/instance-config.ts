@@ -168,6 +168,7 @@ export const PersistedStateSchema = z.object({
   // New instances get the current feature set; legacy instances have an empty array.
   instanceFeatures: z.array(z.string()).default([]),
   gmailNotificationsEnabled: z.boolean().default(false),
+  gmailLastHistoryId: z.string().nullable().default(null),
 });
 
 export type PersistedState = z.infer<typeof PersistedStateSchema>;
