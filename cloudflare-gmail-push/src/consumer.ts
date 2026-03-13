@@ -33,7 +33,7 @@ async function reportHistoryId(
     const decoded = GmailPubSubDataSchema.safeParse(JSON.parse(atob(envelope.data.message.data)));
     if (!decoded.success) return;
 
-    await env.KILOCLAW.fetch(
+    const res = await env.KILOCLAW.fetch(
       new Request('https://kiloclaw/api/platform/gmail-history-id', {
         method: 'POST',
         headers: {
@@ -43,6 +43,9 @@ async function reportHistoryId(
         body: JSON.stringify({ userId, historyId: decoded.data.historyId }),
       })
     );
+    if (!res.ok) {
+      console.warn(`[gmail-push] Failed to record historyId for ${userId}: ${res.status}`);
+    }
   } catch (err) {
     console.warn(`[gmail-push] Failed to report historyId for user ${userId}:`, err);
   }
