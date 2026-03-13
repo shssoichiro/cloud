@@ -493,18 +493,17 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
 
   /**
    * Enable or disable Gmail push notifications.
-   * Persists the flag and restarts the machine so the controller picks it up.
+   * Persists the flag — takes effect immediately at the queue consumer level, no restart needed.
    */
   async updateGmailNotifications(
     enabled: boolean
-  ): Promise<{ gmailNotificationsEnabled: boolean; restartFailed?: boolean }> {
+  ): Promise<{ gmailNotificationsEnabled: boolean }> {
     await this.loadState();
 
     if (!this.s.userId || !this.s.sandboxId) {
       throw new Error('Instance is not provisioned');
     }
 
-    // Cannot enable without Google credentials
     if (enabled && !this.s.googleCredentials) {
       throw new Error('Cannot enable Gmail notifications without a connected Google account');
     }
@@ -512,17 +511,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     this.s.gmailNotificationsEnabled = enabled;
     await this.persist({ gmailNotificationsEnabled: enabled });
 
-    // Restart machine so controller picks up the new env var
-    let restartFailed = false;
-    if (this.s.status === 'running' && this.s.flyMachineId) {
-      const result = await this.restartMachine();
-      if (!result.success) {
-        restartFailed = true;
-        console.warn('[DO] Gmail notification toggle saved but restart failed:', result.error);
-      }
-    }
-
-    return { gmailNotificationsEnabled: enabled, restartFailed };
+    return { gmailNotificationsEnabled: enabled };
   }
 
   // ── Pairing ─────────────────────────────────────────────────────────
