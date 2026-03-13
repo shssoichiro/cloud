@@ -236,7 +236,7 @@ describe('handleQueue', () => {
     expect(init.body).toBe(TEST_PUBSUB_BODY);
   });
 
-  it('acks on controller 4xx (permanent error)', async () => {
+  it('acks on controller 400 (permanent error)', async () => {
     const kiloclawFetch = mockKiloclawResponses(
       {
         flyAppName: 'test-app',
@@ -260,6 +260,34 @@ describe('handleQueue', () => {
     expect(msg.ack).toHaveBeenCalledOnce();
     expect(msg.retry).not.toHaveBeenCalled();
     expect(queueSend).not.toHaveBeenCalled();
+  });
+
+  it('retries on controller 401 (transient auth error)', async () => {
+    const kiloclawFetch = mockKiloclawResponses(
+      {
+        flyAppName: 'test-app',
+        flyMachineId: 'machine-abc',
+        status: 'running',
+        gmailNotificationsEnabled: true,
+      },
+      'gw-token-xyz'
+    );
+    const { env, queueSend } = createMockEnv(kiloclawFetch);
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response('unauthorized', { status: 401 }));
+    const msg = createMockMessage({
+      userId: TEST_USER,
+      pubSubBody: TEST_PUBSUB_BODY,
+      messageId: TEST_MESSAGE_ID,
+    });
+    const batch = createBatch([msg]);
+
+    await handleQueue(batch, env);
+
+    expect(msg.ack).toHaveBeenCalledOnce();
+    expect(queueSend).toHaveBeenCalledWith(
+      expect.objectContaining({ attempt: 1 }),
+      expect.objectContaining({ delaySeconds: 60 })
+    );
   });
 
   it('re-enqueues with backoff on controller 5xx', async () => {

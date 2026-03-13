@@ -167,9 +167,20 @@ async function processMessage(message: Message<GmailPushQueueMessage>, env: AppE
       body: pubSubBody,
     });
 
-    if (controllerRes.ok || (controllerRes.status >= 400 && controllerRes.status < 500)) {
+    if (controllerRes.ok) {
       message.ack();
       await reportHistoryId(userId, pubSubBody, env, internalSecret);
+      return;
+    }
+
+    // 400 and 422 are permanent client errors (bad request / validation) — don't retry.
+    // 401 and 404 are transient: 401 = gateway token drift during restart/rotation,
+    // 404 = old image not yet redeployed with the gmail-pubsub route.
+    if (controllerRes.status === 400 || controllerRes.status === 422) {
+      console.warn(
+        `[gmail-push] Controller returned permanent ${controllerRes.status} for user ${userId}, dropping`
+      );
+      message.ack();
       return;
     }
 
