@@ -47,6 +47,7 @@ import type { InstanceMutableState, InstanceStatus, DestroyResult } from './type
 import { getFlyConfig } from './types';
 import { createMutableState, loadState, storageUpdate } from './state';
 import { reconcileLog, nextAlarmTime } from './log';
+import { attemptMetadataRecovery } from './reconcile';
 import { resolveImageTag, getRegistryApp, buildUserEnvVars } from './config';
 import * as gateway from './gateway';
 import * as pairing from './pairing';
@@ -534,6 +535,12 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     }
 
     const flyConfig = getFlyConfig(this.env, this.s);
+
+    // If the DO has identity but lost its machine ID, try to recover it
+    // from Fly metadata before creating a duplicate machine.
+    if (!this.s.flyMachineId) {
+      await attemptMetadataRecovery(flyConfig, this.ctx, this.s, 'start_recovery');
+    }
 
     await flyMachines.ensureVolume(flyConfig, this.ctx, this.s, this.env, 'start');
 
