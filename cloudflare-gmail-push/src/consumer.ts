@@ -63,14 +63,7 @@ async function retryWithBackoff(
     return;
   }
   const delay = BASE_DELAY_SECONDS * Math.pow(2, currentAttempt);
-  try {
-    await env.GMAIL_PUSH_QUEUE.send(
-      { ...msg, attempt: currentAttempt + 1 },
-      { delaySeconds: delay }
-    );
-  } catch (err) {
-    console.error(`[gmail-push] Failed to re-enqueue message ${msg.messageId} for retry:`, err);
-  }
+  await env.GMAIL_PUSH_QUEUE.send({ ...msg, attempt: currentAttempt + 1 }, { delaySeconds: delay });
 }
 
 export async function handleQueue(

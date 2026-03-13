@@ -127,9 +127,9 @@ Deploys to: `cloudflare-gmail-push`
 
 ## Environment Variables
 
-| Variable        | Description                                     |
-| --------------- | ----------------------------------------------- |
-| `OIDC_AUDIENCE` | Expected audience claim for OIDC JWT validation |
+| Variable             | Description                                          |
+| -------------------- | ---------------------------------------------------- |
+| `OIDC_AUDIENCE_BASE` | Base URL for per-user OIDC audience claim validation |
 
 ## Service Bindings
 

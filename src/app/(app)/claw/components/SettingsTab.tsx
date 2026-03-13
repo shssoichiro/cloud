@@ -163,11 +163,11 @@ function GoogleAccountSection({
                 mutations.setGmailNotifications.mutate(
                   { enabled: !gmailNotificationsEnabled },
                   {
-                    onSuccess: () => {
+                    onSuccess: data => {
                       toast.success(
-                        gmailNotificationsEnabled
-                          ? 'Gmail notifications disabled'
-                          : 'Gmail notifications enabled'
+                        data.gmailNotificationsEnabled
+                          ? 'Gmail notifications enabled'
+                          : 'Gmail notifications disabled'
                       );
                     },
                     onError: err => toast.error(`Failed: ${err.message}`),
