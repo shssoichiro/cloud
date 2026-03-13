@@ -70,8 +70,15 @@ export function patchGogHistoryId(opts: {
   }
 
   const fileHistoryId = parsed.historyId;
-  const fileValue = typeof fileHistoryId === 'string' ? BigInt(fileHistoryId) : BigInt(0);
-  const envValue = BigInt(historyId);
+  let fileValue: bigint;
+  let envValue: bigint;
+  try {
+    fileValue = typeof fileHistoryId === 'string' ? BigInt(fileHistoryId) : BigInt(0);
+    envValue = BigInt(historyId);
+  } catch {
+    console.warn(`[gog] Invalid historyId values, skipping patch`);
+    return;
+  }
 
   if (envValue <= fileValue) {
     return;

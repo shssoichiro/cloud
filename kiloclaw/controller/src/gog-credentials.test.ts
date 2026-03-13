@@ -247,6 +247,22 @@ describe('patchGogHistoryId', () => {
     expect(deps.writeFileSync).not.toHaveBeenCalled();
   });
 
+  it('skips gracefully on non-numeric historyId in file', () => {
+    const stateContent = JSON.stringify({ historyId: 'not-a-number' });
+    const deps = mockPatchDeps(stateContent);
+
+    expect(() => {
+      patchGogHistoryId({
+        account: 'user@gmail.com',
+        historyId: '200',
+        configDir: '/fake/config',
+        deps,
+      });
+    }).not.toThrow();
+
+    expect(deps.writeFileSync).not.toHaveBeenCalled();
+  });
+
   it('skips gracefully on invalid JSON', () => {
     const deps = {
       readFileSync: vi.fn().mockReturnValue('not valid json {{{'),
