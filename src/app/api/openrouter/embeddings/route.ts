@@ -263,6 +263,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
 
       if (shouldFallbackToOpenRouter(provider.id, providerConfig)) {
         provider = PROVIDERS.OPENROUTER;
+        usageContext.provider = provider.id;
       }
     }
   }
