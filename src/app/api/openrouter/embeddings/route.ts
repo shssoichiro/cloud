@@ -3,7 +3,7 @@ import { type NextRequest } from 'next/server';
 import { generateProviderSpecificHash } from '@/lib/providerHash';
 import type { MicrodollarUsageContext } from '@/lib/processUsage';
 import { validateFeatureHeader, FEATURE_HEADER } from '@/lib/feature-detection';
-import { getEmbeddingProvider, type Provider } from '@/lib/providers';
+import { getEmbeddingProvider, PROVIDERS, type Provider } from '@/lib/providers';
 import { debugSaveProxyRequest } from '@/lib/debugUtils';
 import { captureException, setTag, startInactiveSpan } from '@sentry/nextjs';
 import { getUserFromAuth } from '@/lib/user.server';
@@ -38,6 +38,7 @@ import { emitApiMetricsForResponse } from '@/lib/o11y/api-metrics.server';
 import { normalizeModelId } from '@/lib/model-utils';
 import {
   buildUpstreamBody,
+  shouldFallbackToOpenRouter,
   stripModelPrefix,
   type EmbeddingProxyRequest,
 } from '@/lib/embeddings/embedding-request';
@@ -199,7 +200,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   // Extract fraud/project headers
   const { fraudHeaders, projectId } = extractFraudAndProjectHeaders(request);
 
-  const { provider, userByok } = await getEmbeddingProvider(
+  let { provider, userByok } = await getEmbeddingProvider(
     requestedModelLowerCased,
     user,
     organizationId
@@ -257,6 +258,10 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
 
     if (providerConfig) {
       requestBodyParsed.provider = providerConfig;
+
+      if (shouldFallbackToOpenRouter(provider.id, providerConfig)) {
+        provider = PROVIDERS.OPENROUTER;
+      }
     }
   }
 

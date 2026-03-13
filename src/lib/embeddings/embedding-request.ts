@@ -1,4 +1,5 @@
 import type { ProviderId } from '@/lib/providers/provider-id';
+import type { OpenRouterProviderConfig } from '@/lib/providers/openrouter/types';
 
 export type EmbeddingProxyRequest = {
   model: string;
@@ -61,4 +62,21 @@ export function buildUpstreamBody(
 export function stripModelPrefix(model: string): string {
   const slashIndex = model.indexOf('/');
   return slashIndex >= 0 ? model.slice(slashIndex + 1) : model;
+}
+
+/**
+ * Direct providers (Mistral, OpenAI) cannot enforce OpenRouter routing
+ * directives like provider deny lists or data collection policies.
+ * Returns true when the request should fall back to OpenRouter so these
+ * org-level restrictions are actually applied upstream.
+ */
+export function shouldFallbackToOpenRouter(
+  providerId: ProviderId,
+  providerConfig: OpenRouterProviderConfig | undefined
+): boolean {
+  if (!providerConfig) return false;
+  if (providerId !== 'mistral' && providerId !== 'openai') return false;
+  const directProviderDenied = providerConfig.ignore?.includes(providerId) ?? false;
+  const hasDataCollectionPolicy = providerConfig.data_collection != null;
+  return directProviderDenied || hasDataCollectionPolicy;
 }

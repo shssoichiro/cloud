@@ -1,5 +1,9 @@
 import { describe, it, expect } from '@jest/globals';
-import { buildUpstreamBody, stripModelPrefix } from './embedding-request';
+import {
+  buildUpstreamBody,
+  shouldFallbackToOpenRouter,
+  stripModelPrefix,
+} from './embedding-request';
 
 describe('buildUpstreamBody', () => {
   describe('mistral provider', () => {
@@ -193,5 +197,47 @@ describe('stripModelPrefix', () => {
 
   it('should handle empty string', () => {
     expect(stripModelPrefix('')).toBe('');
+  });
+});
+
+describe('shouldFallbackToOpenRouter', () => {
+  it('should return false when providerConfig is undefined', () => {
+    expect(shouldFallbackToOpenRouter('openai', undefined)).toBe(false);
+  });
+
+  it('should return false for non-direct providers', () => {
+    expect(shouldFallbackToOpenRouter('openrouter', { ignore: ['openai'] })).toBe(false);
+    expect(shouldFallbackToOpenRouter('vercel', { data_collection: 'deny' })).toBe(false);
+  });
+
+  it('should return true when ignore includes the direct provider slug (openai)', () => {
+    expect(shouldFallbackToOpenRouter('openai', { ignore: ['openai'] })).toBe(true);
+  });
+
+  it('should return true when ignore includes the direct provider slug (mistral)', () => {
+    expect(shouldFallbackToOpenRouter('mistral', { ignore: ['mistral'] })).toBe(true);
+  });
+
+  it('should return false when ignore does not include the direct provider slug', () => {
+    expect(shouldFallbackToOpenRouter('openai', { ignore: ['anthropic'] })).toBe(false);
+    expect(shouldFallbackToOpenRouter('mistral', { ignore: ['openai'] })).toBe(false);
+  });
+
+  it('should return true when data_collection is set to deny', () => {
+    expect(shouldFallbackToOpenRouter('openai', { data_collection: 'deny' })).toBe(true);
+  });
+
+  it('should return true when data_collection is set to allow', () => {
+    expect(shouldFallbackToOpenRouter('mistral', { data_collection: 'allow' })).toBe(true);
+  });
+
+  it('should return true when both ignore matches and data_collection is set', () => {
+    expect(
+      shouldFallbackToOpenRouter('openai', { ignore: ['openai'], data_collection: 'deny' })
+    ).toBe(true);
+  });
+
+  it('should return false for an empty providerConfig', () => {
+    expect(shouldFallbackToOpenRouter('openai', {})).toBe(false);
   });
 });
