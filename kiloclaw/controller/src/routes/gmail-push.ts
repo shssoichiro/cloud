@@ -29,7 +29,9 @@ export function registerGmailPushRoute(
         method: 'POST',
         headers: { 'content-type': c.req.header('content-type') ?? 'application/json' },
         body: c.req.raw.body,
-      });
+        // Required for streaming body in Node.js fetch
+        duplex: 'half',
+      } as RequestInit);
 
       if (upstream.ok) {
         return c.json({ ok: true }, 200);

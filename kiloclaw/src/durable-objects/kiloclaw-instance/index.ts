@@ -515,11 +515,10 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     // Restart machine so controller picks up the new env var
     let restartFailed = false;
     if (this.s.status === 'running' && this.s.flyMachineId) {
-      try {
-        await this.restartMachine();
-      } catch (err) {
+      const result = await this.restartMachine();
+      if (!result.success) {
         restartFailed = true;
-        console.warn('[DO] Gmail notification toggle saved but restart failed:', err);
+        console.warn('[DO] Gmail notification toggle saved but restart failed:', result.error);
       }
     }
 

@@ -162,12 +162,20 @@ function GoogleAccountSection({
                 mutations.setGmailNotifications.mutate(
                   { enabled: !gmailNotificationsEnabled },
                   {
-                    onSuccess: () => {
-                      toast.success(
-                        gmailNotificationsEnabled
-                          ? 'Gmail notifications disabled. Restarting...'
-                          : 'Gmail notifications enabled. Restarting...'
-                      );
+                    onSuccess: data => {
+                      if (data.restartFailed) {
+                        toast.success(
+                          gmailNotificationsEnabled
+                            ? 'Gmail notifications disabled. Restart the instance to apply.'
+                            : 'Gmail notifications enabled. Restart the instance to apply.'
+                        );
+                      } else {
+                        toast.success(
+                          gmailNotificationsEnabled
+                            ? 'Gmail notifications disabled. Restarting...'
+                            : 'Gmail notifications enabled. Restarting...'
+                        );
+                      }
                     },
                     onError: err => toast.error(`Failed: ${err.message}`),
                   }
