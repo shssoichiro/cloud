@@ -88,6 +88,15 @@ if [ ! -f "$KILOCLAW_DIR/.dev.vars" ]; then
   cp "$KILOCLAW_DIR/.dev.vars.example" "$KILOCLAW_DIR/.dev.vars"
 fi
 
+# Check AGENT_ENV_VARS_PRIVATE_KEY is configured
+AGENT_KEY="$(grep '^AGENT_ENV_VARS_PRIVATE_KEY=' "$KILOCLAW_DIR/.dev.vars" | head -1 | sed 's/^[^=]*=//' | sed 's/^"//;s/"$//')"
+if [ -z "$AGENT_KEY" ] || [ "$AGENT_KEY" = "..." ]; then
+  echo "ERROR: AGENT_ENV_VARS_PRIVATE_KEY is not configured in .dev.vars."
+  echo "Get the dev version from 1Password (engineering vault) and set it in"
+  echo "  $KILOCLAW_DIR/.dev.vars"
+  exit 1
+fi
+
 # ---------- Pull dev environment from Vercel ----------
 
 if [ ! -d "$MONOREPO_ROOT/.vercel" ] || [ ! -f "$MONOREPO_ROOT/.vercel/project.json" ]; then

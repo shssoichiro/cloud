@@ -147,25 +147,25 @@ are auto-managed and which require manual setup.
 
 **Auth:**
 
-| Variable               | Description                                                                 | Auto-managed               |
-| ---------------------- | --------------------------------------------------------------------------- | -------------------------- |
-| `NEXTAUTH_SECRET`      | JWT signing key. Must match the Next.js app's `NEXTAUTH_SECRET`             | Yes (synced from Vercel)   |
-| `INTERNAL_API_SECRET`  | Platform API key. Must match Next.js `KILOCLAW_INTERNAL_API_SECRET`         | Yes (synced from Vercel)   |
-| `GATEWAY_TOKEN_SECRET` | HMAC key for per-sandbox gateway tokens. Can be any arbitrary value in dev. | No (example default works) |
-| `WORKER_ENV`           | Set to `development`                                                        | No (example default works) |
+| Variable               | Description                                                                 | Source  | Auto-managed |
+| ---------------------- | --------------------------------------------------------------------------- | ------- | ------------ |
+| `NEXTAUTH_SECRET`      | JWT signing key. Must match the Next.js app's `NEXTAUTH_SECRET`             | Vercel  | Yes          |
+| `INTERNAL_API_SECRET`  | Platform API key. Must match Next.js `KILOCLAW_INTERNAL_API_SECRET`         | Vercel  | Yes          |
+| `GATEWAY_TOKEN_SECRET` | HMAC key for per-sandbox gateway tokens. Can be any arbitrary value in dev. | Example | No           |
+| `WORKER_ENV`           | Set to `development`                                                        | Example | No           |
 
 **Fly.io:**
 
-| Variable           | Description                                                                             | Auto-managed                 |
-| ------------------ | --------------------------------------------------------------------------------------- | ---------------------------- |
-| `FLY_API_TOKEN`    | Fly org token                                                                           | Yes (auto-created/refreshed) |
-| `FLY_ORG_SLUG`     | Fly org slug (read by script for token creation)                                        | No (example default works)   |
-| `FLY_REGISTRY_APP` | Shared Fly app that holds Docker images (e.g., `kiloclaw-dev`)                          | No (example default works)   |
-| `FLY_APP_NAME`     | Legacy fallback app name for existing instances (may be removed in future)              | No (example default works)   |
-| `FLY_REGION`       | Region priority list, e.g. `us,eu`. Tries US first, falls back to EU, then gives up.    | No (example default works)   |
-| `FLY_IMAGE_TAG`    | Docker image tag. Set automatically by `scripts/push-dev.sh`, or use `latest` to start. | By push-dev.sh               |
-| `FLY_IMAGE_DIGEST` | Docker image digest. Set automatically by `scripts/push-dev.sh`.                        | By push-dev.sh               |
-| `OPENCLAW_VERSION` | OpenClaw version in the image. Set automatically by `scripts/push-dev.sh`.              | By push-dev.sh               |
+| Variable           | Description                                                                             | Source       | Auto-managed |
+| ------------------ | --------------------------------------------------------------------------------------- | ------------ | ------------ |
+| `FLY_API_TOKEN`    | Fly org token                                                                           | dev-start.sh | Yes          |
+| `FLY_ORG_SLUG`     | Fly org slug (read by script for token creation)                                        | Example      | No           |
+| `FLY_REGISTRY_APP` | Shared Fly app that holds Docker images (e.g., `kiloclaw-dev`)                          | Example      | No           |
+| `FLY_APP_NAME`     | Legacy fallback app name for existing instances (may be removed in future)              | Example      | No           |
+| `FLY_REGION`       | Region priority list, e.g. `us,eu`. Tries US first, falls back to EU, then gives up.   | Example      | No           |
+| `FLY_IMAGE_TAG`    | Docker image tag. Set automatically by `scripts/push-dev.sh`, or use `latest` to start. | push-dev.sh  | Yes          |
+| `FLY_IMAGE_DIGEST` | Docker image digest. Set automatically by `scripts/push-dev.sh`.                        | push-dev.sh  | Yes          |
+| `OPENCLAW_VERSION` | OpenClaw version in the image. Set automatically by `scripts/push-dev.sh`.              | push-dev.sh  | Yes          |
 
 `FLY_IMAGE_TAG`, `FLY_IMAGE_DIGEST`, and `OPENCLAW_VERSION` together control
 what version gets deployed by default for your dev instances. The build script
@@ -174,21 +174,21 @@ values or use `latest` (if a `latest` tag exists in the registry).
 
 **Tunnel / API:**
 
-| Variable                | Description                       | Auto-managed                  |
-| ----------------------- | --------------------------------- | ----------------------------- |
-| `KILOCODE_API_BASE_URL` | Your tunnel URL + `/api/gateway/` | Yes (set by dev-start script) |
+| Variable                | Description                       | Source       | Auto-managed |
+| ----------------------- | --------------------------------- | ------------ | ------------ |
+| `KILOCODE_API_BASE_URL` | Your tunnel URL + `/api/gateway/` | dev-start.sh | Yes          |
 
 **Encryption:**
 
-| Variable                     | Description                                                                                                        | Auto-managed |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------ |
-| `AGENT_ENV_VARS_PRIVATE_KEY` | RSA private key (PEM). Get the **dev** version from 1Password (engineering vault). Quote the value in `.dev.vars`. | No           |
+| Variable                     | Description                                                                                                        | Source     | Auto-managed |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------- | ------------ |
+| `AGENT_ENV_VARS_PRIVATE_KEY` | RSA private key (PEM). Get the **dev** version from 1Password (engineering vault). Quote the value in `.dev.vars`. | 1Password  | No           |
 
 **Other:**
 
-| Variable                   | Description                                       | Auto-managed               |
-| -------------------------- | ------------------------------------------------- | -------------------------- |
-| `OPENCLAW_ALLOWED_ORIGINS` | Comma-separated origins for WebSocket connections | No (example default works) |
+| Variable                   | Description                                       | Source  | Auto-managed |
+| -------------------------- | ------------------------------------------------- | ------- | ------------ |
+| `OPENCLAW_ALLOWED_ORIGINS` | Comma-separated origins for WebSocket connections | Example | No           |
 
 ### `.env.local` (Next.js, monorepo root)
 
