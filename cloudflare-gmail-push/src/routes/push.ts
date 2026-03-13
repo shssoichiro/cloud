@@ -17,7 +17,7 @@ pushRoute.post('/user/:userId', async c => {
   // Validate Google OIDC token (mandatory).
   // Each user's Pub/Sub subscription uses a per-user audience that embeds the userId,
   // so the audience check implicitly binds the token to this specific user.
-  const perUserAudience = `${c.env.OIDC_AUDIENCE}/push/user/${userId}`;
+  const perUserAudience = `${c.env.OIDC_AUDIENCE_BASE}/push/user/${userId}`;
   const oidcResult = await validateOidcToken(c.req.header('authorization'), perUserAudience);
   if (!oidcResult.valid) {
     console.warn(`[gmail-push] OIDC validation failed for user ${userId}: ${oidcResult.error}`);

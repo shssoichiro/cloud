@@ -22,7 +22,7 @@ function createApp() {
   app.use('*', async (c, next) => {
     c.env = {
       KILOCLAW: {} as unknown as Fetcher,
-      OIDC_AUDIENCE: 'https://kiloclaw-gmail.kiloapps.io',
+      OIDC_AUDIENCE_BASE: 'https://kiloclaw-gmail.kiloapps.io',
       INTERNAL_API_SECRET: { get: () => Promise.resolve('test-internal-secret') },
       GMAIL_PUSH_QUEUE: mockQueue as unknown as Queue,
       IDEMPOTENCY: {} as unknown as DurableObjectNamespace,
