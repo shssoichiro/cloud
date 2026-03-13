@@ -173,7 +173,6 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
           '20000',
         ],
       });
-      startWatchRenewal(googleAccountEmail);
     }
   }
 
@@ -216,6 +215,7 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
   await supervisor.start();
   if (gmailWatchSupervisor) {
     await gmailWatchSupervisor.start();
+    startWatchRenewal(env.KILOCLAW_GOOGLE_ACCOUNT_EMAIL!);
     console.log('[controller] Gmail watch process started');
   }
 
