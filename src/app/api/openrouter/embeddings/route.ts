@@ -8,7 +8,7 @@ import { debugSaveProxyRequest } from '@/lib/debugUtils';
 import { captureException, setTag, startInactiveSpan } from '@sentry/nextjs';
 import { getUserFromAuth } from '@/lib/user.server';
 import { sentryRootSpan } from '@/lib/getRootSpan';
-import { isFreeModel, isKiloFreeModel } from '@/lib/models';
+import { isFreeModel } from '@/lib/models';
 import {
   captureProxyError,
   checkOrganizationModelRestrictions,
@@ -109,24 +109,6 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     return NextResponse.json({ error: 'Unable to determine client IP' }, { status: 400 });
   }
 
-  // For FREE models: check IP rate limit BEFORE auth
-  if (isKiloFreeModel(requestedModelLowerCased)) {
-    const rateLimitResult = await checkFreeModelRateLimit(ipAddress);
-    if (!rateLimitResult.allowed) {
-      console.warn(
-        `Free model rate limit exceeded, ip address: ${ipAddress}, model: ${requestedModelLowerCased}, request count: ${rateLimitResult.requestCount}`
-      );
-      return NextResponse.json(
-        {
-          error: 'Rate limit exceeded',
-          message:
-            'Free model usage limit reached. Please try again later or upgrade to a paid model.',
-        },
-        { status: 429 }
-      );
-    }
-  }
-
   // Auth check
   const authSpan = startInactiveSpan({ name: 'auth-check' });
   const {
@@ -181,15 +163,6 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     organizationId = undefined;
   } else {
     user = maybeUser;
-  }
-
-  // Log to free_model_usage for rate limiting (at request start, before processing)
-  if (isKiloFreeModel(requestedModelLowerCased)) {
-    await logFreeModelRequest(
-      ipAddress,
-      requestedModelLowerCased,
-      isAnonymousContext(user) ? undefined : user.id
-    );
   }
 
   // Extract fraud/project headers
