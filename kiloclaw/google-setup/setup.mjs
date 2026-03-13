@@ -428,49 +428,6 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Step 6: Create config tarball, encrypt, and POST
-// ---------------------------------------------------------------------------
-
-console.log('Creating config tarball...');
-const tarballBuffer = execSync(`tar czf - -C ${gogHome}/.config gogcli`, {
-  maxBuffer: 1024 * 1024,
-});
-const tarballBase64 = tarballBuffer.toString('base64');
-
-console.log(`Config tarball size: ${tarballBuffer.length} bytes`);
-
-console.log('Encrypting config tarball...');
-
-const encryptedBundle = {
-  gogConfigTarball: encryptEnvelope(tarballBase64, publicKeyPem),
-  email: userEmail,
-};
-
-// ---------------------------------------------------------------------------
-// POST encrypted credentials to worker
-// ---------------------------------------------------------------------------
-
-console.log('Sending credentials to your kiloclaw instance...');
-
-const postRes = await fetch(`${workerUrl}/api/admin/google-credentials`, {
-  method: 'POST',
-  headers: authHeaders,
-  body: JSON.stringify({ googleCredentials: encryptedBundle }),
-});
-
-if (!postRes.ok) {
-  const body = await postRes.text();
-  console.error('Failed to store credentials:', body);
-  process.exit(1);
-}
-
-console.log('\nGoogle account connected!');
-console.log('Credentials sent to your kiloclaw instance.');
-if (userEmail) {
-  console.log(`Connected account: ${userEmail}`);
-}
-
-// ---------------------------------------------------------------------------
 // Gmail Pub/Sub setup (for push notifications)
 // ---------------------------------------------------------------------------
 
@@ -658,6 +615,50 @@ if (!pushUserId) {
     console.warn('Warning: Gmail watch registration failed:', err.message);
     console.warn('You can register manually later with: gog gmail watch start');
   }
+}
+
+// ---------------------------------------------------------------------------
+// Step 6: Create config tarball, encrypt, and POST
+// (After gmail watch start so watch state is included in the tarball)
+// ---------------------------------------------------------------------------
+
+console.log('\nCreating config tarball...');
+const tarballBuffer = execSync(`tar czf - -C ${gogHome}/.config gogcli`, {
+  maxBuffer: 1024 * 1024,
+});
+const tarballBase64 = tarballBuffer.toString('base64');
+
+console.log(`Config tarball size: ${tarballBuffer.length} bytes`);
+
+console.log('Encrypting config tarball...');
+
+const encryptedBundle = {
+  gogConfigTarball: encryptEnvelope(tarballBase64, publicKeyPem),
+  email: userEmail,
+};
+
+// ---------------------------------------------------------------------------
+// POST encrypted credentials to worker
+// ---------------------------------------------------------------------------
+
+console.log('Sending credentials to your kiloclaw instance...');
+
+const postRes = await fetch(`${workerUrl}/api/admin/google-credentials`, {
+  method: 'POST',
+  headers: authHeaders,
+  body: JSON.stringify({ googleCredentials: encryptedBundle }),
+});
+
+if (!postRes.ok) {
+  const body = await postRes.text();
+  console.error('Failed to store credentials:', body);
+  process.exit(1);
+}
+
+console.log('\nGoogle account connected!');
+console.log('Credentials sent to your kiloclaw instance.');
+if (userEmail) {
+  console.log(`Connected account: ${userEmail}`);
 }
 
 console.log('\nSetup complete!');
