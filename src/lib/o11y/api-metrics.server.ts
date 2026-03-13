@@ -2,7 +2,6 @@ import { after } from 'next/server';
 import { createParser, type EventSourceMessage } from 'eventsource-parser';
 import { z } from 'zod';
 import { O11Y_KILO_GATEWAY_CLIENT_SECRET, O11Y_SERVICE_URL } from '@/lib/config.server';
-import type OpenAI from 'openai';
 import type { CompletionUsage } from 'openai/resources/completions';
 import type { GatewayRequest } from '@/lib/providers/openrouter/types';
 
