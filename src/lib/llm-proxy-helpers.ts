@@ -30,6 +30,7 @@ import type {
   MicrodollarUsageStats,
   PromptInfo,
 } from '@/lib/processUsage.types';
+import { getMaxTokens } from '@/lib/providers/openrouter/request-helpers';
 
 // FIM suffix markers for tracking purposes - used to wrap suffix in a fake system prompt format
 // This allows FIM requests to be tracked consistently with chat requests
@@ -121,12 +122,6 @@ const byokErrorMessages: Record<number, string> = {
 
 function byokErrorMessage(status: number): string | undefined {
   return byokErrorMessages[status];
-}
-
-export function getMaxTokens(request: GatewayRequest) {
-  return request.kind === 'chat_completions'
-    ? (request.body.max_completion_tokens ?? request.body.max_tokens ?? null)
-    : (request.body.max_output_tokens ?? null);
 }
 
 function estimateTokenCount(request: GatewayRequest) {

@@ -18,7 +18,7 @@ import { extractInputItemTextContent } from '@/lib/processUsage.responses';
 import type { AuthProviderId } from '@/lib/auth/provider-metadata';
 import type { FeatureValue } from '@/lib/feature-detection';
 import 'server-only';
-import { getMaxTokens } from '@/lib/llm-proxy-helpers';
+import { getMaxTokens } from '@/lib/providers/openrouter/request-helpers';
 
 /**
  * Extract full prompts from a GatewayRequest (chat completions or responses API).

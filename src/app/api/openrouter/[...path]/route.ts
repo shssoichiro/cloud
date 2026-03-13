@@ -35,7 +35,6 @@ import {
   temporarilyUnavailableResponse,
   usageLimitExceededResponse,
   wrapInSafeNextResponse,
-  getMaxTokens,
 } from '@/lib/llm-proxy-helpers';
 import { getBalanceAndOrgSettings } from '@/lib/organizations/organization-usage';
 import { ENABLE_TOOL_REPAIR, repairTools } from '@/lib/tool-calling';
@@ -70,6 +69,7 @@ import { applyResolvedAutoModel, isKiloAutoModel } from '@/lib/kilo-auto-model';
 import { fixOpenCodeDuplicateReasoning } from '@/lib/providers/fixOpenCodeDuplicateReasoning';
 import type { MicrodollarUsageContext, PromptInfo } from '@/lib/processUsage.types';
 import { extractResponsesPromptInfo } from '@/lib/processUsage.responses';
+import { getMaxTokens } from '@/lib/providers/openrouter/request-helpers';
 
 export const maxDuration = 800;
 
