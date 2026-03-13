@@ -32,6 +32,7 @@ export const FEATURE_VALUES = [
   'openclaw',
   'direct-gateway',
   'embeddings',
+  'openclaw-embedding',
 ] as const;
 
 const featureSchema = z.enum(FEATURE_VALUES);

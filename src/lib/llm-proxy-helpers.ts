@@ -568,34 +568,11 @@ type EmbeddingResponse = {
   usage: EmbeddingUsage;
 };
 
-// Known embedding pricing in microdollars per token (= USD per million tokens)
-const EMBEDDING_PRICING: Record<string, number> = {
-  // Mistral
-  'mistral-embed': 0.1,
-  'codestral-embed-2505': 0.15,
-  // OpenAI
-  'text-embedding-3-small': 0.02,
-  'text-embedding-3-large': 0.13,
-  'text-embedding-ada-002': 0.1,
-};
-
-function computeDirectEmbeddingMicrodollarCost(model: string, usage: EmbeddingUsage): number {
-  const pricePerToken = EMBEDDING_PRICING[model] ?? 0.2;
-  return Math.round(usage.prompt_tokens * pricePerToken);
-}
-
-export function parseEmbeddingUsageFromResponse(
-  responseText: string,
-  isDirectProvider: boolean
-): MicrodollarUsageStats {
+export function parseEmbeddingUsageFromResponse(responseText: string): MicrodollarUsageStats {
   const json: EmbeddingResponse = JSON.parse(responseText);
 
-  // OpenRouter includes cost in USD → convert to microdollars.
-  // Direct providers (Mistral, OpenAI) don't → compute from known pricing.
-  const cost_mUsd =
-    !isDirectProvider && json.usage.cost != null
-      ? toMicrodollars(json.usage.cost)
-      : computeDirectEmbeddingMicrodollarCost(json.model ?? '', json.usage);
+  // Upstream providers (OpenRouter, Vercel) include cost in USD → convert to microdollars.
+  const cost_mUsd = json.usage.cost != null ? toMicrodollars(json.usage.cost) : 0;
 
   return {
     messageId: json.id ?? null,
@@ -638,8 +615,7 @@ export function extractEmbeddingPromptInfo(body: { input: unknown }): PromptInfo
 export function countAndStoreEmbeddingUsage(
   clonedResponse: Response,
   usageContext: MicrodollarUsageContext,
-  requestSpan: Span | undefined,
-  isDirectProvider: boolean
+  requestSpan: Span | undefined
 ) {
   debugSaveProxyResponseStream(clonedResponse, '.log.resp.json');
 
@@ -647,7 +623,7 @@ export function countAndStoreEmbeddingUsage(
     ? Promise.resolve(null)
     : clonedResponse
         .text()
-        .then(text => parseEmbeddingUsageFromResponse(text, isDirectProvider))
+        .then(text => parseEmbeddingUsageFromResponse(text))
         .catch(() => null);
 
   after(

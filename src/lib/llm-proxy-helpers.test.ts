@@ -283,69 +283,31 @@ describe('parseEmbeddingUsageFromResponse', () => {
     });
   }
 
-  it('should use OpenRouter cost field when available and not a direct provider', () => {
+  it('should use upstream cost field when available', () => {
     const response = makeResponse({
       usage: { prompt_tokens: 100, total_tokens: 100, cost: 0.00005 },
     });
 
-    const result = parseEmbeddingUsageFromResponse(response, false);
+    const result = parseEmbeddingUsageFromResponse(response);
 
     // toMicrodollars(0.00005) = Math.round(0.00005 * 1_000_000) = 50
     expect(result.cost_mUsd).toBe(50);
   });
 
-  it('should compute cost from known pricing for direct Mistral models', () => {
+  it('should default to 0 cost when upstream cost field is absent', () => {
     const response = makeResponse({
-      model: 'mistral-embed',
       usage: { prompt_tokens: 1000, total_tokens: 1000 },
     });
 
-    const result = parseEmbeddingUsageFromResponse(response, true);
+    const result = parseEmbeddingUsageFromResponse(response);
 
-    // mistral-embed: 0.1 microdollars/token * 1000 = 100
-    expect(result.cost_mUsd).toBe(100);
-  });
-
-  it('should compute cost from known pricing for direct OpenAI models', () => {
-    const response = makeResponse({
-      model: 'text-embedding-3-small',
-      usage: { prompt_tokens: 1000, total_tokens: 1000 },
-    });
-
-    const result = parseEmbeddingUsageFromResponse(response, true);
-
-    // text-embedding-3-small: 0.02 microdollars/token * 1000 = 20
-    expect(result.cost_mUsd).toBe(20);
-  });
-
-  it('should use default fallback pricing for unknown direct-provider models', () => {
-    const response = makeResponse({
-      model: 'some-unknown-model',
-      usage: { prompt_tokens: 1000, total_tokens: 1000 },
-    });
-
-    const result = parseEmbeddingUsageFromResponse(response, true);
-
-    // fallback: 0.2 microdollars/token * 1000 = 200
-    expect(result.cost_mUsd).toBe(200);
-  });
-
-  it('should ignore OpenRouter cost field for direct providers', () => {
-    const response = makeResponse({
-      model: 'text-embedding-3-small',
-      usage: { prompt_tokens: 1000, total_tokens: 1000, cost: 0.99 },
-    });
-
-    const result = parseEmbeddingUsageFromResponse(response, true);
-
-    // Direct provider → ignores cost field, uses known pricing
-    expect(result.cost_mUsd).toBe(20);
+    expect(result.cost_mUsd).toBe(0);
   });
 
   it('should extract id as messageId', () => {
     const response = makeResponse({ id: 'embd-abc' });
 
-    const result = parseEmbeddingUsageFromResponse(response, false);
+    const result = parseEmbeddingUsageFromResponse(response);
 
     expect(result.messageId).toBe('embd-abc');
   });
@@ -355,7 +317,7 @@ describe('parseEmbeddingUsageFromResponse', () => {
     const parsed = JSON.parse(response);
     delete parsed.id;
 
-    const result = parseEmbeddingUsageFromResponse(JSON.stringify(parsed), false);
+    const result = parseEmbeddingUsageFromResponse(JSON.stringify(parsed));
 
     expect(result.messageId).toBeNull();
   });
@@ -363,7 +325,7 @@ describe('parseEmbeddingUsageFromResponse', () => {
   it('should set hasError to true when model is empty', () => {
     const response = makeResponse({ model: '' });
 
-    const result = parseEmbeddingUsageFromResponse(response, false);
+    const result = parseEmbeddingUsageFromResponse(response);
 
     expect(result.hasError).toBe(true);
   });
@@ -371,7 +333,7 @@ describe('parseEmbeddingUsageFromResponse', () => {
   it('should set hasError to false when model is present', () => {
     const response = makeResponse({ model: 'text-embedding-3-small' });
 
-    const result = parseEmbeddingUsageFromResponse(response, false);
+    const result = parseEmbeddingUsageFromResponse(response);
 
     expect(result.hasError).toBe(false);
   });
@@ -379,7 +341,7 @@ describe('parseEmbeddingUsageFromResponse', () => {
   it('should always set outputTokens to 0 and streamed/cancelled to false', () => {
     const response = makeResponse();
 
-    const result = parseEmbeddingUsageFromResponse(response, false);
+    const result = parseEmbeddingUsageFromResponse(response);
 
     expect(result.outputTokens).toBe(0);
     expect(result.streamed).toBe(false);
@@ -391,7 +353,7 @@ describe('parseEmbeddingUsageFromResponse', () => {
       usage: { prompt_tokens: 42, total_tokens: 42 },
     });
 
-    const result = parseEmbeddingUsageFromResponse(response, false);
+    const result = parseEmbeddingUsageFromResponse(response);
 
     expect(result.inputTokens).toBe(42);
   });

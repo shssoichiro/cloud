@@ -3,7 +3,7 @@ import { type NextRequest } from 'next/server';
 import { generateProviderSpecificHash } from '@/lib/providerHash';
 import type { MicrodollarUsageContext } from '@/lib/processUsage';
 import { validateFeatureHeader, FEATURE_HEADER } from '@/lib/feature-detection';
-import { getEmbeddingProvider, PROVIDERS, type Provider } from '@/lib/providers';
+import { getEmbeddingProvider, type Provider } from '@/lib/providers';
 import { debugSaveProxyRequest } from '@/lib/debugUtils';
 import { captureException, setTag, startInactiveSpan } from '@sentry/nextjs';
 import { getUserFromAuth } from '@/lib/user.server';
@@ -36,12 +36,7 @@ import {
 import { PROMOTION_MAX_REQUESTS, PROMOTION_WINDOW_HOURS } from '@/lib/constants';
 import { emitApiMetricsForResponse } from '@/lib/o11y/api-metrics.server';
 import { normalizeModelId } from '@/lib/model-utils';
-import {
-  buildUpstreamBody,
-  shouldFallbackToOpenRouter,
-  stripModelPrefix,
-  type EmbeddingProxyRequest,
-} from '@/lib/embeddings/embedding-request';
+import { buildUpstreamBody, type EmbeddingProxyRequest } from '@/lib/embeddings/embedding-request';
 import { mapModelIdToVercel } from '@/lib/providers/vercel/mapModelIdToVercel';
 import { getVercelInferenceProviderConfigForUserByok } from '@/lib/providers/vercel';
 
@@ -200,15 +195,11 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   // Extract fraud/project headers
   const { fraudHeaders, projectId } = extractFraudAndProjectHeaders(request);
 
-  const embeddingProviderResult = await getEmbeddingProvider(
+  const { provider, userByok } = await getEmbeddingProvider(
     requestedModelLowerCased,
     user,
     organizationId
   );
-  let { provider } = embeddingProviderResult;
-  const { userByok } = embeddingProviderResult;
-
-  console.debug(`Embedding request routing to ${provider.id}`);
 
   const feature = validateFeatureHeader(request.headers.get(FEATURE_HEADER) || 'embeddings');
 
@@ -260,11 +251,6 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
 
     if (providerConfig) {
       requestBodyParsed.provider = providerConfig;
-
-      if (shouldFallbackToOpenRouter(provider.id, providerConfig)) {
-        provider = PROVIDERS.OPENROUTER;
-        usageContext.provider = provider.id;
-      }
     }
   }
 
@@ -278,27 +264,17 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     op: 'http.client',
   });
 
-  // For direct providers (Mistral, OpenAI), strip the provider prefix from the model ID
-  // and set the safety identifier for OpenRouter
-  const isDirectProvider = provider.id === 'mistral' || provider.id === 'openai';
-  if (isDirectProvider) {
-    requestBodyParsed.model = stripModelPrefix(requestBodyParsed.model);
-  } else {
-    requestBodyParsed.user = generateProviderSpecificHash(user.id, provider);
-  }
+  // Always set the hashed identifier for upstream abuse attribution / safety scoping
+  requestBodyParsed.safety_identifier = generateProviderSpecificHash(user.id, provider);
 
   // BYOK: for Vercel gateway, pass the user's key via providerOptions (same as chat completions).
-  // For direct providers, substitute the API key in the Authorization header.
-  const effectiveProvider =
-    userByok && userByok.length > 0 && provider.id !== 'vercel'
-      ? { ...provider, apiKey: userByok[0].decryptedAPIKey }
-      : provider;
+  const effectiveProvider = provider;
 
   if (userByok && userByok.length > 0 && provider.id === 'vercel') {
     requestBodyParsed.model = mapModelIdToVercel(requestBodyParsed.model);
   }
 
-  const upstreamBody = buildUpstreamBody(requestBodyParsed, effectiveProvider.id);
+  const upstreamBody = buildUpstreamBody(requestBodyParsed);
 
   if (userByok && userByok.length > 0 && provider.id === 'vercel') {
     const byokProviders: Record<string, unknown[]> = {};
@@ -370,7 +346,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   }
 
   const clonedResponse = response.clone();
-  countAndStoreEmbeddingUsage(clonedResponse, usageContext, embeddingRequestSpan, isDirectProvider);
+  countAndStoreEmbeddingUsage(clonedResponse, usageContext, embeddingRequestSpan);
 
   return wrapInSafeNextResponse(response);
 }

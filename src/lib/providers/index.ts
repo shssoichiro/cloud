@@ -193,23 +193,13 @@ export async function getEmbeddingProvider(
   user: User | AnonymousUserContext,
   organizationId: string | undefined
 ): Promise<{ provider: Provider; userByok: BYOKResult[] | null }> {
-  // 1. BYOK check
+  // 1. BYOK check — route through Vercel AI Gateway when user has their own key
   const userByok = await checkBYOK(user, requestedModel, organizationId);
   if (userByok) {
     return { provider: PROVIDERS.VERCEL_AI_GATEWAY, userByok };
   }
 
-  // 2. Mistral direct for mistralai/* models
-  if (isMistralModel(requestedModel)) {
-    return { provider: PROVIDERS.MISTRAL, userByok: null };
-  }
-
-  // 3. OpenAI direct for openai/* models
-  if (isOpenAiModel(requestedModel)) {
-    return { provider: PROVIDERS.OPENAI, userByok: null };
-  }
-
-  // 4. Default to OpenRouter
+  // 2. All non-BYOK embedding requests go through OpenRouter
   return { provider: PROVIDERS.OPENROUTER, userByok: null };
 }
 

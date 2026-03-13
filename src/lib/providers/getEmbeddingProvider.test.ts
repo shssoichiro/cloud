@@ -28,31 +28,19 @@ describe('getEmbeddingProvider', () => {
     mockedGetBYOKforOrganization.mockClear().mockResolvedValue(null);
   });
 
-  it('should route mistralai/* models to PROVIDERS.MISTRAL', async () => {
+  it('should route all non-BYOK models to PROVIDERS.OPENROUTER', async () => {
     const user = createTestUser();
-    const result = await getEmbeddingProvider('mistralai/mistral-embed', user, undefined);
 
-    expect(result.provider.id).toBe('mistral');
-    expect(result.provider).toBe(PROVIDERS.MISTRAL);
-    expect(result.userByok).toBeNull();
-  });
-
-  it('should route openai/* models to PROVIDERS.OPENAI', async () => {
-    const user = createTestUser();
-    const result = await getEmbeddingProvider('openai/text-embedding-3-small', user, undefined);
-
-    expect(result.provider.id).toBe('openai');
-    expect(result.provider).toBe(PROVIDERS.OPENAI);
-    expect(result.userByok).toBeNull();
-  });
-
-  it('should route other models to PROVIDERS.OPENROUTER', async () => {
-    const user = createTestUser();
-    const result = await getEmbeddingProvider('google/text-embedding-004', user, undefined);
-
-    expect(result.provider.id).toBe('openrouter');
-    expect(result.provider).toBe(PROVIDERS.OPENROUTER);
-    expect(result.userByok).toBeNull();
+    for (const model of [
+      'mistralai/mistral-embed',
+      'openai/text-embedding-3-small',
+      'google/text-embedding-004',
+    ]) {
+      const result = await getEmbeddingProvider(model, user, undefined);
+      expect(result.provider.id).toBe('openrouter');
+      expect(result.provider).toBe(PROVIDERS.OPENROUTER);
+      expect(result.userByok).toBeNull();
+    }
   });
 
   it('should route to Vercel AI Gateway when BYOK is available', async () => {
@@ -89,19 +77,19 @@ describe('getEmbeddingProvider', () => {
     const anonUser = createAnonymousContext('127.0.0.1');
     const result = await getEmbeddingProvider('openai/text-embedding-3-small', anonUser, undefined);
 
-    expect(result.provider.id).toBe('openai');
+    expect(result.provider.id).toBe('openrouter');
     expect(result.userByok).toBeNull();
     expect(mockedGetModelUserByokProviders).not.toHaveBeenCalled();
   });
 
-  it('should fall through to model-based routing when no BYOK keys found', async () => {
+  it('should fall through to OpenRouter when no BYOK keys found', async () => {
     const user = createTestUser();
     mockedGetModelUserByokProviders.mockResolvedValue(['openai']);
     mockedGetBYOKforUser.mockResolvedValue(null);
 
     const result = await getEmbeddingProvider('mistralai/codestral-embed-2505', user, undefined);
 
-    expect(result.provider.id).toBe('mistral');
+    expect(result.provider.id).toBe('openrouter');
     expect(result.userByok).toBeNull();
   });
 });
