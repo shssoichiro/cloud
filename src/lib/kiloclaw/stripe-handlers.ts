@@ -157,8 +157,14 @@ export async function handleKiloClawSubscriptionCreated(params: {
     // Guard against stale subscription.created retries: if the user already has
     // a row referencing a different Stripe subscription, this event is outdated
     // and must not overwrite the newer subscription's data.
+    // Exception: if the existing row is canceled, this is a legitimate
+    // re-subscription (createSubscriptionCheckout allows canceled users to
+    // buy again), so we let the upsert proceed.
     const [existingRow] = await tx
-      .select({ stripe_subscription_id: kiloclaw_subscriptions.stripe_subscription_id })
+      .select({
+        stripe_subscription_id: kiloclaw_subscriptions.stripe_subscription_id,
+        status: kiloclaw_subscriptions.status,
+      })
       .from(kiloclaw_subscriptions)
       .where(eq(kiloclaw_subscriptions.user_id, kiloUserId))
       .limit(1);
@@ -166,7 +172,8 @@ export async function handleKiloClawSubscriptionCreated(params: {
     if (
       existingRow &&
       existingRow.stripe_subscription_id !== null &&
-      existingRow.stripe_subscription_id !== subscription.id
+      existingRow.stripe_subscription_id !== subscription.id &&
+      existingRow.status !== 'canceled'
     ) {
       logWarning(
         'Ignoring stale subscription.created — user already has a different subscription',

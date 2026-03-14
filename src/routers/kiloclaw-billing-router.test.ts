@@ -219,7 +219,7 @@ describe('startTrial', () => {
 });
 
 describe('getBillingStatus', () => {
-  it('returns trialEligible true when user has no instance rows', async () => {
+  it('returns trialEligible true when user has no instance rows and no subscription', async () => {
     const caller = await createCallerForUser(user.id);
     const result = await caller.kiloclaw.getBillingStatus();
 
@@ -232,6 +232,21 @@ describe('getBillingStatus', () => {
       user_id: user.id,
       sandbox_id: 'sandbox-destroyed',
       destroyed_at: new Date().toISOString(),
+    });
+
+    const caller = await createCallerForUser(user.id);
+    const result = await caller.kiloclaw.getBillingStatus();
+
+    expect(result).not.toBeNull();
+    expect(result.trialEligible).toBe(false);
+  });
+
+  it('returns trialEligible false when user has a canceled subscription but no instance', async () => {
+    await db.insert(kiloclaw_subscriptions).values({
+      user_id: user.id,
+      plan: 'standard',
+      status: 'canceled',
+      stripe_subscription_id: 'sub_canceled_old',
     });
 
     const caller = await createCallerForUser(user.id);

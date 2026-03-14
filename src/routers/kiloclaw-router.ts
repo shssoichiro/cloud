@@ -1088,7 +1088,7 @@ export const kiloclawRouter = createTRPCRouter({
     return {
       hasAccess,
       accessReason,
-      trialEligible: !activeInstance,
+      trialEligible: !activeInstance && !sub,
       trial: trialData,
       subscription: subscriptionData,
       earlybird: earlybirdData,
