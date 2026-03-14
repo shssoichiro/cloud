@@ -664,7 +664,7 @@ const encryptedSelfServicePromos: readonly EncryptedSelfServicePromoCreditCatego
     amount_usd: 10,
     expiry_hours: 30 * 24,
     promotion_ends_at: new Date('2026-04-30'),
-    description: 'New York City ClawCon Credits',
+    description: 'Austin ClawCon Credits',
     total_redemptions_allowed: 2000,
   },
 ];
