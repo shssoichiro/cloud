@@ -451,6 +451,7 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
               sleep_after_minutes?: number | undefined;
             }
           | undefined;
+        staged_convoys_default: boolean;
       };
       meta: object;
     }>;
@@ -487,6 +488,7 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
                 sleep_after_minutes?: number | undefined;
               }
             | undefined;
+          staged_convoys_default?: boolean | undefined;
         };
       };
       output: {
@@ -517,6 +519,7 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
               sleep_after_minutes?: number | undefined;
             }
           | undefined;
+        staged_convoys_default: boolean;
       };
       meta: object;
     }>;
@@ -569,6 +572,7 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
         id: string;
         title: string;
         status: 'active' | 'landed';
+        staged: boolean;
         total_beads: number;
         closed_beads: number;
         created_by: string | null;
@@ -590,6 +594,37 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
       }[];
       meta: object;
     }>;
+    getConvoy: import('@trpc/server').TRPCQueryProcedure<{
+      input: {
+        townId: string;
+        convoyId: string;
+      };
+      output: {
+        id: string;
+        title: string;
+        status: 'active' | 'landed';
+        staged: boolean;
+        total_beads: number;
+        closed_beads: number;
+        created_by: string | null;
+        created_at: string;
+        landed_at: string | null;
+        feature_branch: string | null;
+        merge_mode: string | null;
+        beads: {
+          bead_id: string;
+          title: string;
+          status: string;
+          rig_id: string | null;
+          assignee_agent_name: string | null;
+        }[];
+        dependency_edges: {
+          bead_id: string;
+          depends_on_bead_id: string;
+        }[];
+      } | null;
+      meta: object;
+    }>;
     closeConvoy: import('@trpc/server').TRPCMutationProcedure<{
       input: {
         townId: string;
@@ -599,6 +634,38 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
         id: string;
         title: string;
         status: 'active' | 'landed';
+        staged: boolean;
+        total_beads: number;
+        closed_beads: number;
+        created_by: string | null;
+        created_at: string;
+        landed_at: string | null;
+        feature_branch: string | null;
+        merge_mode: string | null;
+        beads: {
+          bead_id: string;
+          title: string;
+          status: string;
+          rig_id: string | null;
+          assignee_agent_name: string | null;
+        }[];
+        dependency_edges: {
+          bead_id: string;
+          depends_on_bead_id: string;
+        }[];
+      } | null;
+      meta: object;
+    }>;
+    startConvoy: import('@trpc/server').TRPCMutationProcedure<{
+      input: {
+        townId: string;
+        convoyId: string;
+      };
+      output: {
+        id: string;
+        title: string;
+        status: 'active' | 'landed';
+        staged: boolean;
         total_beads: number;
         closed_beads: number;
         created_by: string | null;
@@ -1318,6 +1385,7 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
                   sleep_after_minutes?: number | undefined;
                 }
               | undefined;
+            staged_convoys_default: boolean;
           };
           meta: object;
         }>;
@@ -1354,6 +1422,7 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
                     sleep_after_minutes?: number | undefined;
                   }
                 | undefined;
+              staged_convoys_default?: boolean | undefined;
             };
           };
           output: {
@@ -1384,6 +1453,7 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
                   sleep_after_minutes?: number | undefined;
                 }
               | undefined;
+            staged_convoys_default: boolean;
           };
           meta: object;
         }>;
@@ -1436,6 +1506,7 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
             id: string;
             title: string;
             status: 'active' | 'landed';
+            staged: boolean;
             total_beads: number;
             closed_beads: number;
             created_by: string | null;
@@ -1457,6 +1528,37 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
           }[];
           meta: object;
         }>;
+        getConvoy: import('@trpc/server').TRPCQueryProcedure<{
+          input: {
+            townId: string;
+            convoyId: string;
+          };
+          output: {
+            id: string;
+            title: string;
+            status: 'active' | 'landed';
+            staged: boolean;
+            total_beads: number;
+            closed_beads: number;
+            created_by: string | null;
+            created_at: string;
+            landed_at: string | null;
+            feature_branch: string | null;
+            merge_mode: string | null;
+            beads: {
+              bead_id: string;
+              title: string;
+              status: string;
+              rig_id: string | null;
+              assignee_agent_name: string | null;
+            }[];
+            dependency_edges: {
+              bead_id: string;
+              depends_on_bead_id: string;
+            }[];
+          } | null;
+          meta: object;
+        }>;
         closeConvoy: import('@trpc/server').TRPCMutationProcedure<{
           input: {
             townId: string;
@@ -1466,6 +1568,38 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
             id: string;
             title: string;
             status: 'active' | 'landed';
+            staged: boolean;
+            total_beads: number;
+            closed_beads: number;
+            created_by: string | null;
+            created_at: string;
+            landed_at: string | null;
+            feature_branch: string | null;
+            merge_mode: string | null;
+            beads: {
+              bead_id: string;
+              title: string;
+              status: string;
+              rig_id: string | null;
+              assignee_agent_name: string | null;
+            }[];
+            dependency_edges: {
+              bead_id: string;
+              depends_on_bead_id: string;
+            }[];
+          } | null;
+          meta: object;
+        }>;
+        startConvoy: import('@trpc/server').TRPCMutationProcedure<{
+          input: {
+            townId: string;
+            convoyId: string;
+          };
+          output: {
+            id: string;
+            title: string;
+            status: 'active' | 'landed';
+            staged: boolean;
             total_beads: number;
             closed_beads: number;
             created_by: string | null;
