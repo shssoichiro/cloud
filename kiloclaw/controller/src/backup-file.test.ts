@@ -22,15 +22,20 @@ describe('backupFile', () => {
   });
 
   it('removes oldest backups when exceeding max count', () => {
-    const allBackups = [
+    // Simulate 5 existing backups + the one just created by copyFileSync.
+    // readdirSync runs AFTER copyFileSync, so it sees all 6.
+    const existingBackups = [
       'SOUL.md.bak.2026-03-01T00:00:00.000Z',
       'SOUL.md.bak.2026-03-02T00:00:00.000Z',
       'SOUL.md.bak.2026-03-03T00:00:00.000Z',
       'SOUL.md.bak.2026-03-04T00:00:00.000Z',
       'SOUL.md.bak.2026-03-05T00:00:00.000Z',
-      'SOUL.md.bak.2026-03-06T00:00:00.000Z',
     ];
-    (deps.readdirSync as ReturnType<typeof vi.fn>).mockReturnValue(allBackups);
+    // The new backup created by copyFileSync will also appear in the listing
+    (deps.readdirSync as ReturnType<typeof vi.fn>).mockImplementation(() => [
+      ...existingBackups,
+      'SOUL.md.bak.2026-03-06T00:00:00.000Z', // the one just created
+    ]);
 
     backupFile('/root/.openclaw/workspace/SOUL.md', deps);
 

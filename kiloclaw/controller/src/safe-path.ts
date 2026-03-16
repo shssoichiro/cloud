@@ -31,9 +31,8 @@ export function resolveSafePath(relativePath: string, rootDir: string): string {
     throw new SafePathError('Path escapes root directory');
   }
 
-  const relative = path.relative(rootDir, resolved);
-  const firstSegment = relative.split('/')[0];
-  if (firstSegment === 'credentials') {
+  const segments = path.relative(rootDir, resolved).split('/');
+  if (segments.includes('credentials')) {
     throw new SafePathError('Access to credentials directory is forbidden');
   }
 
@@ -50,9 +49,8 @@ export function verifyCanonicalized(canonicalPath: string, rootDir: string): voi
     throw new SafePathError('Path escapes root directory via symlink');
   }
 
-  const relative = path.relative(rootDir, canonicalPath);
-  const firstSegment = relative.split('/')[0];
-  if (firstSegment === 'credentials') {
+  const segments = path.relative(rootDir, canonicalPath).split('/');
+  if (segments.includes('credentials')) {
     throw new SafePathError('Access to credentials directory is forbidden');
   }
 }

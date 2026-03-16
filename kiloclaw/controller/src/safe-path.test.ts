@@ -36,6 +36,10 @@ describe('resolveSafePath', () => {
     expect(() => resolveSafePath('credentials/sub/key.json', ROOT)).toThrow();
   });
 
+  it('rejects nested credentials directory', () => {
+    expect(() => resolveSafePath('workspace/credentials/key.json', ROOT)).toThrow();
+  });
+
   it('allows paths that contain "credentials" as substring in filename', () => {
     expect(resolveSafePath('workspace/my-credentials-notes.md', ROOT)).toBe(
       '/root/.openclaw/workspace/my-credentials-notes.md'
