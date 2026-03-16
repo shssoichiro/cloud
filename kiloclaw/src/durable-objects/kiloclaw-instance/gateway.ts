@@ -1,4 +1,4 @@
-import type { ZodType } from 'zod';
+import { z, type ZodType } from 'zod';
 import type { KiloClawEnv } from '../../types';
 import { deriveGatewayToken } from '../../auth/gateway-token';
 import {
@@ -282,6 +282,78 @@ export async function replaceConfigOnMachine(
     if (isErrorUnknownRoute(error)) {
       return null;
     }
+    throw error;
+  }
+}
+
+const FileTreeResponseSchema = z.object({
+  tree: z.array(z.any()),
+});
+
+export async function getFileTree(
+  state: InstanceMutableState,
+  env: KiloClawEnv
+): Promise<{ tree: unknown[] } | null> {
+  try {
+    return await callGatewayController(
+      state,
+      env,
+      '/_kilo/files/tree',
+      'GET',
+      FileTreeResponseSchema
+    );
+  } catch (error) {
+    if (isErrorUnknownRoute(error)) return null;
+    throw error;
+  }
+}
+
+const FileReadResponseSchema = z.object({
+  content: z.string(),
+  etag: z.string(),
+});
+
+export async function readFile(
+  state: InstanceMutableState,
+  env: KiloClawEnv,
+  filePath: string
+): Promise<{ content: string; etag: string } | null> {
+  try {
+    return await callGatewayController(
+      state,
+      env,
+      `/_kilo/files/read?path=${encodeURIComponent(filePath)}`,
+      'GET',
+      FileReadResponseSchema
+    );
+  } catch (error) {
+    if (isErrorUnknownRoute(error)) return null;
+    throw error;
+  }
+}
+
+const FileWriteResponseSchema = z.object({
+  etag: z.string(),
+});
+
+export async function writeFile(
+  state: InstanceMutableState,
+  env: KiloClawEnv,
+  filePath: string,
+  content: string,
+  etag?: string
+): Promise<{ etag: string } | null> {
+  try {
+    return await callGatewayController(
+      state,
+      env,
+      '/_kilo/files/write',
+      'POST',
+      FileWriteResponseSchema,
+      { path: filePath, content, etag }
+    );
+  } catch (error) {
+    if (isErrorUnknownRoute(error)) return null;
     throw error;
   }
 }

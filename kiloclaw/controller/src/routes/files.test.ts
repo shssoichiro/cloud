@@ -75,7 +75,7 @@ describe('file routes', () => {
       const res = await app.request('/_kilo/files/tree', { headers: authHeaders() });
       expect(res.status).toBe(200);
 
-      const body = await res.json();
+      const body = (await res.json()) as any;
       expect(body.tree).toHaveLength(2);
       expect(body.tree[0]).toEqual({
         name: 'openclaw.json',
@@ -90,11 +90,15 @@ describe('file routes', () => {
       vi.mocked(fs.readdirSync).mockReturnValue([
         { name: 'SOUL.md', isDirectory: () => false, isSymbolicLink: () => false },
         { name: 'SOUL.md.bak.2026-03-01', isDirectory: () => false, isSymbolicLink: () => false },
-        { name: '.openclaw.json.kilotmp.abc', isDirectory: () => false, isSymbolicLink: () => false },
+        {
+          name: '.openclaw.json.kilotmp.abc',
+          isDirectory: () => false,
+          isSymbolicLink: () => false,
+        },
       ] as any);
 
       const res = await app.request('/_kilo/files/tree', { headers: authHeaders() });
-      const body = await res.json();
+      const body = (await res.json()) as any;
       expect(body.tree).toHaveLength(1);
       expect(body.tree[0].name).toBe('SOUL.md');
     });
@@ -111,7 +115,7 @@ describe('file routes', () => {
       });
       expect(res.status).toBe(200);
 
-      const body = await res.json();
+      const body = (await res.json()) as any;
       expect(body.content).toBe('# My Agent');
       expect(body.etag).toBeDefined();
     });
@@ -168,7 +172,7 @@ describe('file routes', () => {
       expect(backupFile).toHaveBeenCalledWith(`${ROOT}/workspace/SOUL.md`);
       expect(atomicWrite).toHaveBeenCalledWith(`${ROOT}/workspace/SOUL.md`, 'new content');
 
-      const body = await res.json();
+      const body = (await res.json()) as any;
       expect(body.etag).toBeDefined();
     });
 
@@ -202,7 +206,7 @@ describe('file routes', () => {
       });
       expect(res.status).toBe(409);
 
-      const body = await res.json();
+      const body = (await res.json()) as any;
       expect(body.code).toBe('file_etag_conflict');
     });
   });
