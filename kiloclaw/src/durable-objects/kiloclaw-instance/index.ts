@@ -468,7 +468,11 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     await this.loadState();
 
     this.s.googleCredentials = credentials;
-    await this.ctx.storage.put({ googleCredentials: this.s.googleCredentials });
+    this.s.gmailPushOidcEmail = credentials.gmailPushOidcEmail ?? null;
+    await this.ctx.storage.put({
+      googleCredentials: this.s.googleCredentials,
+      gmailPushOidcEmail: this.s.gmailPushOidcEmail,
+    });
 
     return { googleConnected: true };
   }
@@ -476,14 +480,80 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   /**
    * Clear stored Google credentials.
    * Does NOT restart the machine; the caller should prompt the user to restart.
+   * Also disables Gmail notifications to prevent stale state.
    */
   async clearGoogleCredentials(): Promise<{ googleConnected: boolean }> {
     await this.loadState();
 
     this.s.googleCredentials = null;
-    await this.ctx.storage.put({ googleCredentials: null });
+    this.s.gmailNotificationsEnabled = false;
+    this.s.gmailLastHistoryId = null;
+    this.s.gmailPushOidcEmail = null;
+    await this.ctx.storage.put({
+      googleCredentials: null,
+      gmailNotificationsEnabled: false,
+      gmailLastHistoryId: null,
+      gmailPushOidcEmail: null,
+    });
 
     return { googleConnected: false };
+  }
+
+  /**
+   * Update the last-seen Gmail history ID.
+   * Only writes if the new value is numerically greater than the stored one,
+   * preventing out-of-order updates from overwriting newer state.
+   */
+  async updateGmailHistoryId(historyId: string): Promise<void> {
+    await this.loadState();
+
+    const current = this.s.gmailLastHistoryId;
+    try {
+      const newNum = BigInt(historyId);
+      if (current !== null) {
+        const currentNum = BigInt(current);
+        if (newNum <= currentNum) {
+          return;
+        }
+      }
+    } catch {
+      return; // invalid input (BigInt throws on non-numeric strings)
+    }
+
+    this.s.gmailLastHistoryId = historyId;
+    await this.persist({ gmailLastHistoryId: historyId });
+  }
+
+  /**
+   * Return the stored OIDC service account email for Gmail push validation.
+   * Lightweight — no side effects, no Fly checks.
+   */
+  async getGmailOidcEmail(): Promise<{ gmailPushOidcEmail: string | null }> {
+    await this.loadState();
+    return { gmailPushOidcEmail: this.s.gmailPushOidcEmail };
+  }
+
+  /**
+   * Enable or disable Gmail push notifications.
+   * Persists the flag — takes effect immediately at the queue consumer level, no restart needed.
+   */
+  async updateGmailNotifications(
+    enabled: boolean
+  ): Promise<{ gmailNotificationsEnabled: boolean }> {
+    await this.loadState();
+
+    if (!this.s.userId || !this.s.sandboxId) {
+      throw new Error('Instance is not provisioned');
+    }
+
+    if (enabled && !this.s.googleCredentials) {
+      throw new Error('Cannot enable Gmail notifications without a connected Google account');
+    }
+
+    this.s.gmailNotificationsEnabled = enabled;
+    await this.persist({ gmailNotificationsEnabled: enabled });
+
+    return { gmailNotificationsEnabled: enabled };
   }
 
   // ── Pairing ─────────────────────────────────────────────────────────
@@ -794,6 +864,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     trackedImageTag: string | null;
     trackedImageDigest: string | null;
     googleConnected: boolean;
+    gmailNotificationsEnabled: boolean;
   }> {
     await this.loadState();
 
@@ -829,6 +900,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       trackedImageTag: this.s.trackedImageTag,
       trackedImageDigest: this.s.trackedImageDigest,
       googleConnected: this.s.googleCredentials !== null,
+      gmailNotificationsEnabled: this.s.gmailNotificationsEnabled,
     };
   }
 
@@ -852,6 +924,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     trackedImageTag: string | null;
     trackedImageDigest: string | null;
     googleConnected: boolean;
+    gmailNotificationsEnabled: boolean;
     pendingDestroyMachineId: string | null;
     pendingDestroyVolumeId: string | null;
     pendingPostgresMarkOnFinalize: boolean;
@@ -888,6 +961,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       trackedImageTag: this.s.trackedImageTag,
       trackedImageDigest: this.s.trackedImageDigest,
       googleConnected: this.s.googleCredentials !== null,
+      gmailNotificationsEnabled: this.s.gmailNotificationsEnabled,
       pendingDestroyMachineId: this.s.pendingDestroyMachineId,
       pendingDestroyVolumeId: this.s.pendingDestroyVolumeId,
       pendingPostgresMarkOnFinalize: this.s.pendingPostgresMarkOnFinalize,
