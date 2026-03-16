@@ -1847,6 +1847,253 @@ describe('updateSecrets', () => {
 });
 
 // ============================================================================
+// updateGoogleCredentials
+// ============================================================================
+
+describe('updateGoogleCredentials', () => {
+  it('persists gmailPushOidcEmail from credentials', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    await instance.updateGoogleCredentials({
+      gogConfigTarball: {
+        encryptedData: 'enc-data',
+        encryptedDEK: 'enc-dek',
+        algorithm: 'rsa-aes-256-gcm' as const,
+        version: 1 as const,
+      },
+      email: 'user@example.com',
+      gmailPushOidcEmail: 'gmail-push@my-project.iam.gserviceaccount.com',
+    });
+
+    expect(putSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gmailPushOidcEmail: 'gmail-push@my-project.iam.gserviceaccount.com',
+      })
+    );
+    expect(storage._store.get('gmailPushOidcEmail')).toBe(
+      'gmail-push@my-project.iam.gserviceaccount.com'
+    );
+  });
+
+  it('sets gmailPushOidcEmail to null when not provided in credentials', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      gmailPushOidcEmail: 'old@project.iam.gserviceaccount.com',
+    });
+
+    await instance.updateGoogleCredentials({
+      gogConfigTarball: {
+        encryptedData: 'enc-data',
+        encryptedDEK: 'enc-dek',
+        algorithm: 'rsa-aes-256-gcm' as const,
+        version: 1 as const,
+      },
+      email: 'user@example.com',
+    });
+
+    expect(storage._store.get('gmailPushOidcEmail')).toBeNull();
+  });
+});
+
+// ============================================================================
+// clearGoogleCredentials
+// ============================================================================
+
+describe('clearGoogleCredentials', () => {
+  it('sets googleCredentials to null and gmailNotificationsEnabled to false in storage', async () => {
+    const { instance, storage } = createInstance();
+    const fakeCredentials = {
+      clientSecretJson: 'secret',
+      oauthTokensJson: 'tokens',
+    };
+    await seedProvisioned(storage, {
+      googleCredentials: fakeCredentials,
+      gmailNotificationsEnabled: true,
+      gmailPushOidcEmail: 'gmail-push@project.iam.gserviceaccount.com',
+    });
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    const result = await instance.clearGoogleCredentials();
+
+    expect(result.googleConnected).toBe(false);
+    expect(putSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        googleCredentials: null,
+        gmailNotificationsEnabled: false,
+        gmailPushOidcEmail: null,
+      })
+    );
+    expect(storage._store.get('googleCredentials')).toBeNull();
+    expect(storage._store.get('gmailNotificationsEnabled')).toBe(false);
+    expect(storage._store.get('gmailPushOidcEmail')).toBeNull();
+  });
+});
+
+// ============================================================================
+// updateGmailNotifications
+// ============================================================================
+
+describe('updateGmailNotifications', () => {
+  const fakeCredentials = {
+    gogConfigTarball: {
+      encryptedData: 'enc-data',
+      encryptedDEK: 'enc-dek',
+      algorithm: 'rsa-aes-256-gcm' as const,
+      version: 1 as const,
+    },
+    email: 'user@example.com',
+  };
+
+  it('enables notifications when Google credentials exist', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      googleCredentials: fakeCredentials,
+      gmailNotificationsEnabled: false,
+    });
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    const result = await instance.updateGmailNotifications(true);
+
+    expect(result.gmailNotificationsEnabled).toBe(true);
+    expect(putSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gmailNotificationsEnabled: true,
+      })
+    );
+    expect(storage._store.get('gmailNotificationsEnabled')).toBe(true);
+  });
+
+  it('throws when enabling without a connected Google account', async () => {
+    const { instance, storage } = createInstance();
+    // Seed without googleCredentials so it defaults to null
+    await seedProvisioned(storage, { gmailNotificationsEnabled: false });
+
+    await expect(instance.updateGmailNotifications(true)).rejects.toThrow(
+      'Cannot enable Gmail notifications without a connected Google account'
+    );
+  });
+
+  it('disables notifications regardless of credentials', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      googleCredentials: fakeCredentials,
+      gmailNotificationsEnabled: true,
+    });
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    const result = await instance.updateGmailNotifications(false);
+
+    expect(result.gmailNotificationsEnabled).toBe(false);
+    expect(putSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gmailNotificationsEnabled: false,
+      })
+    );
+    expect(storage._store.get('gmailNotificationsEnabled')).toBe(false);
+  });
+});
+
+// ============================================================================
+// updateGmailHistoryId
+// ============================================================================
+
+describe('updateGmailHistoryId', () => {
+  it('stores historyId when none exists', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { gmailLastHistoryId: null });
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    await instance.updateGmailHistoryId('100');
+
+    expect(putSpy).toHaveBeenCalledWith(expect.objectContaining({ gmailLastHistoryId: '100' }));
+    expect(storage._store.get('gmailLastHistoryId')).toBe('100');
+  });
+
+  it('updates when new value is greater', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { gmailLastHistoryId: '100' });
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    await instance.updateGmailHistoryId('200');
+
+    expect(putSpy).toHaveBeenCalledWith(expect.objectContaining({ gmailLastHistoryId: '200' }));
+    expect(storage._store.get('gmailLastHistoryId')).toBe('200');
+  });
+
+  it('ignores when new value is equal', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { gmailLastHistoryId: '100' });
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    await instance.updateGmailHistoryId('100');
+
+    expect(putSpy).not.toHaveBeenCalled();
+    expect(storage._store.get('gmailLastHistoryId')).toBe('100');
+  });
+
+  it('ignores when new value is lower', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { gmailLastHistoryId: '200' });
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    await instance.updateGmailHistoryId('100');
+
+    expect(putSpy).not.toHaveBeenCalled();
+    expect(storage._store.get('gmailLastHistoryId')).toBe('200');
+  });
+
+  it('ignores invalid (non-numeric) input', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { gmailLastHistoryId: '100' });
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    await instance.updateGmailHistoryId('not-a-number');
+
+    expect(putSpy).not.toHaveBeenCalled();
+    expect(storage._store.get('gmailLastHistoryId')).toBe('100');
+  });
+});
+
+// ============================================================================
+// getGmailOidcEmail
+// ============================================================================
+
+describe('getGmailOidcEmail', () => {
+  it('returns stored gmailPushOidcEmail', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      gmailPushOidcEmail: 'gmail-push@my-project.iam.gserviceaccount.com',
+    });
+
+    const result = await instance.getGmailOidcEmail();
+
+    expect(result).toEqual({
+      gmailPushOidcEmail: 'gmail-push@my-project.iam.gserviceaccount.com',
+    });
+  });
+
+  it('returns null when no email stored', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    const result = await instance.getGmailOidcEmail();
+
+    expect(result).toEqual({ gmailPushOidcEmail: null });
+  });
+});
+
+// ============================================================================
 // parseRegions + deprioritizeRegion (pure functions)
 // ============================================================================
 
