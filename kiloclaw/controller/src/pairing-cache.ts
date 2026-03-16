@@ -52,7 +52,6 @@ type PairingCacheOptions = {
 
 export const PERIODIC_INTERVAL_MS = 60_000;
 export const DEBOUNCE_DELAY_MS = 2_000;
-export const INITIAL_FETCH_DELAY_MS = 5_000;
 export const CLI_TIMEOUT_MS = 45_000;
 export const CONFIG_PATH = '/root/.openclaw/openclaw.json';
 
@@ -125,7 +124,6 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
 
   let started = false;
   let stopped = false;
-  let initialTimer: ReturnType<typeof setTimeout> | null = null;
   let periodicTimer: ReturnType<typeof setInterval> | null = null;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -279,12 +277,9 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
     if (started) return;
     started = true;
 
-    initialTimer = setTimeout(() => {
-      initialTimer = null;
-      void refreshAll().catch(err => {
-        console.error('[pairing-cache] initial refreshAll failed:', err);
-      });
-    }, INITIAL_FETCH_DELAY_MS);
+    void refreshAll().catch(err => {
+      console.error('[pairing-cache] initial refreshAll failed:', err);
+    });
 
     periodicTimer = setInterval(() => {
       void refreshAll().catch(err => {
@@ -295,10 +290,6 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
 
   const cleanup = (): void => {
     stopped = true;
-    if (initialTimer !== null) {
-      clearTimeout(initialTimer);
-      initialTimer = null;
-    }
     if (periodicTimer !== null) {
       clearInterval(periodicTimer);
       periodicTimer = null;

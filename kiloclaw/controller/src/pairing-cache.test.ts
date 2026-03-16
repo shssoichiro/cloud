@@ -324,12 +324,14 @@ describe('createPairingCache', () => {
       const { cache } = createTestHarness({ execImpl, readConfigImpl });
       cache.start();
 
-      // No calls yet (initial fetch is at 5s)
-      expect(execImpl).not.toHaveBeenCalled();
+      // Initial fetch fires immediately
+      await vi.advanceTimersByTimeAsync(0);
+      const callsAfterInitial = execImpl.mock.calls.length;
+      expect(callsAfterInitial).toBeGreaterThan(0);
 
       // Advance to 60s — periodic fires
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(execImpl).toHaveBeenCalled();
+      expect(execImpl.mock.calls.length).toBeGreaterThan(callsAfterInitial);
 
       const callsBefore = execImpl.mock.calls.length;
 
@@ -342,7 +344,7 @@ describe('createPairingCache', () => {
   });
 
   describe('initial fetch', () => {
-    it('fires 5s after start', async () => {
+    it('fires immediately on start', async () => {
       const execImpl = vi.fn<ExecImpl>().mockResolvedValue({
         stdout: JSON.stringify({ requests: [] }),
         stderr: '',
@@ -354,9 +356,8 @@ describe('createPairingCache', () => {
       const { cache } = createTestHarness({ execImpl, readConfigImpl });
       cache.start();
 
-      expect(execImpl).not.toHaveBeenCalled();
-
-      await vi.advanceTimersByTimeAsync(5_000);
+      // Flush the microtask queue so the fire-and-forget refreshAll resolves
+      await vi.advanceTimersByTimeAsync(0);
       expect(execImpl).toHaveBeenCalled();
 
       cache.cleanup();
@@ -439,11 +440,17 @@ describe('createPairingCache', () => {
 
       const { cache } = createTestHarness({ execImpl, readConfigImpl });
       cache.start();
+
+      // Flush the immediate initial refresh
+      await vi.advanceTimersByTimeAsync(0);
+      const callsAfterInitial = execImpl.mock.calls.length;
+
       cache.onPairingLogLine('pairing event');
       cache.cleanup();
 
       await vi.advanceTimersByTimeAsync(120_000);
-      expect(execImpl).not.toHaveBeenCalled();
+      // No additional calls beyond the initial refresh
+      expect(execImpl.mock.calls.length).toBe(callsAfterInitial);
     });
   });
 
@@ -696,8 +703,8 @@ describe('createPairingCache', () => {
       cache.start();
       cache.start(); // second call should be no-op
 
-      // Advance past initial fetch (5s)
-      await vi.advanceTimersByTimeAsync(5_000);
+      // Flush microtask queue for the immediate initial refresh
+      await vi.advanceTimersByTimeAsync(0);
 
       // With two channels (telegram), initial fetch calls exec twice
       // If start() wasn't idempotent, we'd see 4 calls
