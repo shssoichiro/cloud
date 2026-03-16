@@ -95,7 +95,10 @@ async function reconcileApiKeyExpiry(
     const info = await gateway.getControllerVersion(state, env);
     controllerVersion = info?.version ?? null;
   } catch (err) {
-    console.warn('[reconcile] controller version check failed:', err instanceof Error ? err.message : String(err));
+    console.warn(
+      '[reconcile] controller version check failed:',
+      err instanceof Error ? err.message : String(err)
+    );
   }
 
   reconcileLog(reason, 'api_key_expiry_approaching', {
