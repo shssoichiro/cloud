@@ -32,7 +32,12 @@ interface FileNode {
 }
 
 function buildTree(dir: string, rootDir: string): FileNode[] {
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return []; // skip unreadable directories
+  }
   const nodes: FileNode[] = [];
 
   for (const entry of entries) {
@@ -50,6 +55,8 @@ function buildTree(dir: string, rootDir: string): FileNode[] {
         children: buildTree(path.join(dir, entry.name), rootDir),
       });
     } else {
+      // Only show files with allowed text extensions
+      if (!isAllowedExtension(entry.name)) continue;
       nodes.push({
         name: entry.name,
         path: relativePath,
@@ -172,7 +179,11 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
       }
     }
 
-    backupFile(resolved);
+    try {
+      backupFile(resolved);
+    } catch (err) {
+      console.warn('[files] Failed to create backup, proceeding with write:', err);
+    }
     atomicWrite(resolved, body.content);
 
     const newEtag = computeEtag(body.content);
