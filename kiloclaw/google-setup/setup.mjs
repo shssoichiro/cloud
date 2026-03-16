@@ -589,9 +589,11 @@ if (pushUserId && pushSetupOk) {
   // Create or update push subscription
   if (pushSetupOk) {
     const subscriptionName = `gog-gmail-push-${pushUserId.slice(0, 8)}`;
-    // Per-user audience = push endpoint: the worker validates the OIDC audience
-    // against /push/user/<userId>, so the token is cryptographically bound to this user.
     const pushEndpoint = `${gmailPushWorkerUrl}/push/user/${pushUserId}`;
+    // The OIDC audience must always use the production domain so the worker's
+    // OIDC_AUDIENCE_BASE validation matches, even when the push endpoint
+    // targets a different environment (e.g. tunnel, dev).
+    const pushAudience = `https://kiloclaw-gmail.kiloapps.io/push/user/${pushUserId}`;
     console.log(`Creating push subscription ${subscriptionName} → ${pushEndpoint}`);
     try {
       execSync(
@@ -599,7 +601,7 @@ if (pushUserId && pushSetupOk) {
           `--topic=gog-gmail-watch ` +
           `--push-endpoint="${pushEndpoint}" ` +
           `--push-auth-service-account="${pushSaEmail}" ` +
-          `--push-auth-token-audience="${pushEndpoint}" ` +
+          `--push-auth-token-audience="${pushAudience}" ` +
           `--ack-deadline=30 --quiet`,
         { stdio: 'pipe' }
       );
@@ -613,7 +615,7 @@ if (pushUserId && pushSetupOk) {
             `gcloud pubsub subscriptions update ${subscriptionName} ` +
               `--push-endpoint="${pushEndpoint}" ` +
               `--push-auth-service-account="${pushSaEmail}" ` +
-              `--push-auth-token-audience="${pushEndpoint}" ` +
+              `--push-auth-token-audience="${pushAudience}" ` +
               `--quiet`,
             { stdio: 'pipe' }
           );
