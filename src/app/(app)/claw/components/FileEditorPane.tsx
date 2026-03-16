@@ -66,7 +66,10 @@ export function FileEditorPane({
   const { data, isLoading, error, refetch } = useReadFile(filePath, enabled);
   const [showDiff, setShowDiff] = useState(false);
 
-  const serverContent = data?.content ?? '';
+  // savedContentRef holds the last successfully saved content, used as fallback
+  // until the query refetches to avoid flashing stale content after save.
+  const savedContentRef = useRef<string | null>(null);
+  const serverContent = data?.content ?? savedContentRef.current ?? '';
   const [editedContent, setEditedContent] = useState<string | null>(null);
   const etagRef = useRef<string | undefined>(undefined);
 
@@ -74,6 +77,7 @@ export function FileEditorPane({
     setEditedContent(null);
     setShowDiff(false);
     etagRef.current = undefined;
+    savedContentRef.current = null;
   }, [filePath]);
 
   useEffect(() => {
@@ -215,6 +219,9 @@ export function FileEditorPane({
                 {
                   onSuccess: result => {
                     etagRef.current = result.etag;
+                    // Optimistically update serverContent so we don't flash stale content
+                    // while the invalidated readFile query refetches.
+                    savedContentRef.current = currentValue;
                     setEditedContent(null);
                     toast.success(`Saved ${filePath}`);
                   },

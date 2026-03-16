@@ -907,10 +907,27 @@ export const kiloclawRouter = createTRPCRouter({
         let content = input.content;
 
         if (input.path === 'openclaw.json') {
+          let userConfig: unknown;
+          try {
+            userConfig = JSON.parse(content);
+          } catch {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'openclaw.json must be valid JSON',
+            });
+          }
+          if (typeof userConfig !== 'object' || userConfig === null || Array.isArray(userConfig)) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'openclaw.json must be a JSON object',
+            });
+          }
           const currentResult = await client.readFile(ctx.user.id, 'openclaw.json');
           const currentConfig = JSON.parse(currentResult.content) as Record<string, unknown>;
-          const userConfig = JSON.parse(content) as Record<string, unknown>;
-          const merged = restoreRedactedSecrets(userConfig, currentConfig);
+          const merged = restoreRedactedSecrets(
+            userConfig as Record<string, unknown>,
+            currentConfig
+          );
           content = JSON.stringify(merged, null, 2);
         }
 

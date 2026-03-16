@@ -31,14 +31,16 @@ export function WorkspaceFileEditor({
 }) {
   const { data: tree, isLoading, error, refetch } = useFileTree(enabled);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<
+    { type: 'switch'; path: string } | { type: 'close' } | null
+  >(null);
   const hasUnsavedChangesRef = useRef(false);
 
   const handleSelect = useCallback(
     (path: string) => {
       if (path === selectedPath) return;
       if (hasUnsavedChangesRef.current) {
-        setPendingPath(path);
+        setPendingAction({ type: 'switch', path });
         return;
       }
       setSelectedPath(path);
@@ -78,7 +80,13 @@ export function WorkspaceFileEditor({
           variant="ghost"
           size="sm"
           className="h-7 text-xs"
-          onClick={() => onOpenChange(false)}
+          onClick={() => {
+            if (hasUnsavedChangesRef.current) {
+              setPendingAction({ type: 'close' });
+              return;
+            }
+            onOpenChange(false);
+          }}
         >
           Close
         </Button>
@@ -106,21 +114,23 @@ export function WorkspaceFileEditor({
         </div>
       </div>
 
-      <AlertDialog open={pendingPath !== null} onOpenChange={() => setPendingPath(null)}>
+      <AlertDialog open={pendingAction !== null} onOpenChange={() => setPendingAction(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
-            <AlertDialogDescription>
-              You have unsaved changes. Discard them and switch files?
-            </AlertDialogDescription>
+            <AlertDialogDescription>You have unsaved changes. Discard them?</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 hasUnsavedChangesRef.current = false;
-                setSelectedPath(pendingPath);
-                setPendingPath(null);
+                if (pendingAction?.type === 'switch') {
+                  setSelectedPath(pendingAction.path);
+                } else if (pendingAction?.type === 'close') {
+                  onOpenChange(false);
+                }
+                setPendingAction(null);
               }}
             >
               Discard
