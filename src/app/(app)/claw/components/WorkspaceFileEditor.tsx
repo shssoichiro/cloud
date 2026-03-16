@@ -70,12 +70,7 @@ export function WorkspaceFileEditor({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => void refetch()}
-        >
+        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => void refetch()}>
           <RefreshCw className="mr-1 h-3 w-3" />
           Refresh tree
         </Button>

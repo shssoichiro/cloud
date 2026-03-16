@@ -27,7 +27,7 @@ function FileTreeNode({
     <>
       <button
         type="button"
-        className={`flex w-full items-center gap-1 px-2 py-1 text-left text-xs hover:bg-accent/50 ${
+        className={`hover:bg-accent/50 flex w-full items-center gap-1 px-2 py-1 text-left text-xs ${
           isSelected ? 'bg-accent text-accent-foreground' : 'text-muted-foreground'
         }`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
@@ -101,7 +101,7 @@ export function FileTree({
 
   return (
     <div className="flex flex-col overflow-y-auto">
-      <div className="text-muted-foreground px-3 py-2 text-[10px] font-medium uppercase tracking-wider">
+      <div className="text-muted-foreground px-3 py-2 text-[10px] font-medium tracking-wider uppercase">
         /root/.openclaw
       </div>
       {tree.map(node => (
