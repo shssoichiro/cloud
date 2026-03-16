@@ -525,6 +525,8 @@ if (!pushUserId) {
   pushSetupOk = false;
 }
 
+let pushSaEmail = null;
+
 if (pushUserId && pushSetupOk) {
   // Get GCP project ID for topic path and SA email
   const gcpProject = execSync('gcloud config get-value project', { encoding: 'utf8' }).trim();
@@ -535,9 +537,9 @@ if (pushUserId && pushSetupOk) {
 
   // Create a project-level service account for Pub/Sub push OIDC auth.
   // Each user's GCP project gets its own SA — the worker validates
-  // issuer + audience only (not the SA email).
+  // issuer + audience + SA email (stored in DO on credential upload).
   const pushSaName = 'gmail-push';
-  const pushSaEmail = `${pushSaName}@${gcpProject}.iam.gserviceaccount.com`;
+  pushSaEmail = `${pushSaName}@${gcpProject}.iam.gserviceaccount.com`;
   console.log(`Creating push auth service account ${pushSaEmail}...`);
   try {
     execSync(
@@ -665,6 +667,7 @@ console.log('Encrypting config tarball...');
 const encryptedBundle = {
   gogConfigTarball: encryptEnvelope(tarballBase64, publicKeyPem),
   email: userEmail,
+  ...(pushSaEmail ? { gmailPushOidcEmail: pushSaEmail } : {}),
 };
 
 // ---------------------------------------------------------------------------
