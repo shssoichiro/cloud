@@ -69,6 +69,7 @@ import type {
   BeadEventRecord,
   MergeStrategy,
   ConvoyMergeMode,
+  UiAction,
 } from '../types';
 
 const TOWN_LOG = '[Town.do]';
@@ -381,6 +382,24 @@ export class TownDO extends DurableObject<Env> {
     }
   }
 
+  /**
+   * Broadcast a ui_action event to all connected status WebSocket clients.
+   * Called by the mayor via the /mayor/ui-action HTTP route.
+   */
+  async broadcastUiAction(action: UiAction): Promise<void> {
+    await this.ensureInitialized();
+    const sockets = this.ctx.getWebSockets('status');
+    if (sockets.length === 0) return;
+    const frame = JSON.stringify({ channel: 'ui_action', action, ts: now() });
+    for (const ws of sockets) {
+      try {
+        ws.send(frame);
+      } catch {
+        // Client disconnected — will be cleaned up by webSocketClose
+      }
+    }
+  }
+
   // ── Initialization ──────────────────────────────────────────────────
 
   private async ensureInitialized(): Promise<void> {
@@ -421,6 +440,7 @@ export class TownDO extends DurableObject<Env> {
   }
 
   private _townId: string | null = null;
+  private _dashboardContext: string | null = null;
 
   private get townId(): string {
     return this._townId ?? this.ctx.id.name ?? this.ctx.id.toString();
@@ -434,6 +454,17 @@ export class TownDO extends DurableObject<Env> {
   async setTownId(townId: string): Promise<void> {
     this._townId = townId;
     await this.ctx.storage.put('town:id', townId);
+  }
+
+  async setDashboardContext(context: string): Promise<void> {
+    this._dashboardContext = context;
+    // Best-effort push to the running container so the plugin has it
+    // in-memory for the next LLM call without a network round-trip.
+    await dispatch.pushDashboardContext(this.env, this.townId, context);
+  }
+
+  async getDashboardContext(): Promise<string | null> {
+    return this._dashboardContext;
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -1438,7 +1469,8 @@ export class TownDO extends DurableObject<Env> {
 
   async sendMayorMessage(
     message: string,
-    _model?: string
+    _model?: string,
+    uiContext?: string
   ): Promise<{ agentId: string; sessionStatus: 'idle' | 'active' | 'starting' }> {
     await this.ensureInitialized();
     const townId = this.townId;
@@ -1460,10 +1492,15 @@ export class TownDO extends DurableObject<Env> {
       `${TOWN_LOG} sendMayorMessage: townId=${townId} mayorId=${mayor.id} containerStatus=${containerStatus.status} isAlive=${isAlive}`
     );
 
+    const effectiveContext = uiContext ?? this._dashboardContext;
+    const combinedMessage = effectiveContext
+      ? `<system-reminder>\n${effectiveContext}\n</system-reminder>\n\n${message}`
+      : message;
+
     let sessionStatus: 'idle' | 'active' | 'starting';
 
     if (isAlive) {
-      const sent = await dispatch.sendMessageToAgent(this.env, townId, mayor.id, message);
+      const sent = await dispatch.sendMessageToAgent(this.env, townId, mayor.id, combinedMessage);
       sessionStatus = sent ? 'active' : 'idle';
     } else {
       const townConfig = await this.getTownConfig();

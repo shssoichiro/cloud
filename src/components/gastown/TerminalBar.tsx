@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { useGastownTRPC, gastownWsUrl } from '@/lib/gastown/trpc';
 
 import { useSidebar } from '@/components/ui/sidebar';
 import { useTerminalBar } from './TerminalBarContext';
+import { useDrawerStack } from './DrawerStack';
 import { ChevronDown, ChevronUp, Crown, Activity, Terminal as TerminalIcon, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { Terminal } from '@xterm/xterm';
@@ -32,6 +34,82 @@ export function TerminalBar({ townId }: TerminalBarProps) {
     setActiveTabId,
     setCollapsed,
   } = useTerminalBar();
+  const queryClient = useQueryClient();
+  const drawerStack = useDrawerStack();
+  const router = useRouter();
+
+  // ── Always-on WebSocket for alarm status + UI action dispatch ──────
+  // Lifted here so the connection persists regardless of which tab is active.
+
+  const handleAgentStatus = useCallback(
+    (_event: AgentStatusEvent) => {
+      void queryClient.invalidateQueries({
+        predicate: query => {
+          const key = query.queryKey;
+          if (!Array.isArray(key) || !Array.isArray(key[0])) return false;
+          const path = key[0] as string[];
+          return path.includes('listAgents');
+        },
+      });
+    },
+    [queryClient]
+  );
+
+  const handleUiAction = useCallback(
+    (event: UiActionEvent) => {
+      const { action } = event;
+      switch (action.type) {
+        case 'open_bead_drawer':
+          if (action.beadId && action.rigId) {
+            drawerStack.open({ type: 'bead', beadId: action.beadId, rigId: action.rigId });
+          }
+          break;
+        case 'open_convoy_drawer':
+          if (action.convoyId && action.townId) {
+            drawerStack.open({ type: 'convoy', convoyId: action.convoyId, townId: action.townId });
+          }
+          break;
+        case 'open_agent_drawer':
+          if (action.agentId && action.rigId) {
+            drawerStack.open({
+              type: 'agent',
+              agentId: action.agentId,
+              rigId: action.rigId,
+              townId: action.townId,
+            });
+          }
+          break;
+        case 'navigate':
+          if (action.page) {
+            const pageMap: Record<string, string> = {
+              'town-overview': `/gastown/${townId}`,
+              beads: `/gastown/${townId}/beads`,
+              agents: `/gastown/${townId}/agents`,
+              rigs: `/gastown/${townId}`,
+              settings: `/gastown/${townId}/settings`,
+            };
+            const path = pageMap[action.page];
+            if (path) {
+              // Close any open drawers so they don't cover the new page
+              drawerStack.closeAll();
+              router.push(path);
+            }
+          }
+          break;
+        case 'highlight_bead':
+          if (action.beadId && action.rigId) {
+            drawerStack.open({ type: 'bead', beadId: action.beadId, rigId: action.rigId });
+          }
+          break;
+      }
+    },
+    [drawerStack, router, townId]
+  );
+
+  const alarmWs = useAlarmStatusWs(townId, {
+    onAgentStatus: handleAgentStatus,
+    onUiAction: handleUiAction,
+  });
 
   const sidebarLeft = isMobile ? '0px' : sidebarState === 'expanded' ? '16rem' : '3rem';
 
@@ -132,7 +210,7 @@ export function TerminalBar({ townId }: TerminalBarProps) {
             {activeTab.kind === 'mayor' ? (
               <MayorTerminalPane townId={townId} collapsed={collapsed} />
             ) : activeTab.kind === 'status' ? (
-              <AlarmStatusPane townId={townId} />
+              <AlarmStatusPane townId={townId} alarmWs={alarmWs} />
             ) : (
               <AgentTerminalPane townId={townId} agentId={activeTab.agentId} />
             )}
@@ -171,6 +249,20 @@ type AgentStatusEvent = {
   timestamp: string;
 };
 
+type UiActionEvent = {
+  channel: 'ui_action';
+  action: {
+    type: string;
+    beadId?: string;
+    rigId?: string;
+    convoyId?: string;
+    agentId?: string;
+    townId?: string;
+    page?: string;
+  };
+  ts: string;
+};
+
 /**
  * Hook that connects to the TownDO status WebSocket and returns the
  * latest alarm status snapshot. Falls back to tRPC polling if the
@@ -181,7 +273,10 @@ type AgentStatusEvent = {
  */
 function useAlarmStatusWs(
   townId: string,
-  onAgentStatus?: (event: AgentStatusEvent) => void
+  callbacks?: {
+    onAgentStatus?: (event: AgentStatusEvent) => void;
+    onUiAction?: (event: UiActionEvent) => void;
+  }
 ): {
   data: AlarmStatus | null;
   connected: boolean;
@@ -193,8 +288,10 @@ function useAlarmStatusWs(
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
-  const onAgentStatusRef = useRef(onAgentStatus);
-  onAgentStatusRef.current = onAgentStatus;
+  const onAgentStatusRef = useRef(callbacks?.onAgentStatus);
+  onAgentStatusRef.current = callbacks?.onAgentStatus;
+  const onUiActionRef = useRef(callbacks?.onUiAction);
+  onUiActionRef.current = callbacks?.onUiAction;
 
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
@@ -212,16 +309,20 @@ function useAlarmStatusWs(
       if (!mountedRef.current || typeof e.data !== 'string') return;
       try {
         const parsed: unknown = JSON.parse(e.data);
-        if (
-          parsed !== null &&
-          typeof parsed === 'object' &&
-          'type' in parsed &&
-          (parsed as Record<string, unknown>).type === 'agent_status'
-        ) {
+        if (parsed === null || typeof parsed !== 'object') return;
+        const msg = parsed as Record<string, unknown>;
+
+        if (msg.type === 'agent_status') {
           // Lightweight agent_status event — dispatch to callback, don't
           // overwrite the alarm status snapshot.
           onAgentStatusRef.current?.(parsed as AgentStatusEvent);
-        } else {
+        } else if (msg.channel === 'ui_action') {
+          // UI action from the mayor — dispatch to callback for DrawerStack/router.
+          onUiActionRef.current?.(parsed as UiActionEvent);
+        } else if ('alarm' in msg) {
+          // Only alarm snapshots have an `alarm` field. Bead, convoy,
+          // and other channel frames are silently ignored here to avoid
+          // overwriting the status data with the wrong shape.
           setData(parsed as AlarmStatus);
         }
       } catch {
@@ -256,34 +357,16 @@ function useAlarmStatusWs(
   return { data, connected, error };
 }
 
-function AlarmStatusPane({ townId }: { townId: string }) {
+type AlarmWsResult = {
+  data: AlarmStatus | null;
+  connected: boolean;
+  error: string | null;
+};
+
+function AlarmStatusPane({ townId, alarmWs }: { townId: string; alarmWs: AlarmWsResult }) {
   const trpc = useGastownTRPC();
-  const queryClient = useQueryClient();
 
-  // Invalidate listAgents for all rigs in this town when an agent_status
-  // event arrives over the WebSocket, so agent cards update immediately
-  // without waiting for the next 5s poll cycle.
-  // tRPC @tanstack/react-query v11 query keys have the shape:
-  // [['gastown', 'listAgents'], { input: ..., type: 'query' }]
-  const handleAgentStatus = useCallback(
-    (_event: AgentStatusEvent) => {
-      void queryClient.invalidateQueries({
-        predicate: query => {
-          const key = query.queryKey;
-          if (!Array.isArray(key) || !Array.isArray(key[0])) return false;
-          const path = key[0] as string[];
-          return path.includes('listAgents');
-        },
-      });
-    },
-    [queryClient]
-  );
-
-  const {
-    data: wsData,
-    connected: wsConnected,
-    error: wsError,
-  } = useAlarmStatusWs(townId, handleAgentStatus);
+  const { data: wsData, connected: wsConnected, error: wsError } = alarmWs;
 
   // Fall back to polling when WebSocket is unavailable (blocked, errored,
   // or never connected). The tRPC query is disabled while the WS is

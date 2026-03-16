@@ -299,6 +299,54 @@ export const AgentConfigOverridesSchema = z.object({
 });
 export type AgentConfigOverrides = z.infer<typeof AgentConfigOverridesSchema>;
 
+// -- UI Actions (mayor → dashboard WebSocket commands) --
+
+export const UiActionSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('open_bead_drawer'),
+    beadId: z.string().min(1),
+    rigId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal('open_convoy_drawer'),
+    convoyId: z.string().min(1),
+    townId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal('open_agent_drawer'),
+    agentId: z.string().min(1),
+    rigId: z.string().min(1),
+    townId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal('navigate'),
+    page: z.enum(['town-overview', 'beads', 'agents', 'rigs', 'settings']),
+  }),
+  z.object({
+    type: z.literal('highlight_bead'),
+    beadId: z.string().min(1),
+    rigId: z.string().min(1),
+  }),
+]);
+export type UiAction = z.infer<typeof UiActionSchema>;
+
+/**
+ * Overwrite any `townId` field in the action with the route-scoped townId
+ * so callers can't reference resources outside the authenticated town.
+ */
+export function normalizeUiAction(action: UiAction, townId: string): UiAction {
+  if ('townId' in action) {
+    return { ...action, townId };
+  }
+  return action;
+}
+
+/** Extract the rigId from a UI action, if present. */
+export function uiActionRigId(action: UiAction): string | null {
+  if ('rigId' in action) return action.rigId;
+  return null;
+}
+
 // Re-export satellite metadata types for convenience
 export type { AgentMetadataRecord } from './db/tables/agent-metadata.table';
 export type { ReviewMetadataRecord } from './db/tables/review-metadata.table';

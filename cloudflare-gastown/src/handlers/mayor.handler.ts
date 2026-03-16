@@ -4,12 +4,14 @@ import type { GastownEnv } from '../gastown.worker';
 import { getTownDOStub } from '../dos/Town.do';
 import { resSuccess } from '../util/res.util';
 import { parseJsonBody } from '../util/parse-json-body.util';
+import { UiActionSchema, normalizeUiAction, uiActionRigId } from '../types';
 
 const MAYOR_HANDLER_LOG = '[mayor.handler]';
 
 const SendMayorMessageBody = z.object({
   message: z.string().min(1),
   model: z.string().optional(),
+  uiContext: z.string().max(10_000).optional(),
 });
 
 const MayorCompletedBody = z.object({
@@ -51,7 +53,11 @@ export async function handleSendMayorMessage(c: Context<GastownEnv>, params: { t
   // Ensure the TownDO knows its real UUID (ctx.id.name is unreliable in local dev)
   // TODO: This should only be done on town creation. Why are we doing it here?
   await town.setTownId(params.townId);
-  const result = await town.sendMayorMessage(parsed.data.message, parsed.data.model);
+  const result = await town.sendMayorMessage(
+    parsed.data.message,
+    parsed.data.model,
+    parsed.data.uiContext
+  );
   return c.json(resSuccess(result), 200);
 }
 
@@ -121,4 +127,74 @@ export async function handleDestroyMayor(c: Context<GastownEnv>, params: { townI
     await town.deleteAgent(status.session.agentId);
   }
   return c.json(resSuccess({ destroyed: true }), 200);
+}
+
+const SetDashboardContextBody = z.object({
+  context: z.string().max(10_000),
+});
+
+const BroadcastUiActionBody = z.object({
+  action: UiActionSchema,
+});
+
+/**
+ * POST /api/towns/:townId/mayor/dashboard-context
+ * Store the current dashboard context (XML string) in the TownDO.
+ * Used as a fallback when sendMayorMessage is called without explicit uiContext.
+ */
+export async function handleSetDashboardContext(
+  c: Context<GastownEnv>,
+  params: { townId: string }
+) {
+  const body = await parseJsonBody(c);
+  const parsed = SetDashboardContextBody.safeParse(body);
+  if (!parsed.success) {
+    return c.json(
+      { success: false, error: 'Invalid request body', issues: parsed.error.issues },
+      400
+    );
+  }
+
+  const town = getTownDOStub(c.env, params.townId);
+  await town.setTownId(params.townId);
+  await town.setDashboardContext(parsed.data.context);
+  return c.json(resSuccess({ stored: true }), 200);
+}
+
+/**
+ * POST /api/towns/:townId/mayor/ui-action
+ * Broadcast a UI action to all connected dashboard WebSocket clients.
+ * Called by the mayor agent to trigger navigation/drawer actions in the dashboard.
+ * Protected by kiloAuthMiddleware (same as other /api/towns/:townId/mayor/* routes).
+ */
+export async function handleBroadcastUiAction(c: Context<GastownEnv>, params: { townId: string }) {
+  const body = await parseJsonBody(c);
+  const parsed = BroadcastUiActionBody.safeParse(body);
+  if (!parsed.success) {
+    return c.json(
+      { success: false, error: 'Invalid request body', issues: parsed.error.issues },
+      400
+    );
+  }
+
+  console.log(
+    `${MAYOR_HANDLER_LOG} handleBroadcastUiAction: townId=${params.townId} type=${parsed.data.action.type}`
+  );
+
+  const action = normalizeUiAction(parsed.data.action, params.townId);
+
+  const town = getTownDOStub(c.env, params.townId);
+  await town.setTownId(params.townId);
+
+  // Validate that the referenced rig belongs to this town
+  const rigId = uiActionRigId(action);
+  if (rigId) {
+    const rig = await town.getRigAsync(rigId);
+    if (!rig) {
+      return c.json({ success: false, error: `Rig ${rigId} does not belong to this town` }, 400);
+    }
+  }
+
+  await town.broadcastUiAction(action);
+  return c.json(resSuccess({ broadcast: true }), 200);
 }
