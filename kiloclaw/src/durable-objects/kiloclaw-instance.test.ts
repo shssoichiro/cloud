@@ -2071,6 +2071,11 @@ describe('getStatus: throttled live Fly check', () => {
 // ============================================================================
 
 describe('start: volume region validation', () => {
+  // Reset listMachines to return [] so metadata recovery is a no-op in these tests.
+  beforeEach(() => {
+    (flyClient.listMachines as Mock).mockResolvedValue([]);
+  });
+
   it('corrects flyRegion when it drifts from actual volume region', async () => {
     const { instance, storage } = createInstance();
     // DO thinks volume is in 'iad', but actual volume is in 'cdg'
@@ -2113,22 +2118,23 @@ describe('start: volume region validation', () => {
     expect(storage._store.get('status')).toBe('running');
   });
 
-  it('skips region check when machine already exists', async () => {
+  it('performs region check even when machine already exists', async () => {
     const { instance, storage } = createInstance();
     await seedRunning(storage, { status: 'stopped' });
 
     (flyClient.getMachine as Mock).mockResolvedValue({ state: 'stopped' });
     (flyClient.updateMachine as Mock).mockResolvedValue({ id: 'machine-1' });
     (flyClient.waitForState as Mock).mockResolvedValue(undefined);
-    (flyClient.getVolume as Mock).mockResolvedValue({ id: 'vol-1' });
+    // Return matching region so no drift is detected
+    (flyClient.getVolume as Mock).mockResolvedValue({ id: 'vol-1', region: 'iad' });
 
     await instance.start('user-1');
 
-    // getVolume should only be called by ensureVolume (which is a no-op since
-    // flyVolumeId is set), NOT for region validation (because flyMachineId exists)
-    // Actually getVolume is NOT called by ensureVolume when flyVolumeId is set.
-    // The region validation also skips because flyMachineId is set.
-    expect(flyClient.getVolume).not.toHaveBeenCalled();
+    // getVolume is now called for region validation even when flyMachineId is set,
+    // to catch drift between the cached flyRegion and the actual volume region.
+    expect(flyClient.getVolume).toHaveBeenCalledWith(expect.anything(), 'vol-1');
+    // Region was not changed since volume matches stored flyRegion
+    expect(storage._store.get('flyRegion')).toBe('iad');
   });
 });
 
@@ -2137,6 +2143,11 @@ describe('start: volume region validation', () => {
 // ============================================================================
 
 describe('start: 412 insufficient resources recovery', () => {
+  // Reset listMachines to return [] so metadata recovery is a no-op in these tests.
+  beforeEach(() => {
+    (flyClient.listMachines as Mock).mockResolvedValue([]);
+  });
+
   it('fresh provision (never started): deletes volume and creates fresh with deprioritized regions', async () => {
     const { instance, storage } = createInstance();
     await seedProvisioned(storage, { flyMachineId: null, lastStartedAt: null });
@@ -3132,6 +3143,11 @@ describe('controller-first pairing', () => {
 // ============================================================================
 
 describe('provision: auto-start after fresh provision', () => {
+  // Reset listMachines to return [] so metadata recovery is a no-op in these tests.
+  beforeEach(() => {
+    (flyClient.listMachines as Mock).mockResolvedValue([]);
+  });
+
   it('calls start() on fresh provision and ends in running state', async () => {
     const { instance, storage } = createInstance();
 
@@ -3166,6 +3182,11 @@ describe('provision: auto-start after fresh provision', () => {
 });
 
 describe('provision: instance feature flags', () => {
+  // Reset listMachines to return [] so metadata recovery is a no-op in these tests.
+  beforeEach(() => {
+    (flyClient.listMachines as Mock).mockResolvedValue([]);
+  });
+
   it('sets DEFAULT_INSTANCE_FEATURES on first provision', async () => {
     const { instance, storage } = createInstance();
 
