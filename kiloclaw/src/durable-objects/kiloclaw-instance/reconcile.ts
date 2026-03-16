@@ -94,8 +94,8 @@ async function reconcileApiKeyExpiry(
   try {
     const info = await gateway.getControllerVersion(state, env);
     controllerVersion = info?.version ?? null;
-  } catch {
-    // Version check failed — log null, don't block refresh.
+  } catch (err) {
+    console.warn('[reconcile] controller version check failed:', err instanceof Error ? err.message : String(err));
   }
 
   reconcileLog(reason, 'api_key_expiry_approaching', {
@@ -236,8 +236,9 @@ async function reconcileVolume(
       state.flyVolumeId = null;
       await ctx.storage.put(storageUpdate({ flyVolumeId: null }));
       await ensureVolume(flyConfig, ctx, state, env, reason);
+    } else {
+      console.warn('[reconcile] getVolume failed (will retry next alarm):', err);
     }
-    // Other errors: leave as-is, retry next alarm
   }
 }
 
