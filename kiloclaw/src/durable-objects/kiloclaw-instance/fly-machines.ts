@@ -172,7 +172,8 @@ export async function startExistingMachine(
       machineConfig = { ...machineConfig, guest: guestFromSize(state.machineSize) };
     }
 
-    if (machine.state === 'stopped' || machine.state === 'created') {
+    // failed machines are restartable via updateMachine (Fly re-launches on the next available host)
+    if (machine.state === 'stopped' || machine.state === 'created' || machine.state === 'failed') {
       await fly.updateMachine(flyConfig, state.flyMachineId, machineConfig, { minSecretsVersion });
       await fly.waitForState(flyConfig, state.flyMachineId, 'started', STARTUP_TIMEOUT_SECONDS);
       console.log('[DO] Machine updated and started:', state.flyMachineId);
