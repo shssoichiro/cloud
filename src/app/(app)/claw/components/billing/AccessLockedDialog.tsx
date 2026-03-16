@@ -112,7 +112,7 @@ export function AccessLockedDialog({
   }
 
   function handleDismiss() {
-    router.push('/');
+    router.push('/claw');
   }
 
   return (

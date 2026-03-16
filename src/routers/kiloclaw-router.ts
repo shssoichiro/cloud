@@ -1286,6 +1286,13 @@ export const kiloclawRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot switch from a trial plan.' });
       }
 
+      if (sub.stripe_schedule_id) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'A plan switch is already pending. Cancel it before requesting a new one.',
+        });
+      }
+
       const targetPriceId = getStripePriceIdForClawPlan(input.toPlan);
       const currentPriceId = getStripePriceIdForClawPlan(sub.plan);
 
