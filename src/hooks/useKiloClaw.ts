@@ -175,7 +175,10 @@ export function useKiloClawMutations() {
             queryKey: trpc.kiloclaw.getConfig.queryKey(),
           });
           await queryClient.invalidateQueries({
-            queryKey: trpc.kiloclaw.openclawConfig.queryKey(),
+            queryKey: trpc.kiloclaw.readFile.queryKey(),
+          });
+          await queryClient.invalidateQueries({
+            queryKey: trpc.kiloclaw.fileTree.queryKey(),
           });
         },
       })
@@ -200,11 +203,14 @@ export function useKiloClawMutations() {
         },
       })
     ),
-    replaceOpenclawConfig: useMutation(
-      trpc.kiloclaw.replaceOpenclawConfig.mutationOptions({
+    writeFile: useMutation(
+      trpc.kiloclaw.writeFile.mutationOptions({
         onSuccess: async () => {
           await queryClient.invalidateQueries({
-            queryKey: trpc.kiloclaw.openclawConfig.queryKey(),
+            queryKey: trpc.kiloclaw.fileTree.queryKey(),
+          });
+          await queryClient.invalidateQueries({
+            queryKey: trpc.kiloclaw.readFile.queryKey(),
           });
         },
       })
@@ -260,17 +266,26 @@ export function useKiloClawLatestVersion() {
   );
 }
 
-export function useKiloClawOpenclawConfig(enabled: boolean) {
+export function useFileTree(enabled: boolean) {
   const trpc = useTRPC();
   return useQuery(
-    trpc.kiloclaw.openclawConfig.queryOptions(undefined, {
+    trpc.kiloclaw.fileTree.queryOptions(undefined, {
       enabled,
-      refetchOnMount: 'always',
       refetchOnWindowFocus: false,
-      select: data => ({
-        openclawConfig: data.config,
-        etag: data.etag,
-      }),
     })
+  );
+}
+
+export function useReadFile(path: string | null, enabled: boolean) {
+  const trpc = useTRPC();
+  return useQuery(
+    trpc.kiloclaw.readFile.queryOptions(
+      { path: path! },
+      {
+        enabled: enabled && path !== null,
+        refetchOnWindowFocus: false,
+        refetchOnMount: 'always',
+      }
+    )
   );
 }
