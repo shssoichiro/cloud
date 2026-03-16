@@ -14,7 +14,8 @@ export type FlyMachineState =
   | 'suspended'
   | 'replacing'
   | 'destroying'
-  | 'destroyed';
+  | 'destroyed'
+  | 'failed';
 
 /**
  * States accepted by the /wait endpoint (spec.json:1549).

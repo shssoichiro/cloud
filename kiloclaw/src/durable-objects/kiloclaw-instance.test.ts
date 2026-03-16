@@ -722,6 +722,71 @@ describe('reconciliation: machine status sync', () => {
   });
 });
 
+describe('reconciliation: Fly failed state', () => {
+  it("immediately transitions running → stopped on Fly 'failed' (no threshold)", async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage);
+
+    (flyClient.getMachine as Mock).mockResolvedValue({ state: 'failed', config: {} });
+    (flyClient.getVolume as Mock).mockResolvedValue({ id: 'vol-1' });
+
+    // Single alarm should be enough — no SELF_HEAL_THRESHOLD wait
+    await instance.alarm();
+
+    expect(storage._store.get('status')).toBe('stopped');
+    expect(storage._store.get('healthCheckFailCount')).toBe(0);
+    expect(storage._store.get('lastStoppedAt')).not.toBeNull();
+  });
+
+  it("immediately transitions starting → stopped on Fly 'failed' and clears startingAt", async () => {
+    const { instance, storage } = createInstance();
+    await seedStarting(storage, { flyMachineId: 'machine-1' });
+
+    (flyClient.getMachine as Mock).mockResolvedValue({ state: 'failed', config: {} });
+    (flyClient.getVolume as Mock).mockResolvedValue({ id: 'vol-1' });
+
+    await instance.alarm();
+
+    expect(storage._store.get('status')).toBe('stopped');
+    expect(storage._store.get('startingAt')).toBeNull();
+    expect(storage._store.get('lastStoppedAt')).not.toBeNull();
+  });
+
+  it("is a no-op when already stopped and Fly reports 'failed'", async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { status: 'stopped', flyMachineId: 'machine-1' });
+
+    (flyClient.getMachine as Mock).mockResolvedValue({ state: 'failed', config: {} });
+    (flyClient.getVolume as Mock).mockResolvedValue({ id: 'vol-1' });
+
+    await instance.alarm();
+
+    expect(storage._store.get('status')).toBe('stopped');
+  });
+
+  it("live check marks stopped in-memory on Fly 'failed'", async () => {
+    const { instance, storage, waitUntilPromises } = createInstance();
+    await seedRunning(storage);
+
+    (flyClient.getMachine as Mock).mockResolvedValue({
+      state: 'failed',
+      config: { guest: { cpus: 1, memory_mb: 256, cpu_kind: 'shared' } },
+    });
+
+    // First call returns cached 'running'; live check fires in background
+    const result1 = await instance.getStatus();
+    await Promise.all(waitUntilPromises);
+
+    // Second call sees in-memory update from live check
+    const result2 = await instance.getStatus();
+
+    expect(result1.status).toBe('running'); // fire-and-forget: cached
+    expect(result2.status).toBe('stopped'); // updated in-memory by live check
+    // Storage is NOT updated — alarm loop owns persistence
+    expect(storage._store.get('status')).toBe('running');
+  });
+});
+
 describe('reconciliation: missing machine (404)', () => {
   it('clears stale machineId and marks stopped', async () => {
     const { instance, storage } = createInstance();
@@ -1172,6 +1237,25 @@ describe('startExistingMachine: transient vs 404 errors', () => {
   });
 });
 
+describe('startExistingMachine: failed Fly machine', () => {
+  it('restarts a failed machine via updateMachine instead of timing out', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { status: 'stopped', flyMachineId: 'machine-1' });
+
+    // Machine is in 'failed' state on Fly
+    (flyClient.getMachine as Mock).mockResolvedValue({ state: 'failed', config: {} });
+    (flyClient.updateMachine as Mock).mockResolvedValue({});
+    (flyClient.waitForState as Mock).mockResolvedValue(undefined);
+    (flyClient.getVolume as Mock).mockResolvedValue({ id: 'vol-1' });
+
+    await instance.start('user-1');
+
+    // updateMachine should have been called (not just waitForState)
+    expect(flyClient.updateMachine).toHaveBeenCalled();
+    expect(storage._store.get('status')).toBe('running');
+  });
+});
+
 describe('createNewMachine: persist ID before waitForState', () => {
   it('persists machine ID to storage before calling waitForState', async () => {
     const { instance, storage } = createInstance();
@@ -1554,6 +1638,26 @@ describe('metadata recovery via alarm', () => {
 
     // listMachines should NOT have been called due to cooldown
     expect(flyClient.listMachines).not.toHaveBeenCalled();
+  });
+
+  it("recovers failed machine as 'stopped'", async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { flyMachineId: null });
+
+    (flyClient.getVolume as Mock).mockResolvedValue({ id: 'vol-1' });
+    (flyClient.listMachines as Mock).mockResolvedValue([
+      fakeMachine({
+        id: 'failed-machine',
+        state: 'failed',
+        region: 'ord',
+        config: { image: 'test:latest', mounts: [{ volume: 'vol-1', path: '/root' }] },
+      }),
+    ]);
+
+    await instance.alarm();
+
+    expect(storage._store.get('flyMachineId')).toBe('failed-machine');
+    expect(storage._store.get('status')).toBe('stopped');
   });
 
   it('does not attempt recovery during destroying', async () => {

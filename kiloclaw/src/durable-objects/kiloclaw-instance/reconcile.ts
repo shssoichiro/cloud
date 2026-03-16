@@ -275,6 +275,10 @@ async function reconcileStarting(
     const machine = await fly.getMachine(flyConfig, state.flyMachineId);
     await syncStatusWithFly(ctx, state, machine.state, reason);
     // Ensure volume reconciliation doesn't get skipped while starting.
+    // Note: reconcileApiKeyExpiry and reconcileMachineMount are intentionally
+    // skipped — the machine isn't running yet so there's no endpoint to push
+    // a refreshed key to, and mount drift will be caught on the first regular
+    // alarm once status transitions to 'running'.
     await reconcileVolume(flyConfig, ctx, state, env, reason);
 
     // If syncStatusWithFly transitioned us out of 'starting', we're done.
@@ -442,7 +446,11 @@ export async function attemptMetadataRecovery(
     if (candidate.state === 'started') {
       state.status = 'running';
       updates.status = 'running';
-    } else if (candidate.state === 'stopped' || candidate.state === 'created') {
+    } else if (
+      candidate.state === 'stopped' ||
+      candidate.state === 'created' ||
+      candidate.state === 'failed'
+    ) {
       state.status = 'stopped';
       updates.status = 'stopped';
     }
@@ -513,6 +521,25 @@ export async function syncStatusWithFly(
       state.healthCheckFailCount = 0;
       await ctx.storage.put(storageUpdate({ healthCheckFailCount: 0 }));
     }
+    return;
+  }
+
+  // failed is definitively terminal — transition immediately without waiting for
+  // SELF_HEAL_THRESHOLD consecutive checks like we do for stopped/created.
+  if (flyState === 'failed' && state.status !== 'stopped') {
+    reconcileLog(reason, 'sync_status_failed', { old_state: state.status, fly_state: flyState });
+    state.status = 'stopped';
+    state.startingAt = null;
+    state.lastStoppedAt = Date.now();
+    state.healthCheckFailCount = 0;
+    await ctx.storage.put(
+      storageUpdate({
+        status: 'stopped',
+        startingAt: null,
+        lastStoppedAt: state.lastStoppedAt,
+        healthCheckFailCount: 0,
+      })
+    );
     return;
   }
 
