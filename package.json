@@ -20,6 +20,7 @@
     "typecheck": "tsgo --noEmit --incremental false && pnpm -r --filter '!kilocode-backend' run typecheck",
     "dependency-cycle-check": "madge --circular --warning --extensions ts,tsx --ts-config tsconfig.json --basedir . src",
     "validate": "pnpm run typecheck && pnpm run lint && pnpm run format:changed && pnpm run test && pnpm run dependency-cycle-check",
+    "prepare": "husky",
     "preinstall": "npx only-allow pnpm",
     "node": "node",
     "script": "IS_SCRIPT=true tsx --tsconfig tsconfig.scripts.json",
@@ -144,6 +145,7 @@
   },
   "devDependencies": {
     "@chromatic-com/playwright": "^0.12.8",
+    "@cloudflare/workers-types": "catalog:",
     "@eslint/eslintrc": "catalog:",
     "@eslint/js": "catalog:",
     "@jest/globals": "^30.2.0",
@@ -168,6 +170,7 @@
     "eslint-plugin-n": "^17.23.1",
     "eslint-plugin-react-hooks": "^7.0.0",
     "eslint-plugin-tailwindcss": "4.0.0-beta.0",
+    "husky": "^9.1.7",
     "jest": "^30.2.0",
     "knip": "^5.67.1",
     "madge": "^8.0.0",
