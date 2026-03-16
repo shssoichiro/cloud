@@ -654,6 +654,32 @@ describe('createPairingCache', () => {
 
       expect(execImpl).not.toHaveBeenCalled();
     });
+
+    it('clears stale channel cache when all channels are removed', async () => {
+      const execImpl = vi.fn<ExecImpl>().mockResolvedValue({
+        stdout: JSON.stringify({ requests: [{ code: 'ABC', id: '1' }] }),
+        stderr: '',
+      });
+      const configWithChannel = {
+        channels: { telegram: { enabled: true, botToken: 'tok' } },
+      };
+      const configNoChannels = { channels: {} };
+
+      const readConfigImpl = vi.fn(() => configWithChannel);
+      const { cache } = createTestHarness({ execImpl, readConfigImpl });
+
+      // First refresh populates the cache
+      await cache.refreshChannelPairing();
+      expect(cache.getChannelPairing().requests).toHaveLength(1);
+
+      // Remove all channels
+      readConfigImpl.mockReturnValue(configNoChannels);
+      await cache.refreshChannelPairing();
+
+      // Cache should be cleared, not stale
+      expect(cache.getChannelPairing().requests).toHaveLength(0);
+      expect(cache.getChannelPairing().lastUpdated).not.toBe('');
+    });
   });
 
   describe('start idempotency', () => {

@@ -140,7 +140,10 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
       return;
     }
 
-    if (channels.length === 0) return;
+    if (channels.length === 0) {
+      channelCache = { requests: [], lastUpdated: nowImpl() };
+      return;
+    }
 
     const results = await Promise.allSettled(
       channels.map(async channel => {
