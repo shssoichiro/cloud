@@ -152,8 +152,7 @@ describe('POST /push/user/:userId', () => {
 
   it('returns 503 when OIDC email lookup fails', async () => {
     mockValidateOidc.mockResolvedValue({ valid: true, email: TEST_SA_EMAIL });
-    const kiloFetch = () =>
-      Promise.resolve(new Response('Internal error', { status: 500 }));
+    const kiloFetch = () => Promise.resolve(new Response('Internal error', { status: 500 }));
     const { app, mockQueue } = createApp(kiloFetch);
 
     const res = await app.request(`/push/user/${TEST_USER}`, {
