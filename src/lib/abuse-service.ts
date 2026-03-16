@@ -21,7 +21,7 @@ import 'server-only';
 import { getMaxTokens, hasMiddleOutTransform } from '@/lib/providers/openrouter/request-helpers';
 
 /**
- * Extract full prompts from a GatewayRequest (chat completions or responses API).
+ * Extract full prompts from a GatewayRequest (chat completions, responses, or messages API).
  * Unlike extractPromptInfo (which truncates to 100 chars), this returns full content for abuse analysis.
  */
 function extractFullPrompts(request: GatewayRequest): {
@@ -30,6 +30,30 @@ function extractFullPrompts(request: GatewayRequest): {
 } {
   if (request.kind === 'responses') {
     return extractFullPromptsFromResponses(request.body);
+  }
+  if (request.kind === 'messages') {
+    const systemContent = request.body.system;
+    const systemPrompt =
+      typeof systemContent === 'string'
+        ? systemContent
+        : Array.isArray(systemContent)
+          ? systemContent.map(b => b.text).join('\n')
+          : null;
+    const lastUserMessage = request.body.messages.filter(m => m.role === 'user').at(-1);
+    let userPrompt: string | null = null;
+    if (lastUserMessage) {
+      const content = lastUserMessage.content;
+      if (typeof content === 'string') {
+        userPrompt = content;
+      } else if (Array.isArray(content)) {
+        userPrompt =
+          content
+            .filter(c => c.type === 'text')
+            .map(c => ('text' in c ? c.text : ''))
+            .join('\n') || null;
+      }
+    }
+    return { systemPrompt: systemPrompt || null, userPrompt };
   }
   return extractFullPromptsFromChatCompletions(request.body);
 }

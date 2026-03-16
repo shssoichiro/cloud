@@ -7,6 +7,7 @@ import { validateFeatureHeader, FEATURE_HEADER } from '@/lib/feature-detection';
 import type {
   OpenRouterChatCompletionRequest,
   GatewayResponsesRequest,
+  GatewayMessagesRequest,
   GatewayRequest,
 } from '@/lib/providers/openrouter/types';
 import { applyProviderSpecificLogic, getProvider, openRouterRequest } from '@/lib/providers';
@@ -69,6 +70,7 @@ import { applyResolvedAutoModel, isKiloAutoModel } from '@/lib/kilo-auto-model';
 import { fixOpenCodeDuplicateReasoning } from '@/lib/providers/fixOpenCodeDuplicateReasoning';
 import type { MicrodollarUsageContext, PromptInfo } from '@/lib/processUsage.types';
 import { extractResponsesPromptInfo } from '@/lib/processUsage.responses';
+import { extractMessagesPromptInfo } from '@/lib/processUsage.messages';
 import { getMaxTokens, hasMiddleOutTransform } from '@/lib/providers/openrouter/request-helpers';
 
 export const maxDuration = 800;
@@ -81,13 +83,17 @@ const PROMOTION_MODEL_LIMIT_REACHED = 'PROMOTION_MODEL_LIMIT_REACHED';
 function validatePath(
   url: URL
 ):
-  | { path: '/chat/completions' | '/responses' }
+  | { path: '/chat/completions' | '/responses' | '/messages' }
   | { errorResponse: ReturnType<typeof invalidPathResponse> } {
   const pathSuffix =
     stripRequiredPrefix(url.pathname, '/api/gateway') ??
     stripRequiredPrefix(url.pathname, '/api/openrouter');
 
-  if (pathSuffix === '/chat/completions' || pathSuffix === '/responses') {
+  if (
+    pathSuffix === '/chat/completions' ||
+    pathSuffix === '/responses' ||
+    pathSuffix === '/messages'
+  ) {
     return { path: pathSuffix };
   }
   return { errorResponse: invalidPathResponse() };
@@ -112,6 +118,9 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
       // Inject or merge stream_options.include_usage = true
       body.stream_options = { ...(body.stream_options || {}), include_usage: true };
       requestBodyParsed = { kind: 'chat_completions', body };
+    } else if (path === '/messages') {
+      const body: GatewayMessagesRequest = JSON.parse(requestBodyText);
+      requestBodyParsed = { kind: 'messages', body };
     } else {
       const body: GatewayResponsesRequest = JSON.parse(requestBodyText);
       body.store = false;
@@ -234,11 +243,14 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     user = maybeUser;
   }
 
-  if (requestBodyParsed.kind === 'responses' && !user.is_admin) {
+  if (
+    (requestBodyParsed.kind === 'responses' || requestBodyParsed.kind === 'messages') &&
+    !user.is_admin
+  ) {
     return NextResponse.json(
       {
         error: {
-          message: 'The Responses API is experimental and not yet available to all users.',
+          message: `The ${requestBodyParsed.kind === 'messages' ? 'Messages' : 'Responses'} API is experimental and not yet available to all users.`,
         },
       },
       { status: 403 }
@@ -305,7 +317,9 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   const promptInfo: PromptInfo =
     requestBodyParsed.kind === 'chat_completions'
       ? extractPromptInfo(requestBodyParsed.body)
-      : extractResponsesPromptInfo(requestBodyParsed.body);
+      : requestBodyParsed.kind === 'messages'
+        ? extractMessagesPromptInfo(requestBodyParsed.body)
+        : extractResponsesPromptInfo(requestBodyParsed.body);
 
   const usageContext: MicrodollarUsageContext = {
     api_kind: requestBodyParsed.kind,
@@ -418,9 +432,9 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
 
   let response: Response;
   if (customLlm) {
-    if (requestBodyParsed.kind === 'responses') {
+    if (requestBodyParsed.kind === 'responses' || requestBodyParsed.kind === 'messages') {
       return NextResponse.json(
-        { error: 'This model is not yet available on the Responses API' },
+        { error: `This model is not yet available on the ${requestBodyParsed.kind === 'messages' ? 'Messages' : 'Responses'} API` },
         { status: 404 }
       );
     }
@@ -544,9 +558,13 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     (isKiloFreeModel(originalModelIdLowerCased) ||
       isActiveReviewPromo(botId, originalModelIdLowerCased))
   ) {
-    return requestBodyParsed.kind === 'chat_completions'
-      ? rewriteFreeModelResponse_ChatCompletions(response, originalModelIdLowerCased)
-      : rewriteFreeModelResponse_Responses(response, originalModelIdLowerCased);
+    if (requestBodyParsed.kind === 'chat_completions') {
+      return rewriteFreeModelResponse_ChatCompletions(response, originalModelIdLowerCased);
+    }
+    if (requestBodyParsed.kind === 'responses') {
+      return rewriteFreeModelResponse_Responses(response, originalModelIdLowerCased);
+    }
+    // messages kind: pass through as-is (free models don't currently use the Messages API)
   }
 
   return wrapInSafeNextResponse(response);

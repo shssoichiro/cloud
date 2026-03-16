@@ -7,6 +7,7 @@ import type {
   OpenRouterChatCompletionRequest,
   OpenRouterGeneration,
   GatewayRequest,
+  GatewayMessagesRequest,
 } from '@/lib/providers/openrouter/types';
 import {
   applyMistralModelSettings,
@@ -347,7 +348,7 @@ export async function openRouterRequest({
   path: string;
   search: string;
   method: string;
-  body: OpenRouterChatCompletionRequest | GatewayResponsesRequest;
+  body: OpenRouterChatCompletionRequest | GatewayResponsesRequest | GatewayMessagesRequest;
   extraHeaders: Record<string, string>;
   provider: Provider;
   signal?: AbortSignal;
