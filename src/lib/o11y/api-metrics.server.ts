@@ -63,12 +63,12 @@ export function getToolsAvailable(request: GatewayRequest): string[] {
   if (request.kind === 'responses') {
     return request.body.tools.map((tool): string => {
       if (tool.type === 'function') {
-        const name = tool.name.trim();
+        const name = typeof tool.name === 'string' ? tool.name.trim() : '';
         return name ? `function:${name}` : 'function:unknown';
       }
 
       if (tool.type === 'custom') {
-        const name = tool.name.trim();
+        const name = typeof tool.name === 'string' ? tool.name.trim() : '';
         return name ? `custom:${name}` : 'custom:unknown';
       }
 
