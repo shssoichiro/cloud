@@ -11,6 +11,9 @@ const PubSubMessageIdSchema = z.looseObject({
 
 export const pushRoute = new Hono<HonoContext>();
 
+// Always return 200 to Pub/Sub — a non-2xx would cause redelivery, but we handle
+// retries ourselves via the CF Queue consumer with custom exponential backoff.
+// Returning 200 on auth failures, bad payloads, etc. just means "stop retrying".
 pushRoute.post('/user/:userId', async c => {
   const userId = c.req.param('userId');
 
@@ -28,7 +31,7 @@ pushRoute.post('/user/:userId', async c => {
 
   if (!emailRes.ok) {
     console.error(`[gmail-push] OIDC email lookup failed for user ${userId}: ${emailRes.status}`);
-    return c.json({ error: 'Service unavailable' }, 503);
+    return c.json({ ok: true }, 200);
   }
 
   const { gmailPushOidcEmail }: { gmailPushOidcEmail: string | null } = await emailRes.json();
@@ -48,12 +51,13 @@ pushRoute.post('/user/:userId', async c => {
   );
   if (!oidcResult.valid) {
     console.warn(`[gmail-push] OIDC validation failed for user ${userId}: ${oidcResult.error}`);
-    return c.json({ error: 'Unauthorized' }, 401);
+    return c.json({ ok: true }, 200);
   }
 
   const pubSubBody = await c.req.text();
   if (pubSubBody.length > 65_536) {
-    return c.json({ error: 'Payload too large' }, 413);
+    console.warn(`[gmail-push] Oversized payload for user ${userId}: ${pubSubBody.length} bytes`);
+    return c.json({ ok: true }, 200);
   }
 
   // Extract Pub/Sub messageId for idempotency; fall back to a random UUID

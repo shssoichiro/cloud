@@ -48,7 +48,7 @@ describe('POST /push/user/:userId', () => {
     vi.clearAllMocks();
   });
 
-  it('rejects request without authorization header', async () => {
+  it('acks request without authorization header', async () => {
     mockValidateOidc.mockResolvedValue({ valid: false, error: 'Missing authorization header' });
     const { app } = createApp();
 
@@ -57,10 +57,10 @@ describe('POST /push/user/:userId', () => {
       body: JSON.stringify({ message: { data: 'dGVzdA==' } }),
     });
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
   });
 
-  it('rejects invalid OIDC token', async () => {
+  it('acks invalid OIDC token', async () => {
     mockValidateOidc.mockResolvedValue({ valid: false, error: 'bad token' });
     const { app } = createApp();
 
@@ -70,7 +70,7 @@ describe('POST /push/user/:userId', () => {
       body: JSON.stringify({ message: { data: 'dGVzdA==' } }),
     });
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
   });
 
   it('passes audience and allowedEmail to OIDC validator', async () => {
@@ -113,7 +113,7 @@ describe('POST /push/user/:userId', () => {
     });
   });
 
-  it('rejects when OIDC email does not match stored email', async () => {
+  it('acks when OIDC email does not match stored email', async () => {
     mockValidateOidc.mockResolvedValue({
       valid: false,
       error: 'Unexpected email: attacker-sa@evil-project.iam.gserviceaccount.com',
@@ -126,7 +126,7 @@ describe('POST /push/user/:userId', () => {
       body: JSON.stringify({ message: { data: 'dGVzdA==' } }),
     });
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
     expect(mockQueue.send).not.toHaveBeenCalled();
   });
 
@@ -151,7 +151,7 @@ describe('POST /push/user/:userId', () => {
     expect(mockValidateOidc).not.toHaveBeenCalled();
   });
 
-  it('returns 503 when OIDC email lookup fails', async () => {
+  it('acks when OIDC email lookup fails', async () => {
     const kiloFetch = () => Promise.resolve(new Response('Internal error', { status: 500 }));
     const { app, mockQueue } = createApp(kiloFetch);
 
@@ -161,12 +161,12 @@ describe('POST /push/user/:userId', () => {
       body: JSON.stringify({ message: { data: 'dGVzdA==' } }),
     });
 
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(200);
     expect(mockQueue.send).not.toHaveBeenCalled();
     expect(mockValidateOidc).not.toHaveBeenCalled();
   });
 
-  it('rejects oversized payload with 413', async () => {
+  it('acks oversized payload without enqueuing', async () => {
     mockValidateOidc.mockResolvedValue({ valid: true, email: TEST_SA_EMAIL });
     const { app, mockQueue } = createApp();
 
@@ -176,7 +176,7 @@ describe('POST /push/user/:userId', () => {
       body: 'x'.repeat(65_537),
     });
 
-    expect(res.status).toBe(413);
+    expect(res.status).toBe(200);
     expect(mockQueue.send).not.toHaveBeenCalled();
   });
 });
