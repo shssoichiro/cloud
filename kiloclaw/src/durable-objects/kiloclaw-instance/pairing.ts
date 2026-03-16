@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { KiloClawEnv } from '../../types';
 import * as fly from '../../fly/client';
 import type { InstanceMutableState } from './types';
@@ -12,43 +13,44 @@ import {
 
 const CACHE_TTL_SECONDS = 120;
 
+const CHANNEL_RE = /^[a-z][a-z0-9_-]{0,63}$/;
+const CODE_RE = /^[A-Za-z0-9]{1,32}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Schemas for KV cache / fly exec output — `lastUpdated` is not present on these paths
+const ChannelRequestsSchema = z.object({
+  requests: ControllerChannelPairingResponseSchema.shape.requests,
+});
+const DeviceRequestsSchema = z.object({
+  requests: ControllerDevicePairingResponseSchema.shape.requests,
+});
+
 function makeCacheKey(prefix: string, state: InstanceMutableState): string | null {
   const { flyAppName, flyMachineId } = state;
   if (!flyAppName || !flyMachineId) return null;
   return `${prefix}:${flyAppName}:${flyMachineId}`;
 }
 
-/**
- * Extract the `requests` array from a parsed JSON object, returning null
- * if the shape is unexpected.
- */
-function parseCachedRequests<T>(cached: unknown): T[] | null {
-  if (
-    cached &&
-    typeof cached === 'object' &&
-    'requests' in cached &&
-    Array.isArray(cached.requests)
-  ) {
-    return cached.requests as T[];
-  }
-  return null;
+function parseCachedChannelRequests(cached: unknown): PairingRequest[] | null {
+  const result = ChannelRequestsSchema.safeParse(cached);
+  return result.success ? result.data.requests : null;
+}
+
+function parseCachedDeviceRequests(cached: unknown): DevicePairingRequest[] | null {
+  const result = DeviceRequestsSchema.safeParse(cached);
+  return result.success ? result.data.requests : null;
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // Channel pairing
 // ──────────────────────────────────────────────────────────────────────
 
-type PairingRequest = {
-  code: string;
-  id: string;
-  channel: string;
-  meta?: unknown;
-  createdAt?: string;
-};
+type PairingRequest = z.infer<typeof ControllerChannelPairingResponseSchema>['requests'][number];
 
 /**
  * List pending channel pairing requests. Prefers the gateway controller's
- * in-memory cache; falls back to fly exec with KV caching.
+ * in-memory cache; falls back to KV cache, then fly exec (result is written
+ * back to KV).
  */
 export async function listPairingRequests(
   state: InstanceMutableState,
@@ -82,7 +84,7 @@ export async function listPairingRequests(
   const cacheKey = makeCacheKey('pairing', state);
   if (cacheKey && !forceRefresh) {
     const cached = await env.KV_CLAW_CACHE.get(cacheKey, 'json');
-    const requests = parseCachedRequests<PairingRequest>(cached);
+    const requests = parseCachedChannelRequests(cached);
     if (requests) {
       console.log(`[DO] pairing list served from KV cache (key=${cacheKey})`);
       return { requests };
@@ -101,19 +103,22 @@ export async function listPairingRequests(
   const empty: { requests: PairingRequest[] } = { requests: [] };
 
   if (result.exit_code !== 0) {
-    console.error('[DO] pairing list failed:', result.stderr);
+    console.error(
+      `[DO] pairing list failed (exit_code=${result.exit_code}):`,
+      result.stderr || result.stdout
+    );
     return empty;
   }
 
   let pairing = empty;
   try {
-    const data = JSON.parse(result.stdout.trim()) as unknown;
-    const requests = parseCachedRequests<PairingRequest>(data);
+    const data: unknown = JSON.parse(result.stdout.trim());
+    const requests = parseCachedChannelRequests(data);
     if (requests) {
       pairing = { requests };
     }
-  } catch {
-    console.error('[DO] pairing list parse error:', result.stdout);
+  } catch (parseErr) {
+    console.error('[DO] pairing list parse error:', parseErr, '| stdout:', result.stdout);
   }
 
   if (cacheKey) {
@@ -143,10 +148,10 @@ export async function approvePairingRequest(
     return { success: false, message: 'Instance is not running' };
   }
 
-  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(channel)) {
+  if (!CHANNEL_RE.test(channel)) {
     return { success: false, message: 'Invalid channel name' };
   }
-  if (!/^[A-Za-z0-9]{1,32}$/.test(code)) {
+  if (!CODE_RE.test(code)) {
     return { success: false, message: 'Invalid pairing code' };
   }
 
@@ -205,18 +210,14 @@ export async function approvePairingRequest(
 // Device pairing
 // ──────────────────────────────────────────────────────────────────────
 
-type DevicePairingRequest = {
-  requestId: string;
-  deviceId: string;
-  role?: string;
-  platform?: string;
-  clientId?: string;
-  ts?: number;
-};
+type DevicePairingRequest = z.infer<
+  typeof ControllerDevicePairingResponseSchema
+>['requests'][number];
 
 /**
  * List pending device pairing requests. Prefers the gateway controller's
- * in-memory cache; falls back to fly exec with KV caching.
+ * in-memory cache; falls back to KV cache, then fly exec (result is written
+ * back to KV).
  */
 export async function listDevicePairingRequests(
   state: InstanceMutableState,
@@ -250,7 +251,7 @@ export async function listDevicePairingRequests(
   const cacheKey = makeCacheKey('device-pairing', state);
   if (cacheKey && !forceRefresh) {
     const cached = await env.KV_CLAW_CACHE.get(cacheKey, 'json');
-    const requests = parseCachedRequests<DevicePairingRequest>(cached);
+    const requests = parseCachedDeviceRequests(cached);
     if (requests) {
       console.log(`[DO] device pairing list served from KV cache (key=${cacheKey})`);
       return { requests };
@@ -276,13 +277,18 @@ export async function listDevicePairingRequests(
 
   let pairing = empty;
   try {
-    const data = JSON.parse(result.stdout.trim()) as unknown;
-    const requests = parseCachedRequests<DevicePairingRequest>(data);
+    const data: unknown = JSON.parse(result.stdout.trim());
+    const requests = parseCachedDeviceRequests(data);
     if (requests) {
       pairing = { requests };
     }
-  } catch {
-    console.error(`[DO] device pairing list parse error: ${result.stdout} ${logCtx}`);
+  } catch (parseErr) {
+    console.error(
+      `[DO] device pairing list parse error ${logCtx}:`,
+      parseErr,
+      '| stdout:',
+      result.stdout
+    );
   }
 
   if (cacheKey) {
@@ -311,7 +317,7 @@ export async function approveDevicePairingRequest(
     return { success: false, message: 'Instance is not running' };
   }
 
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+  if (!UUID_RE.test(requestId)) {
     return { success: false, message: 'Invalid request ID' };
   }
 
