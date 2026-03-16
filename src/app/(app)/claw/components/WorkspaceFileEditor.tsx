@@ -36,6 +36,10 @@ export function WorkspaceFileEditor({
   >(null);
   const hasUnsavedChangesRef = useRef(false);
 
+  const handleDirtyChange = useCallback((dirty: boolean) => {
+    hasUnsavedChangesRef.current = dirty;
+  }, []);
+
   const handleSelect = useCallback(
     (path: string) => {
       if (path === selectedPath) return;
@@ -102,9 +106,7 @@ export function WorkspaceFileEditor({
               filePath={selectedPath}
               enabled={enabled}
               mutations={mutations}
-              onDirtyChange={dirty => {
-                hasUnsavedChangesRef.current = dirty;
-              }}
+              onDirtyChange={handleDirtyChange}
             />
           ) : (
             <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">

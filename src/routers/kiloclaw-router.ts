@@ -859,9 +859,14 @@ export const kiloclawRouter = createTRPCRouter({
         const client = new KiloClawInternalClient();
         const result = await client.readFile(ctx.user.id, input.path);
         if (input.path === 'openclaw.json') {
-          const parsed = JSON.parse(result.content) as Record<string, unknown>;
-          const redacted = redactOpenclawConfig(parsed);
-          return { content: JSON.stringify(redacted, null, 2), etag: result.etag };
+          try {
+            const parsed = JSON.parse(result.content) as Record<string, unknown>;
+            const redacted = redactOpenclawConfig(parsed);
+            return { content: JSON.stringify(redacted, null, 2), etag: result.etag };
+          } catch {
+            // Return raw content if we can't parse it — lets the user fix broken JSON in the editor
+            return result;
+          }
         }
         return result;
       } catch (err) {

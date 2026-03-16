@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveSafePath } from './safe-path';
+import { resolveSafePath, verifyCanonicalized } from './safe-path';
 
 const ROOT = '/root/.openclaw';
 
@@ -48,5 +48,26 @@ describe('resolveSafePath', () => {
 
   it('rejects empty path', () => {
     expect(() => resolveSafePath('', ROOT)).toThrow();
+  });
+});
+
+describe('verifyCanonicalized', () => {
+  it('accepts a path inside rootDir', () => {
+    expect(() => verifyCanonicalized('/root/.openclaw/workspace/SOUL.md', ROOT)).not.toThrow();
+  });
+
+  it('rejects a path that escapes root via symlink resolution', () => {
+    expect(() => verifyCanonicalized('/etc/passwd', ROOT)).toThrow(
+      'escapes root directory via symlink'
+    );
+  });
+
+  it('rejects a canonicalized path through credentials at any depth', () => {
+    expect(() => verifyCanonicalized('/root/.openclaw/credentials/key.json', ROOT)).toThrow(
+      'credentials'
+    );
+    expect(() =>
+      verifyCanonicalized('/root/.openclaw/workspace/credentials/key.json', ROOT)
+    ).toThrow('credentials');
   });
 });
