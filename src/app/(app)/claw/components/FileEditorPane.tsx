@@ -230,8 +230,13 @@ export function FileEditorPane({
                       err.data?.code === 'CONFLICT' &&
                       err.data?.upstreamCode === 'file_etag_conflict'
                     ) {
-                      void refetch().then(() => setEditedContent(null));
-                      toast.error('File was modified externally — reloaded latest version');
+                      // Preserve the user's edits and show diff so they can compare
+                      // their version against the server's updated content.
+                      void refetch();
+                      setShowDiff(true);
+                      toast.error(
+                        'File was modified externally — your edits are preserved, review the diff'
+                      );
                     } else {
                       toast.error(err.message);
                     }
