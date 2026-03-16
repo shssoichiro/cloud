@@ -197,6 +197,19 @@ export function FileEditorPane({
             className="h-7 text-xs"
             disabled={!hasChanges || mutations.writeFile.isPending}
             onClick={() => {
+              // Validate JSON for openclaw.json before submitting
+              if (filePath === 'openclaw.json') {
+                try {
+                  const parsed = JSON.parse(currentValue);
+                  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                    toast.error('Config must be a JSON object');
+                    return;
+                  }
+                } catch {
+                  toast.error('Invalid JSON — fix syntax errors before saving');
+                  return;
+                }
+              }
               mutations.writeFile.mutate(
                 { path: filePath, content: currentValue, etag: etagRef.current },
                 {

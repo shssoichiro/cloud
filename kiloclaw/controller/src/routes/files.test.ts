@@ -9,6 +9,7 @@ vi.mock('node:fs', () => ({
     existsSync: vi.fn(),
     lstatSync: vi.fn(),
     statSync: vi.fn(),
+    realpathSync: vi.fn((p: string) => p), // identity by default (no symlinks)
   },
 }));
 
@@ -107,7 +108,10 @@ describe('file routes', () => {
   describe('GET /_kilo/files/read', () => {
     it('reads a file and returns content with etag', async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.lstatSync).mockReturnValue({ isSymbolicLink: () => false } as any);
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isSymbolicLink: () => false,
+        isFile: () => true,
+      } as any);
       vi.mocked(fs.readFileSync).mockReturnValue('# My Agent');
 
       const res = await app.request('/_kilo/files/read?path=workspace/SOUL.md', {
@@ -157,7 +161,10 @@ describe('file routes', () => {
   describe('POST /_kilo/files/write', () => {
     it('writes a file with backup', async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.lstatSync).mockReturnValue({ isSymbolicLink: () => false } as any);
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isSymbolicLink: () => false,
+        isFile: () => true,
+      } as any);
       vi.mocked(fs.readFileSync).mockReturnValue('old content');
 
       const res = await app.request('/_kilo/files/write', {
@@ -192,7 +199,10 @@ describe('file routes', () => {
 
     it('returns 409 on etag mismatch', async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.lstatSync).mockReturnValue({ isSymbolicLink: () => false } as any);
+      vi.mocked(fs.lstatSync).mockReturnValue({
+        isSymbolicLink: () => false,
+        isFile: () => true,
+      } as any);
       vi.mocked(fs.readFileSync).mockReturnValue('current content');
 
       const res = await app.request('/_kilo/files/write', {

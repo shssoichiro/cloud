@@ -7,6 +7,11 @@ export class SafePathError extends Error {
   }
 }
 
+/**
+ * Resolve a relative path within a root directory, rejecting any escape attempts.
+ * Returns the absolute resolved path (not canonicalized — callers should use
+ * `verifyCanonicalized` after confirming the path exists on disk).
+ */
 export function resolveSafePath(relativePath: string, rootDir: string): string {
   if (!relativePath) {
     throw new SafePathError('Path must not be empty');
@@ -33,4 +38,21 @@ export function resolveSafePath(relativePath: string, rootDir: string): string {
   }
 
   return resolved;
+}
+
+/**
+ * Verify that a resolved path, after canonicalization via realpath, still
+ * stays within the root directory. This catches symlinked ancestors that
+ * escape the allowed tree.
+ */
+export function verifyCanonicalized(canonicalPath: string, rootDir: string): void {
+  if (canonicalPath !== rootDir && !canonicalPath.startsWith(rootDir + '/')) {
+    throw new SafePathError('Path escapes root directory via symlink');
+  }
+
+  const relative = path.relative(rootDir, canonicalPath);
+  const firstSegment = relative.split('/')[0];
+  if (firstSegment === 'credentials') {
+    throw new SafePathError('Access to credentials directory is forbidden');
+  }
 }

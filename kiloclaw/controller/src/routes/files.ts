@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getBearerToken } from './gateway';
 import { timingSafeTokenEqual } from '../auth';
-import { resolveSafePath, SafePathError } from '../safe-path';
+import { resolveSafePath, verifyCanonicalized, SafePathError } from '../safe-path';
 import { atomicWrite } from '../atomic-write';
 import { backupFile } from '../backup-file';
 
@@ -99,9 +99,22 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
       return c.json({ code: 'file_not_found', error: 'File does not exist' }, 404);
     }
 
+    // Canonicalize to catch symlinked ancestors escaping the root
+    try {
+      verifyCanonicalized(fs.realpathSync(resolved), rootDir);
+    } catch (e) {
+      if (e instanceof SafePathError) {
+        return c.json({ error: e.message }, 400);
+      }
+      throw e;
+    }
+
     const stat = fs.lstatSync(resolved);
     if (stat.isSymbolicLink()) {
       return c.json({ error: 'Symlinks are not allowed' }, 400);
+    }
+    if (!stat.isFile()) {
+      return c.json({ error: 'Not a regular file' }, 400);
     }
 
     const content = fs.readFileSync(resolved, 'utf-8');
@@ -133,9 +146,22 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
       return c.json({ code: 'file_not_found', error: 'File does not exist' }, 404);
     }
 
+    // Canonicalize to catch symlinked ancestors escaping the root
+    try {
+      verifyCanonicalized(fs.realpathSync(resolved), rootDir);
+    } catch (e) {
+      if (e instanceof SafePathError) {
+        return c.json({ error: e.message }, 400);
+      }
+      throw e;
+    }
+
     const stat = fs.lstatSync(resolved);
     if (stat.isSymbolicLink()) {
       return c.json({ error: 'Symlinks are not allowed' }, 400);
+    }
+    if (!stat.isFile()) {
+      return c.json({ error: 'Not a regular file' }, 400);
     }
 
     if (body.etag) {
