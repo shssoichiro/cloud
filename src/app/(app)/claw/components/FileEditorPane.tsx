@@ -5,17 +5,13 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import type { useKiloClawMutations } from '@/hooks/useKiloClaw';
-import { useReadFile } from '@/hooks/useKiloClaw';
-
-type ClawMutations = ReturnType<typeof useKiloClawMutations>;
 
 const Editor = lazy(() => import('@monaco-editor/react'));
 const DiffEditor = lazy(() =>
   import('@monaco-editor/react').then(mod => ({ default: mod.DiffEditor }))
 );
 
-const EDITOR_OPTIONS = {
+export const EDITOR_OPTIONS = {
   minimap: { enabled: false },
   scrollBeyondLastLine: false,
   fontSize: 13,
@@ -52,18 +48,40 @@ function EditorLoading() {
   );
 }
 
+export interface FileSaveError {
+  message: string;
+  data?: { code?: string; upstreamCode?: string } | null;
+}
+
+export interface FileEditorPaneProps {
+  filePath: string;
+  data: { content: string; etag: string } | undefined;
+  isLoading: boolean;
+  error: { message: string } | null;
+  refetch: () => void;
+  onSave: (
+    args: { path: string; content: string; etag?: string },
+    callbacks: {
+      onSuccess: (result: { etag: string }) => void;
+      onError: (err: FileSaveError) => void;
+    }
+  ) => void;
+  isSaving: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
+  validateBeforeSave?: (filePath: string, content: string) => boolean;
+}
+
 export function FileEditorPane({
   filePath,
-  enabled,
-  mutations,
+  data,
+  isLoading,
+  error,
+  refetch,
+  onSave,
+  isSaving,
   onDirtyChange,
-}: {
-  filePath: string;
-  enabled: boolean;
-  mutations: ClawMutations;
-  onDirtyChange?: (dirty: boolean) => void;
-}) {
-  const { data, isLoading, error, refetch } = useReadFile(filePath, enabled);
+  validateBeforeSave,
+}: FileEditorPaneProps) {
   const [showDiff, setShowDiff] = useState(false);
 
   // savedContentRef holds the last successfully saved content, used as fallback
@@ -115,9 +133,7 @@ export function FileEditorPane({
   if (error) {
     return (
       <Alert className="my-2">
-        <AlertDescription>
-          {error instanceof Error ? error.message : 'Failed to load file'}
-        </AlertDescription>
+        <AlertDescription>{error?.message ?? 'Failed to load file'}</AlertDescription>
       </Alert>
     );
   }
@@ -190,7 +206,7 @@ export function FileEditorPane({
             variant="ghost"
             size="sm"
             className="h-7 text-xs"
-            disabled={!hasChanges || mutations.writeFile.isPending}
+            disabled={!hasChanges || isSaving}
             onClick={() => setEditedContent(null)}
           >
             Discard
@@ -199,22 +215,12 @@ export function FileEditorPane({
             variant="default"
             size="sm"
             className="h-7 text-xs"
-            disabled={!hasChanges || mutations.writeFile.isPending}
+            disabled={!hasChanges || isSaving}
             onClick={() => {
-              // Validate JSON for openclaw.json before submitting
-              if (filePath === 'openclaw.json') {
-                try {
-                  const parsed = JSON.parse(currentValue);
-                  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-                    toast.error('Config must be a JSON object');
-                    return;
-                  }
-                } catch {
-                  toast.error('Invalid JSON — fix syntax errors before saving');
-                  return;
-                }
+              if (validateBeforeSave && !validateBeforeSave(filePath, currentValue)) {
+                return;
               }
-              mutations.writeFile.mutate(
+              onSave(
                 { path: filePath, content: currentValue, etag: etagRef.current },
                 {
                   onSuccess: result => {
@@ -232,7 +238,7 @@ export function FileEditorPane({
                     ) {
                       // Preserve the user's edits and show diff so they can compare
                       // their version against the server's updated content.
-                      void refetch();
+                      refetch();
                       setShowDiff(true);
                       toast.error(
                         'File was modified externally — your edits are preserved, review the diff'
@@ -245,7 +251,7 @@ export function FileEditorPane({
               );
             }}
           >
-            {mutations.writeFile.isPending ? (
+            {isSaving ? (
               <>
                 <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                 Saving...

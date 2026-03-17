@@ -1,23 +1,59 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTRPC } from '@/lib/trpc/utils';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { FileTree } from '@/app/(app)/claw/components/FileTree';
-import { AdminFileEditorPane } from './AdminFileEditorPane';
+import { FileEditorShell } from '@/app/(app)/claw/components/FileEditorShell';
+import { FileEditorPane, type FileSaveError } from '@/app/(app)/claw/components/FileEditorPane';
+
+function AdminFileEditorPaneInner({
+  userId,
+  filePath,
+  writeFileMutation,
+  onDirtyChange,
+}: {
+  userId: string;
+  filePath: string;
+  writeFileMutation: ReturnType<typeof useMutation<{ etag: string }, any, any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  onDirtyChange: (dirty: boolean) => void;
+}) {
+  const trpc = useTRPC();
+  const { data, isLoading, error, refetch } = useQuery(
+    trpc.admin.kiloclawInstances.readFile.queryOptions(
+      { userId, path: filePath },
+      { refetchOnWindowFocus: false, refetchOnMount: 'always' }
+    )
+  );
+
+  const handleSave = useCallback(
+    (
+      args: { path: string; content: string; etag?: string },
+      callbacks: {
+        onSuccess: (result: { etag: string }) => void;
+        onError: (err: FileSaveError) => void;
+      }
+    ) => {
+      writeFileMutation.mutate(
+        { userId, path: args.path, content: args.content, etag: args.etag },
+        callbacks
+      );
+    },
+    [writeFileMutation, userId]
+  );
+
+  return (
+    <FileEditorPane
+      filePath={filePath}
+      data={data}
+      isLoading={isLoading}
+      error={error}
+      refetch={refetch}
+      onSave={handleSave}
+      isSaving={writeFileMutation.isPending}
+      onDirtyChange={onDirtyChange}
+    />
+  );
+}
 
 export function AdminFileEditor({ userId }: { userId: string }) {
   const trpc = useTRPC();
@@ -45,133 +81,22 @@ export function AdminFileEditor({ userId }: { userId: string }) {
     })
   );
 
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<{ type: 'switch'; path: string } | null>(null);
-  const hasUnsavedChangesRef = useRef(false);
-  const [sidebarWidth, setSidebarWidth] = useState(220);
-  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!dragRef.current) return;
-      e.preventDefault();
-      const newWidth = dragRef.current.startWidth + (e.clientX - dragRef.current.startX);
-      setSidebarWidth(Math.min(Math.max(newWidth, 140), 500));
-    };
-    const handleMouseUp = () => {
-      if (dragRef.current) {
-        dragRef.current = null;
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      }
-    };
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      dragRef.current = null;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, []);
-
-  const handleDirtyChange = useCallback((dirty: boolean) => {
-    hasUnsavedChangesRef.current = dirty;
-  }, []);
-
-  const handleSelect = useCallback(
-    (path: string) => {
-      if (path === selectedPath) return;
-      if (hasUnsavedChangesRef.current) {
-        setPendingAction({ type: 'switch', path });
-        return;
-      }
-      setSelectedPath(path);
-    },
-    [selectedPath]
-  );
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 py-4">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span className="text-muted-foreground text-sm">Loading file tree...</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <Alert className="my-2">
-        <AlertDescription>
-          {error instanceof Error ? error.message : 'Failed to load file tree'}
-        </AlertDescription>
-      </Alert>
-    );
-  }
-
-  if (!tree) return null;
-
   return (
-    <div className="space-y-2">
-      <div className="flex items-center">
-        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => void refetch()}>
-          <RefreshCw className="mr-1 h-3 w-3" />
-          Refresh tree
-        </Button>
-      </div>
-      <div className="flex overflow-hidden rounded-md border" style={{ height: '600px' }}>
-        <div className="shrink-0 overflow-y-auto" style={{ width: `${sidebarWidth}px` }}>
-          <FileTree tree={tree} selectedPath={selectedPath} onSelect={handleSelect} />
-        </div>
-        <div
-          className="before:bg-border hover:before:bg-border relative w-3 shrink-0 cursor-col-resize before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:content-['']"
-          onMouseDown={e => {
-            dragRef.current = { startX: e.clientX, startWidth: sidebarWidth };
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-          }}
+    <FileEditorShell
+      tree={tree}
+      isLoading={isLoading}
+      error={error}
+      refetch={refetch}
+      height="600px"
+      renderPane={(selectedPath, onDirtyChange) => (
+        <AdminFileEditorPaneInner
+          key={selectedPath}
+          userId={userId}
+          filePath={selectedPath}
+          writeFileMutation={writeFileMutation}
+          onDirtyChange={onDirtyChange}
         />
-        <div className="flex min-w-0 flex-1 flex-col">
-          {selectedPath ? (
-            <AdminFileEditorPane
-              key={selectedPath}
-              userId={userId}
-              filePath={selectedPath}
-              writeFileMutation={writeFileMutation}
-              onDirtyChange={handleDirtyChange}
-            />
-          ) : (
-            <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
-              Select a file to edit
-            </div>
-          )}
-        </div>
-      </div>
-
-      <AlertDialog open={pendingAction !== null} onOpenChange={() => setPendingAction(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
-            <AlertDialogDescription>You have unsaved changes. Discard them?</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                hasUnsavedChangesRef.current = false;
-                if (pendingAction?.type === 'switch') {
-                  setSelectedPath(pendingAction.path);
-                }
-                setPendingAction(null);
-              }}
-            >
-              Discard
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      )}
+    />
   );
 }

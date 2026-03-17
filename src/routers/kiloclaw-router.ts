@@ -53,6 +53,39 @@ import type { ClawBillingStatus } from '@/app/(app)/claw/components/billing/bill
  */
 const UNSAFE_ERROR_CODES = new Set(['config_read_failed', 'config_replace_failed']);
 
+/**
+ * Map KiloClawApiError responses to TRPCErrors for file operations.
+ * Always throws — call as `handleFileOperationError(err, 'read file')`.
+ */
+function handleFileOperationError(err: unknown, operation: string): never {
+  if (err instanceof TRPCError) throw err;
+  if (err instanceof KiloClawApiError && err.statusCode === 404) {
+    const { code, message } = getKiloClawApiErrorPayload(err);
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message:
+        code === 'controller_route_unavailable'
+          ? `Instance needs redeploy to support ${operation}`
+          : (message ?? `Failed to ${operation}`),
+    });
+  }
+  if (err instanceof KiloClawApiError && err.statusCode === 409) {
+    const { message, code } = getKiloClawApiErrorPayload(err);
+    throw new TRPCError({
+      code: 'CONFLICT',
+      message: message ?? 'File was modified externally',
+      cause: code ? new UpstreamApiError(code) : undefined,
+    });
+  }
+  throw new TRPCError({
+    code: 'INTERNAL_SERVER_ERROR',
+    message:
+      err instanceof KiloClawApiError
+        ? (getKiloClawApiErrorPayload(err).message ?? `Failed to ${operation}`)
+        : `Failed to ${operation}`,
+  });
+}
+
 function getKiloClawApiErrorPayload(err: KiloClawApiError): { message?: string; code?: string } {
   if (!err.responseBody) return {};
 
@@ -911,23 +944,7 @@ export const kiloclawRouter = createTRPCRouter({
       const result = await client.getFileTree(ctx.user.id);
       return result.tree;
     } catch (err) {
-      if (err instanceof KiloClawApiError && err.statusCode === 404) {
-        const { code, message } = getKiloClawApiErrorPayload(err);
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message:
-            code === 'controller_route_unavailable'
-              ? 'Instance needs redeploy to support file browsing'
-              : (message ?? 'Failed to fetch file tree'),
-        });
-      }
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message:
-          err instanceof KiloClawApiError
-            ? (getKiloClawApiErrorPayload(err).message ?? 'Failed to fetch file tree')
-            : 'Failed to fetch file tree',
-      });
+      handleFileOperationError(err, 'fetch file tree');
     }
   }),
 
@@ -953,32 +970,7 @@ export const kiloclawRouter = createTRPCRouter({
         }
         return result;
       } catch (err) {
-        if (err instanceof TRPCError) throw err;
-        if (err instanceof KiloClawApiError && err.statusCode === 404) {
-          const { code, message } = getKiloClawApiErrorPayload(err);
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message:
-              code === 'controller_route_unavailable'
-                ? 'Instance needs redeploy to support file reading'
-                : (message ?? 'File not found'),
-          });
-        }
-        if (err instanceof KiloClawApiError && err.statusCode === 409) {
-          const { message, code } = getKiloClawApiErrorPayload(err);
-          throw new TRPCError({
-            code: 'CONFLICT',
-            message: message ?? 'Instance is not provisioned or not running',
-            cause: code ? new UpstreamApiError(code) : undefined,
-          });
-        }
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message:
-            err instanceof KiloClawApiError
-              ? (getKiloClawApiErrorPayload(err).message ?? 'Failed to read file')
-              : 'Failed to read file',
-        });
+        handleFileOperationError(err, 'read file');
       }
     }),
 
@@ -1032,32 +1024,7 @@ export const kiloclawRouter = createTRPCRouter({
 
         return await client.writeFile(ctx.user.id, input.path, content, input.etag);
       } catch (err) {
-        if (err instanceof TRPCError) throw err;
-        if (err instanceof KiloClawApiError && err.statusCode === 404) {
-          const { code, message } = getKiloClawApiErrorPayload(err);
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message:
-              code === 'controller_route_unavailable'
-                ? 'Instance needs redeploy to support file writing'
-                : (message ?? 'File not found'),
-          });
-        }
-        if (err instanceof KiloClawApiError && err.statusCode === 409) {
-          const { message, code } = getKiloClawApiErrorPayload(err);
-          throw new TRPCError({
-            code: 'CONFLICT',
-            message: message ?? 'File was modified externally',
-            cause: code ? new UpstreamApiError(code) : undefined,
-          });
-        }
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message:
-            err instanceof KiloClawApiError
-              ? (getKiloClawApiErrorPayload(err).message ?? 'Failed to write file')
-              : 'Failed to write file',
-        });
+        handleFileOperationError(err, 'write file');
       }
     }),
 

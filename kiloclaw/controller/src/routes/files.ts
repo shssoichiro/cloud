@@ -72,6 +72,52 @@ function buildTree(dir: string, rootDir: string, admin = false): FileNode[] {
   return nodes;
 }
 
+type FileValidationError = { error: string; code?: string; status: 400 | 404 };
+
+/**
+ * Resolve a relative file path within the root directory and validate it:
+ * safe-path resolution, existence check, canonicalization, symlink rejection, regular file check.
+ * Returns the resolved absolute path on success, or a validation error.
+ */
+function resolveAndValidateFile(
+  relativePath: string,
+  rootDir: string
+): string | FileValidationError {
+  let resolved: string;
+  try {
+    resolved = resolveSafePath(relativePath, rootDir);
+  } catch (e) {
+    if (e instanceof SafePathError) {
+      return { error: e.message, status: 400 };
+    }
+    throw e;
+  }
+
+  if (!fs.existsSync(resolved)) {
+    return { code: 'file_not_found', error: 'File does not exist', status: 404 };
+  }
+
+  // Canonicalize to catch symlinked ancestors escaping the root
+  try {
+    verifyCanonicalized(fs.realpathSync(resolved), rootDir);
+  } catch (e) {
+    if (e instanceof SafePathError) {
+      return { error: e.message, status: 400 };
+    }
+    throw e;
+  }
+
+  const stat = fs.lstatSync(resolved);
+  if (stat.isSymbolicLink()) {
+    return { error: 'Symlinks are not allowed', status: 400 };
+  }
+  if (!stat.isFile()) {
+    return { error: 'Not a regular file', status: 400 };
+  }
+
+  return resolved;
+}
+
 export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: string): void {
   app.use('/_kilo/files/*', async (c, next) => {
     const token = getBearerToken(c.req.header('authorization'));
@@ -97,39 +143,15 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
       return c.json({ error: 'File type not allowed' }, 400);
     }
 
-    let resolved: string;
-    try {
-      resolved = resolveSafePath(relativePath, rootDir);
-    } catch (e) {
-      if (e instanceof SafePathError) {
-        return c.json({ error: e.message }, 400);
-      }
-      throw e;
+    const result = resolveAndValidateFile(relativePath, rootDir);
+    if (typeof result !== 'string') {
+      return c.json(
+        { error: result.error, ...(result.code && { code: result.code }) },
+        result.status
+      );
     }
 
-    if (!fs.existsSync(resolved)) {
-      return c.json({ code: 'file_not_found', error: 'File does not exist' }, 404);
-    }
-
-    // Canonicalize to catch symlinked ancestors escaping the root
-    try {
-      verifyCanonicalized(fs.realpathSync(resolved), rootDir);
-    } catch (e) {
-      if (e instanceof SafePathError) {
-        return c.json({ error: e.message }, 400);
-      }
-      throw e;
-    }
-
-    const stat = fs.lstatSync(resolved);
-    if (stat.isSymbolicLink()) {
-      return c.json({ error: 'Symlinks are not allowed' }, 400);
-    }
-    if (!stat.isFile()) {
-      return c.json({ error: 'Not a regular file' }, 400);
-    }
-
-    const content = fs.readFileSync(resolved, 'utf-8');
+    const content = fs.readFileSync(result, 'utf-8');
     return c.json({ content, etag: computeEtag(content) });
   });
 
@@ -144,40 +166,16 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
       return c.json({ error: 'File type not allowed' }, 400);
     }
 
-    let resolved: string;
-    try {
-      resolved = resolveSafePath(body.path, rootDir);
-    } catch (e) {
-      if (e instanceof SafePathError) {
-        return c.json({ error: e.message }, 400);
-      }
-      throw e;
-    }
-
-    if (!fs.existsSync(resolved)) {
-      return c.json({ code: 'file_not_found', error: 'File does not exist' }, 404);
-    }
-
-    // Canonicalize to catch symlinked ancestors escaping the root
-    try {
-      verifyCanonicalized(fs.realpathSync(resolved), rootDir);
-    } catch (e) {
-      if (e instanceof SafePathError) {
-        return c.json({ error: e.message }, 400);
-      }
-      throw e;
-    }
-
-    const stat = fs.lstatSync(resolved);
-    if (stat.isSymbolicLink()) {
-      return c.json({ error: 'Symlinks are not allowed' }, 400);
-    }
-    if (!stat.isFile()) {
-      return c.json({ error: 'Not a regular file' }, 400);
+    const result = resolveAndValidateFile(body.path, rootDir);
+    if (typeof result !== 'string') {
+      return c.json(
+        { error: result.error, ...(result.code && { code: result.code }) },
+        result.status
+      );
     }
 
     if (body.etag) {
-      const currentContent = fs.readFileSync(resolved, 'utf-8');
+      const currentContent = fs.readFileSync(result, 'utf-8');
       const currentEtag = computeEtag(currentContent);
       if (body.etag !== currentEtag) {
         return c.json({ code: 'file_etag_conflict', error: 'File was modified externally' }, 409);
@@ -185,11 +183,11 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
     }
 
     try {
-      backupFile(resolved);
+      backupFile(result);
     } catch (err) {
       console.warn('[files] Failed to create backup, proceeding with write:', err);
     }
-    atomicWrite(resolved, body.content);
+    atomicWrite(result, body.content);
 
     const newEtag = computeEtag(body.content);
     return c.json({ etag: newEtag });
