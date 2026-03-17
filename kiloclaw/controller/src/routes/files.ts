@@ -81,11 +81,12 @@ type FileValidationError = { error: string; code?: string; status: 400 | 404 };
  */
 function resolveAndValidateFile(
   relativePath: string,
-  rootDir: string
+  rootDir: string,
+  options?: { admin?: boolean }
 ): string | FileValidationError {
   let resolved: string;
   try {
-    resolved = resolveSafePath(relativePath, rootDir);
+    resolved = resolveSafePath(relativePath, rootDir, options);
   } catch (e) {
     if (e instanceof SafePathError) {
       return { error: e.message, status: 400 };
@@ -99,7 +100,7 @@ function resolveAndValidateFile(
 
   // Canonicalize to catch symlinked ancestors escaping the root
   try {
-    verifyCanonicalized(fs.realpathSync(resolved), rootDir);
+    verifyCanonicalized(fs.realpathSync(resolved), rootDir, options);
   } catch (e) {
     if (e instanceof SafePathError) {
       return { error: e.message, status: 400 };
@@ -139,11 +140,12 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
       return c.json({ error: 'Missing path parameter' }, 400);
     }
 
-    if (!isAdminMode(c) && !isAllowedExtension(relativePath)) {
+    const admin = isAdminMode(c);
+    if (!admin && !isAllowedExtension(relativePath)) {
       return c.json({ error: 'File type not allowed' }, 400);
     }
 
-    const result = resolveAndValidateFile(relativePath, rootDir);
+    const result = resolveAndValidateFile(relativePath, rootDir, { admin });
     if (typeof result !== 'string') {
       return c.json(
         { error: result.error, ...(result.code && { code: result.code }) },
@@ -162,11 +164,12 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
       return c.json({ error: 'Missing path or content' }, 400);
     }
 
-    if (!isAdminMode(c) && !isAllowedExtension(body.path)) {
+    const admin = isAdminMode(c);
+    if (!admin && !isAllowedExtension(body.path)) {
       return c.json({ error: 'File type not allowed' }, 400);
     }
 
-    const result = resolveAndValidateFile(body.path, rootDir);
+    const result = resolveAndValidateFile(body.path, rootDir, { admin });
     if (typeof result !== 'string') {
       return c.json(
         { error: result.error, ...(result.code && { code: result.code }) },
