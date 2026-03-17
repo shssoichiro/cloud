@@ -489,6 +489,36 @@ EOFPATCH
 export GOG_KEYRING_PASSWORD="kiloclaw"
 
 # ============================================================
+# TOOLS.MD — GOOGLE WORKSPACE SECTION
+# ============================================================
+# When gog credentials are present, append a Google Workspace section to
+# TOOLS.md so the agent knows gog is available. Idempotent: skips if the
+# marker is already present (e.g. after a restart on an existing volume).
+TOOLS_MD="/root/.openclaw/workspace/TOOLS.md"
+if [ -n "${KILOCLAW_GOG_CONFIG_TARBALL:-}" ] && [ -f "$TOOLS_MD" ]; then
+    if ! grep -q '## Google Workspace' "$TOOLS_MD"; then
+        cat >> "$TOOLS_MD" << 'EOFTOOLS'
+
+## Google Workspace
+
+The `gog` CLI is configured and ready for Google Workspace operations (Gmail, Calendar, Drive, Docs, Sheets, Slides, Tasks, Forms, Chat, Classroom).
+
+- List accounts: `gog auth list`
+- Gmail — search: `gog gmail search --account <email> --query "from:X"`
+- Gmail — read: `gog gmail get --account <email> <message-id>`
+- Gmail — send: `gog gmail send --account <email> --to <addr> --subject "..." --body "..."`
+- Calendar — list events: `gog calendar events list --account <email>`
+- Drive — list files: `gog drive files list --account <email>`
+- Docs — read: `gog docs get --account <email> <doc-id>`
+- Run `gog --help` and `gog <service> --help` for all available commands.
+EOFTOOLS
+        echo "TOOLS.md: added Google Workspace section"
+    else
+        echo "TOOLS.md: Google Workspace section already present"
+    fi
+fi
+
+# ============================================================
 # START CONTROLLER
 # ============================================================
 # Tell the gateway it's running under a supervisor. On SIGUSR1 restart,
