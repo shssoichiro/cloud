@@ -146,10 +146,6 @@ export class KiloClawInternalClient {
     return this.request(`/api/platform/debug-status?userId=${encodeURIComponent(userId)}`);
   }
 
-  async getGatewayToken(userId: string): Promise<{ gatewayToken: string }> {
-    return this.request(`/api/platform/gateway-token?userId=${encodeURIComponent(userId)}`);
-  }
-
   async patchKiloCodeConfig(
     userId: string,
     patch: KiloCodeConfigPatchInput

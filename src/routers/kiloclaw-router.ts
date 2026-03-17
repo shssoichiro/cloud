@@ -378,24 +378,12 @@ export const kiloclawRouter = createTRPCRouter({
     return client.getLatestVersion();
   }),
 
-  // Status + gateway token (two internal client calls, merged for the dashboard)
   getStatus: baseProcedure.query(async ({ ctx }) => {
     const client = new KiloClawInternalClient();
     const status = await client.getStatus(ctx.user.id);
-
-    let gatewayToken: string | null = null;
-    if (status.sandboxId) {
-      try {
-        const tokenResp = await client.getGatewayToken(ctx.user.id);
-        gatewayToken = tokenResp.gatewayToken;
-      } catch {
-        // non-fatal -- dashboard still works without token
-      }
-    }
-
     const workerUrl = KILOCLAW_API_URL || 'https://claw.kilo.ai';
 
-    return { ...status, gatewayToken, workerUrl } satisfies KiloClawDashboardStatus;
+    return { ...status, workerUrl } satisfies KiloClawDashboardStatus;
   }),
 
   // Instance lifecycle
