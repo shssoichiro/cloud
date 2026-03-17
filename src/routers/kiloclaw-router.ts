@@ -39,7 +39,6 @@ import {
 import { client as stripe } from '@/lib/stripe-client';
 import { APP_URL } from '@/lib/constants';
 import { getRewardfulReferral } from '@/lib/rewardful';
-import { redactOpenclawConfig, restoreRedactedSecrets } from '@/lib/kiloclaw/config-redaction';
 import { clawAccessProcedure } from '@/lib/kiloclaw/access-gate';
 import { getStripePriceIdForClawPlan } from '@/lib/kiloclaw/stripe-price-ids.server';
 import {
@@ -954,25 +953,7 @@ export const kiloclawRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       try {
         const client = new KiloClawInternalClient();
-        const result = await client.readFile(ctx.user.id, input.path);
-        const isOpenclawConfig =
-          input.path === 'openclaw.json' ||
-          /^\.kilo-backups\/openclaw\.json\.\d+\.bak$/.test(input.path);
-        if (isOpenclawConfig) {
-          try {
-            const parsed = JSON.parse(result.content) as Record<string, unknown>;
-            const redacted = redactOpenclawConfig(parsed);
-            return { content: JSON.stringify(redacted, null, 2), etag: result.etag };
-          } catch {
-            throw new TRPCError({
-              code: 'INTERNAL_SERVER_ERROR',
-              message:
-                'openclaw.json contains invalid JSON and cannot be safely displayed. ' +
-                'Please contact support at hi@kilo.ai for assistance.',
-            });
-          }
-        }
-        return result;
+        return await client.readFile(ctx.user.id, input.path);
       } catch (err) {
         handleFileOperationError(err, 'read file');
       }
@@ -1007,38 +988,7 @@ export const kiloclawRouter = createTRPCRouter({
               message: 'openclaw.json must be a JSON object',
             });
           }
-          const currentResult = await client.readFile(ctx.user.id, 'openclaw.json');
-
-          // Detect conflicts early: if the file changed since the user loaded it,
-          // reject before attempting secret restoration (which needs the matching revision).
-          if (input.etag && input.etag !== currentResult.etag) {
-            throw new TRPCError({
-              code: 'CONFLICT',
-              message: 'File was modified externally',
-              cause: new UpstreamApiError('file_etag_conflict'),
-            });
-          }
-
-          let currentConfig: Record<string, unknown>;
-          try {
-            currentConfig = JSON.parse(currentResult.content) as Record<string, unknown>;
-          } catch {
-            throw new TRPCError({
-              code: 'INTERNAL_SERVER_ERROR',
-              message:
-                'Current openclaw.json on disk is invalid JSON — cannot safely restore secrets. ' +
-                'Please contact support at hi@kilo.ai for assistance.',
-            });
-          }
-          const merged = restoreRedactedSecrets(
-            userConfig as Record<string, unknown>,
-            currentConfig
-          );
-          content = JSON.stringify(merged, null, 2);
-
-          // Use the freshly-fetched ETag for the final write so the conflict check
-          // in the controller compares against the same revision we restored secrets from.
-          return await client.writeFile(ctx.user.id, input.path, content, currentResult.etag);
+          content = JSON.stringify(userConfig, null, 2);
         }
 
         return await client.writeFile(ctx.user.id, input.path, content, input.etag);
