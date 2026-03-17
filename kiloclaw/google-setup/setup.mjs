@@ -590,12 +590,13 @@ if (pushUserId && pushSetupOk) {
 
   // Create or update push subscription
   if (pushSetupOk) {
-    const subscriptionName = `gog-gmail-push-${pushUserId.slice(0, 8)}`;
-    const pushEndpoint = `${gmailPushWorkerUrl}/push/user/${pushUserId}`;
+    const safeId = pushUserId.replaceAll(/[^a-zA-Z0-9_-]/g, '-');
+    const subscriptionName = `gog-gmail-push-${safeId.slice(0, 8)}`;
+    const pushEndpoint = `${gmailPushWorkerUrl}/push/user/${encodeURIComponent(pushUserId)}`;
     // The OIDC audience must always use the production domain so the worker's
     // OIDC_AUDIENCE_BASE validation matches, even when the push endpoint
     // targets a different environment (e.g. tunnel, dev).
-    const pushAudience = `https://kiloclaw-gmail.kiloapps.io/push/user/${pushUserId}`;
+    const pushAudience = `https://kiloclaw-gmail.kiloapps.io/push/user/${encodeURIComponent(pushUserId)}`;
     console.log(`Creating push subscription ${subscriptionName} → ${pushEndpoint}`);
     try {
       execSync(
