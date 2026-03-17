@@ -41,10 +41,6 @@ function parseCachedDeviceRequests(cached: unknown): DevicePairingRequest[] | nu
   return result.success ? result.data.requests : null;
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Channel pairing
-// ──────────────────────────────────────────────────────────────────────
-
 type PairingRequest = z.infer<typeof ControllerChannelPairingResponseSchema>['requests'][number];
 
 /**
@@ -74,11 +70,8 @@ export async function listPairingRequests(
     );
     return { requests: result.requests };
   } catch (error) {
-    if (isErrorUnknownRoute(error)) {
-      // Fall through to fly exec
-    } else {
-      throw error;
-    }
+    if (!isErrorUnknownRoute(error)) throw error;
+    // Controller predates this route — fall through to KV cache / fly exec
   }
 
   const cacheKey = makeCacheKey('pairing', state);
@@ -102,9 +95,10 @@ export async function listPairingRequests(
 
   const empty: { requests: PairingRequest[] } = { requests: [] };
 
+  const logCtx = `sandboxId=${state.sandboxId} appId=${state.flyAppName}`;
   if (result.exit_code !== 0) {
     console.error(
-      `[DO] pairing list failed (exit_code=${result.exit_code}):`,
+      `[DO] pairing list failed (exit_code=${result.exit_code}) ${logCtx}:`,
       result.stderr || result.stdout
     );
     return empty;
@@ -118,7 +112,7 @@ export async function listPairingRequests(
       pairing = { requests };
     }
   } catch (parseErr) {
-    console.error('[DO] pairing list parse error:', parseErr, '| stdout:', result.stdout);
+    console.error('[DO] pairing list parse error:', parseErr, '| stdout:', result.stdout, logCtx);
   }
 
   if (cacheKey) {
@@ -166,13 +160,11 @@ export async function approvePairingRequest(
       { channel, code }
     );
   } catch (error) {
-    if (isErrorUnknownRoute(error)) {
-      // Fall through to fly exec
-    } else if (error instanceof GatewayControllerError && error.status === 400) {
+    if (error instanceof GatewayControllerError && error.status === 400) {
       return { success: false, message: error.message };
-    } else {
-      throw error;
     }
+    if (!isErrorUnknownRoute(error)) throw error;
+    // Controller predates this route — fall through to fly exec
   }
 
   const flyConfig = getFlyConfig(env, state);
@@ -206,10 +198,6 @@ export async function approvePairingRequest(
   };
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Device pairing
-// ──────────────────────────────────────────────────────────────────────
-
 type DevicePairingRequest = z.infer<
   typeof ControllerDevicePairingResponseSchema
 >['requests'][number];
@@ -241,11 +229,8 @@ export async function listDevicePairingRequests(
     );
     return { requests: result.requests };
   } catch (error) {
-    if (isErrorUnknownRoute(error)) {
-      // Fall through to fly exec
-    } else {
-      throw error;
-    }
+    if (!isErrorUnknownRoute(error)) throw error;
+    // Controller predates this route — fall through to KV cache / fly exec
   }
 
   const cacheKey = makeCacheKey('device-pairing', state);
@@ -332,13 +317,11 @@ export async function approveDevicePairingRequest(
       { requestId }
     );
   } catch (error) {
-    if (isErrorUnknownRoute(error)) {
-      // Fall through to fly exec
-    } else if (error instanceof GatewayControllerError && error.status === 400) {
+    if (error instanceof GatewayControllerError && error.status === 400) {
       return { success: false, message: error.message };
-    } else {
-      throw error;
     }
+    if (!isErrorUnknownRoute(error)) throw error;
+    // Controller predates this route — fall through to fly exec
   }
 
   const flyConfig = getFlyConfig(env, state);
@@ -371,10 +354,6 @@ export async function approveDevicePairingRequest(
       : `Approval failed: ${(result.stderr || result.stdout).trim().slice(0, 200) || 'unknown error'}`,
   };
 }
-
-// ──────────────────────────────────────────────────────────────────────
-// Doctor command
-// ──────────────────────────────────────────────────────────────────────
 
 /**
  * Run `openclaw doctor --fix --non-interactive` on the machine.

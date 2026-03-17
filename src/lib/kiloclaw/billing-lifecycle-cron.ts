@@ -60,8 +60,8 @@ async function trySendEmail(
   templateVars: Record<string, string>,
   summary: CronSummary
 ): Promise<boolean> {
-  // Check if already sent (without inserting) by attempting the insert.
-  // Insert first to claim the slot, send, then keep. If send fails, delete the row.
+  // Insert first to claim the slot; if rowCount is 0, already sent — skip.
+  // If send fails, delete to allow retry on the next cron run.
   const result = await database
     .insert(kiloclaw_email_log)
     .values({ user_id: userId, email_type: emailType })
@@ -73,12 +73,19 @@ async function trySendEmail(
   try {
     await sendEmail({ to: userEmail, templateName, templateVars });
   } catch (error) {
-    // Send failed — remove the log row so we can retry on the next cron run
-    await database
-      .delete(kiloclaw_email_log)
-      .where(
-        and(eq(kiloclaw_email_log.user_id, userId), eq(kiloclaw_email_log.email_type, emailType))
+    try {
+      await database
+        .delete(kiloclaw_email_log)
+        .where(
+          and(eq(kiloclaw_email_log.user_id, userId), eq(kiloclaw_email_log.email_type, emailType))
+        );
+    } catch (deleteError) {
+      console.error(
+        '[billing-cron] Failed to remove email log row after send failure:',
+        deleteError,
+        { userId, emailType }
       );
+    }
     throw error;
   }
   summary.emails_sent++;
@@ -183,7 +190,10 @@ export async function runKiloClawBillingLifecycleCron(
         eq(kiloclaw_earlybird_purchases.user_id, kiloclaw_subscriptions.user_id)
       )
       .where(
-        sql`(${kiloclaw_subscriptions.status} IS NULL OR ${kiloclaw_subscriptions.status} NOT IN ('active', 'trialing'))`
+        and(
+          sql`(${kiloclaw_subscriptions.status} IS NULL OR ${kiloclaw_subscriptions.status} NOT IN ('active', 'trialing'))`,
+          isNull(kiloclaw_subscriptions.suspended_at)
+        )
       );
 
     for (const row of earlybirdRows) {

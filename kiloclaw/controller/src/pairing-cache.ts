@@ -187,7 +187,7 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
 
     if (anySuccess) {
       channelCache = { requests: allRequests, lastUpdated: nowImpl() };
-    } else if (channels.length > 0) {
+    } else {
       console.warn('[pairing-cache] channel refresh: all channels failed, cache not updated');
     }
   };
@@ -261,12 +261,10 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
     const isPairingLine = PAIRING_KEYWORDS.some(kw => lower.includes(kw));
     if (!isPairingLine) return;
 
-    // Fires once after a 2s delay; additional triggers during that window are ignored.
     if (debounceTimer !== null) return;
 
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      // refreshAll uses Promise.allSettled internally — errors are logged per-refresh
       void refreshAll();
     }, DEBOUNCE_DELAY_MS);
   };

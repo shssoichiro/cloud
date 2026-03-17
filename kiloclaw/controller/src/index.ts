@@ -259,10 +259,16 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
   };
 
   process.on('SIGTERM', () => {
-    void onSignal('SIGTERM');
+    void onSignal('SIGTERM').catch(err => {
+      console.error('[controller] Shutdown failed:', err);
+      process.exit(1);
+    });
   });
   process.on('SIGINT', () => {
-    void onSignal('SIGINT');
+    void onSignal('SIGINT').catch(err => {
+      console.error('[controller] Shutdown failed:', err);
+      process.exit(1);
+    });
   });
 }
 
