@@ -448,6 +448,8 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
     }
   }),
 
+  // Note: admin tree intentionally returns all entries including credentials/.
+  // The user-facing router applies filterFileTree(); admin access is unrestricted.
   fileTree: adminProcedure
     .input(z.object({ userId: z.string().min(1) }))
     .query(async ({ input }) => {
