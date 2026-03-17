@@ -194,7 +194,7 @@ describe('file routes', () => {
         }),
       });
       expect(res.status).toBe(200);
-      expect(backupFile).toHaveBeenCalledWith(`${ROOT}/workspace/SOUL.md`);
+      expect(backupFile).toHaveBeenCalledWith(`${ROOT}/workspace/SOUL.md`, ROOT);
       expect(atomicWrite).toHaveBeenCalledWith(`${ROOT}/workspace/SOUL.md`, 'new content');
 
       const body = (await res.json()) as any;

@@ -169,7 +169,7 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
     }
 
     try {
-      backupFile(result);
+      backupFile(result, rootDir);
     } catch (err) {
       console.warn('[files] Failed to create backup, proceeding with write:', err);
     }
