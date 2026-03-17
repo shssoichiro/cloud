@@ -33,7 +33,15 @@ function hasPopulatedStatus(
   return candidate !== undefined && candidate.status !== null;
 }
 
-export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | undefined }) {
+export function ClawDashboard({
+  status,
+  isNewSetup,
+  onNewSetupChange,
+}: {
+  status: KiloClawDashboardStatus | undefined;
+  isNewSetup: boolean;
+  onNewSetupChange: (v: boolean) => void;
+}) {
   const mutations = useKiloClawMutations();
   const gatewayUrl = useGatewayUrl(status);
   const instanceStatus = hasPopulatedStatus(status) ? status : null;
@@ -54,7 +62,6 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
   const configServiceNudgeVisible = !instanceStatus || instanceYoung;
 
   const [dirtySecrets, setDirtySecrets] = useState<Set<string>>(new Set());
-  const [isNewSetup, setIsNewSetup] = useState(false);
 
   const onSecretsChanged = useCallback((entryId: string) => {
     setDirtySecrets(prev => new Set([...prev, entryId]));
@@ -128,10 +135,13 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
 
       <BillingWrapper hideBanners={isNewSetup}>
         {!instanceStatus ? (
-          <CreateInstanceCard mutations={mutations} onProvisionStart={() => setIsNewSetup(true)} />
+          <CreateInstanceCard
+            mutations={mutations}
+            onProvisionStart={() => onNewSetupChange(true)}
+          />
         ) : isNewSetup &&
           (instanceStatus.status !== 'running' || gatewayStatus?.state !== 'running') ? (
-          <ProvisioningSpinner onViewDashboard={() => setIsNewSetup(false)} />
+          <ProvisioningSpinner onViewDashboard={() => onNewSetupChange(false)} />
         ) : isNewSetup ? (
           <Card className="mt-6">
             <CardContent className="flex flex-col items-center justify-center gap-4 py-16">
@@ -146,7 +156,7 @@ export function ClawDashboard({ status }: { status: KiloClawDashboardStatus | un
                 <Button
                   className="min-w-[180px]"
                   variant="outline"
-                  onClick={() => setIsNewSetup(false)}
+                  onClick={() => onNewSetupChange(false)}
                 >
                   <Settings className="mr-2 h-4 w-4" />
                   Configure Instance
