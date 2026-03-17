@@ -3,6 +3,7 @@ import type { GatewayProviderOptions } from '@ai-sdk/gateway';
 import type { AnthropicProviderOptions } from '@ai-sdk/anthropic';
 import type { ReasoningDetailUnion } from '@/lib/custom-llm/reasoning-details';
 import type { AwsCredentials } from '@/lib/providers/openrouter/inference-provider-id';
+import type Anthropic from '@anthropic-ai/sdk';
 
 // Base types for OpenRouter API that don't depend on other lib files
 // This breaks circular dependencies with mistral.ts, minimax.ts, etc.
@@ -62,46 +63,11 @@ export type SharedGatewayRequestProperties = {
 export type GatewayResponsesRequest = SharedGatewayRequestProperties &
   OpenAI.Responses.ResponseCreateParams;
 
-// Anthropic Messages API request type
-// ref: https://docs.anthropic.com/en/api/messages
-export type AnthropicContentBlock =
-  | { type: 'text'; text: string }
-  | {
-      type: 'image';
-      source: { type: 'base64' | 'url'; media_type?: string; data?: string; url?: string };
-    }
-  | { type: 'tool_use'; id: string; name: string; input: unknown }
-  | { type: 'tool_result'; tool_use_id: string; content?: string | AnthropicContentBlock[] };
-
-export type AnthropicMessage = {
-  role: 'user' | 'assistant';
-  content: string | AnthropicContentBlock[];
-};
-
-export type AnthropicTool = {
-  name: string;
-  description?: string;
-  input_schema: { type: 'object'; properties?: Record<string, unknown>; required?: string[] };
-};
-
-export type GatewayMessagesRequest = SharedGatewayRequestProperties & {
-  model: string;
-  max_tokens: number;
-  messages: AnthropicMessage[];
-  system?: string | { type: 'text'; text: string }[];
-  stream?: boolean;
-  tools?: AnthropicTool[];
-  tool_choice?: { type: 'auto' | 'any' | 'tool'; name?: string };
-  metadata?: { user_id?: string };
-  stop_sequences?: string[];
-  temperature?: number;
-  top_p?: number;
-  top_k?: number;
-  // OpenRouter extra fields injected by the proxy
-  safety_identifier?: string;
-  prompt_cache_key?: string;
-  user?: string;
-};
+export type GatewayMessagesRequest = SharedGatewayRequestProperties &
+  Anthropic.MessageCreateParams & {
+    user?: string;
+    session_id?: string;
+  };
 
 /**
  * Approximately OpenRouter API request type. Actually based on OpenAI's, but the differences aren't huge.

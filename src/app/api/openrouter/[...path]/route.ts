@@ -398,14 +398,23 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     return dataCollectionRequiredResponse();
   }
 
-  if (taskId) {
-    requestBodyParsed.body.prompt_cache_key = generateProviderSpecificHash(
-      user.id + taskId,
-      provider
-    );
+  const userId = generateProviderSpecificHash(user.id, provider);
+  if (requestBodyParsed.kind === 'messages') {
+    requestBodyParsed.body.metadata = { user_id: userId };
+    requestBodyParsed.body.user = userId;
+    if (taskId) {
+      requestBodyParsed.body.session_id = generateProviderSpecificHash(user.id + taskId, provider);
+    }
+  } else {
+    if (taskId) {
+      requestBodyParsed.body.prompt_cache_key = generateProviderSpecificHash(
+        user.id + taskId,
+        provider
+      );
+    }
+    requestBodyParsed.body.safety_identifier = userId;
+    requestBodyParsed.body.user = userId; // deprecated, but this is what OpenRouter uses
   }
-  requestBodyParsed.body.safety_identifier = generateProviderSpecificHash(user.id, provider);
-  requestBodyParsed.body.user = requestBodyParsed.body.safety_identifier; // deprecated, but this is what OpenRouter uses
 
   if (requestBodyParsed.kind === 'chat_completions') {
     if (ENABLE_TOOL_REPAIR) {
