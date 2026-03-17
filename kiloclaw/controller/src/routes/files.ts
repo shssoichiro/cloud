@@ -31,6 +31,7 @@ function buildTree(dir: string, rootDir: string): FileNode[] {
 
   for (const entry of entries) {
     if (entry.isSymbolicLink()) continue;
+    if (entry.isDirectory() && entry.name === 'credentials') continue;
 
     const relativePath = path.relative(rootDir, path.join(dir, entry.name));
 

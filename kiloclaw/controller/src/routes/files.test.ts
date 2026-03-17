@@ -65,7 +65,7 @@ describe('file routes', () => {
   });
 
   describe('GET /_kilo/files/tree', () => {
-    it('returns unfiltered recursive directory listing', async () => {
+    it('returns recursive directory listing excluding credentials', async () => {
       vi.mocked(fs.readdirSync).mockImplementation((dir: any) => {
         if (dir === ROOT) {
           return [
@@ -79,9 +79,6 @@ describe('file routes', () => {
         if (dir === `${ROOT}/workspace`) {
           return [mockDirent('SOUL.md', false)] as any;
         }
-        if (dir === `${ROOT}/credentials`) {
-          return [mockDirent('token.txt', false)] as any;
-        }
         return [];
       });
 
@@ -92,13 +89,12 @@ describe('file routes', () => {
       const names = body.tree.flatMap(function flatNames(n: any): string[] {
         return [n.name, ...(n.children ? n.children.flatMap(flatNames) : [])];
       });
-      // All files are returned — no filtering at the controller level
       expect(names).toContain('openclaw.json');
-      expect(names).toContain('credentials');
-      expect(names).toContain('token.txt');
       expect(names).toContain('SOUL.md.bak.2026-03-01');
       expect(names).toContain('debug.log');
       expect(names).toContain('SOUL.md');
+      expect(names).not.toContain('credentials');
+      expect(names).not.toContain('token.txt');
     });
 
     it('skips symlinks', async () => {
