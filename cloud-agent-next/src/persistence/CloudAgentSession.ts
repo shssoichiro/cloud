@@ -989,10 +989,9 @@ export class CloudAgentSession extends DurableObject {
 
       await this.recordKiloServerActivity();
 
-      // 11. Emit ready
-      emitProgress('ready', 'Session ready');
-
-      // 12. Auto-initiate if requested
+      // 11. Auto-initiate if requested, then emit ready only on success.
+      // Emitting 'ready' before startExecutionV2 would let the client
+      // unlock chat input for a session that may fail to initiate.
       if (input.autoInitiate) {
         const initiateResult = await this.startExecutionV2({
           kind: 'initiatePrepared',
@@ -1006,8 +1005,12 @@ export class CloudAgentSession extends DurableObject {
             .withFields({ sessionId, error: initiateResult.error })
             .error('Auto-initiate failed after async preparation');
           emitProgress('failed', `Auto-initiate failed: ${initiateResult.error}`);
+          return;
         }
       }
+
+      // 12. Emit ready — session is prepared (and initiated, if autoInitiate)
+      emitProgress('ready', 'Session ready');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger
