@@ -1054,6 +1054,17 @@ export const kiloclawRouter = createTRPCRouter({
             });
           }
           const currentResult = await client.readFile(ctx.user.id, 'openclaw.json');
+
+          // Detect conflicts early: if the file changed since the user loaded it,
+          // reject before attempting secret restoration (which needs the matching revision).
+          if (input.etag && input.etag !== currentResult.etag) {
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message: 'File was modified externally',
+              cause: new UpstreamApiError('file_etag_conflict'),
+            });
+          }
+
           let currentConfig: Record<string, unknown>;
           try {
             currentConfig = JSON.parse(currentResult.content) as Record<string, unknown>;
@@ -1070,6 +1081,10 @@ export const kiloclawRouter = createTRPCRouter({
             currentConfig
           );
           content = JSON.stringify(merged, null, 2);
+
+          // Use the freshly-fetched ETag for the final write so the conflict check
+          // in the controller compares against the same revision we restored secrets from.
+          return await client.writeFile(ctx.user.id, input.path, content, currentResult.etag);
         }
 
         return await client.writeFile(ctx.user.id, input.path, content, input.etag);
