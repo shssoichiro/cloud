@@ -31,10 +31,11 @@ cd "$WORKSPACE_DIR"
 # the gateway, so the CLI/gateway don't need their own detached-restart path.
 export OPENCLAW_NO_RESPAWN=1
 
-# Enable Node's module compile cache on the persistent volume so warm bytecode
-# survives machine stop/start cycles. /root is the Fly Volume mount, so this
-# cache persists across restarts (unlike /var/tmp which is ephemeral in Fly VMs).
-export NODE_COMPILE_CACHE=/root/.openclaw/cache/node-compile-cache
+# Enable Node's module compile cache. The cache is version-keyed (Node
+# auto-creates a subdirectory per NODE_VERSION+ARCH+V8 tag), so stale
+# entries from a different Node version are harmlessly ignored.
+# /var/tmp matches the upstream openclaw doctor recommendation.
+export NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache
 mkdir -p "$NODE_COMPILE_CACHE"
 
 # ============================================================
