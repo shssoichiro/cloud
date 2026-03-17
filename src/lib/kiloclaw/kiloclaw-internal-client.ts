@@ -272,25 +272,32 @@ export class KiloClawInternalClient {
     });
   }
 
-  async getFileTree(userId: string): Promise<{ tree: FileNode[] }> {
-    return this.request(`/api/platform/files/tree?userId=${encodeURIComponent(userId)}`);
+  async getFileTree(userId: string, admin = false): Promise<{ tree: FileNode[] }> {
+    const params = new URLSearchParams({ userId });
+    if (admin) params.set('admin', 'true');
+    return this.request(`/api/platform/files/tree?${params.toString()}`);
   }
 
-  async readFile(userId: string, filePath: string): Promise<{ content: string; etag: string }> {
-    return this.request(
-      `/api/platform/files/read?userId=${encodeURIComponent(userId)}&path=${encodeURIComponent(filePath)}`
-    );
+  async readFile(
+    userId: string,
+    filePath: string,
+    admin = false
+  ): Promise<{ content: string; etag: string }> {
+    const params = new URLSearchParams({ userId, path: filePath });
+    if (admin) params.set('admin', 'true');
+    return this.request(`/api/platform/files/read?${params.toString()}`);
   }
 
   async writeFile(
     userId: string,
     filePath: string,
     content: string,
-    etag?: string
+    etag?: string,
+    admin = false
   ): Promise<{ etag: string }> {
     return this.request('/api/platform/files/write', {
       method: 'POST',
-      body: JSON.stringify({ userId, path: filePath, content, etag }),
+      body: JSON.stringify({ userId, path: filePath, content, etag, admin: admin || undefined }),
     });
   }
 
