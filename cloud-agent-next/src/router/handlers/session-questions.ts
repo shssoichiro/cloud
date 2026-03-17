@@ -24,7 +24,14 @@ async function resolveWrapperClient(opts: {
   }
 
   const sandboxId: SandboxId =
-    metadata.sandboxId ?? (await generateSandboxId(metadata.orgId, userId, metadata.botId));
+    metadata.sandboxId ??
+    (await generateSandboxId(
+      env.PER_SESSION_SANDBOX_ORG_IDS,
+      metadata.orgId,
+      userId,
+      metadata.sessionId,
+      metadata.botId
+    ));
   const sandbox = getSandbox(getSandboxNamespace(env, sandboxId), sandboxId);
 
   const wrapperInfo = await findWrapperForSession(sandbox, sessionId);

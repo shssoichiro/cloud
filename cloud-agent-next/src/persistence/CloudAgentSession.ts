@@ -1153,10 +1153,16 @@ export class CloudAgentSession extends DurableObject {
       .info('Stopping idle kilo server');
 
     try {
+      const workerEnv = this.env as unknown as WorkerEnv;
       const sandboxId =
         metadata.sandboxId ??
-        (await generateSandboxId(metadata.orgId, metadata.userId, metadata.botId));
-      const workerEnv = this.env as unknown as WorkerEnv;
+        (await generateSandboxId(
+          workerEnv.PER_SESSION_SANDBOX_ORG_IDS,
+          metadata.orgId,
+          metadata.userId,
+          metadata.sessionId,
+          metadata.botId
+        ));
       const sandbox = getSandbox(getSandboxNamespace(workerEnv, sandboxId), sandboxId);
 
       const rpcStart = Date.now();
@@ -1210,10 +1216,16 @@ export class CloudAgentSession extends DurableObject {
       const metadata = await this.getMetadata();
       if (!metadata) return;
 
+      const workerEnvForKeepAlive = this.env as unknown as WorkerEnv;
       const sandboxId =
         metadata.sandboxId ??
-        (await generateSandboxId(metadata.orgId, metadata.userId, metadata.botId));
-      const workerEnvForKeepAlive = this.env as unknown as WorkerEnv;
+        (await generateSandboxId(
+          workerEnvForKeepAlive.PER_SESSION_SANDBOX_ORG_IDS,
+          metadata.orgId,
+          metadata.userId,
+          metadata.sessionId,
+          metadata.botId
+        ));
       const sandbox = getSandbox(getSandboxNamespace(workerEnvForKeepAlive, sandboxId), sandboxId);
       await sandbox.setSleepAfter(SANDBOX_SLEEP_AFTER_SECONDS);
     } catch (error) {
@@ -1837,7 +1849,13 @@ export class CloudAgentSession extends DurableObject {
           );
         }
 
-        const sandboxId = await generateSandboxId(request.orgId, request.userId, request.botId);
+        const sandboxId = await generateSandboxId(
+          (this.env as unknown as WorkerEnv).PER_SESSION_SANDBOX_ORG_IDS,
+          request.orgId,
+          request.userId,
+          sessionId,
+          request.botId
+        );
         const initContext: InitializeContext = {
           kilocodeToken: request.authToken,
           kilocodeModel: request.model,
@@ -1922,7 +1940,13 @@ export class CloudAgentSession extends DurableObject {
 
         const sandboxId =
           metadata.sandboxId ??
-          (await generateSandboxId(metadata.orgId, metadata.userId, metadata.botId));
+          (await generateSandboxId(
+            (this.env as unknown as WorkerEnv).PER_SESSION_SANDBOX_ORG_IDS,
+            metadata.orgId,
+            metadata.userId,
+            metadata.sessionId,
+            metadata.botId
+          ));
         const initContext: InitializeContext = {
           kilocodeToken: token,
           kilocodeModel: metadata.model,
@@ -2008,7 +2032,13 @@ export class CloudAgentSession extends DurableObject {
 
       const sandboxId =
         metadata.sandboxId ??
-        (await generateSandboxId(metadata.orgId, metadata.userId, metadata.botId));
+        (await generateSandboxId(
+          (this.env as unknown as WorkerEnv).PER_SESSION_SANDBOX_ORG_IDS,
+          metadata.orgId,
+          metadata.userId,
+          metadata.sessionId,
+          metadata.botId
+        ));
       const resumeContext: TokenResumeContext = {
         kilocodeToken: metadata.kilocodeToken ?? '',
         kilocodeModel: model,

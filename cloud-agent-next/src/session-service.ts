@@ -465,7 +465,13 @@ export class SessionService {
     // predate sandboxId storage.
     const sandboxId: SandboxId =
       this._metadata.sandboxId ??
-      (await generateSandboxId(this._metadata.orgId, userId, this._metadata.botId));
+      (await generateSandboxId(
+        env.PER_SESSION_SANDBOX_ORG_IDS,
+        this._metadata.orgId,
+        userId,
+        sessionId,
+        this._metadata.botId
+      ));
 
     return sandboxId;
   }

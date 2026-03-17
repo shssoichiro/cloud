@@ -63,7 +63,13 @@ export function createSessionManagementHandlers() {
 
             const sandboxId: SandboxId =
               metadata.sandboxId ??
-              (await generateSandboxId(metadata.orgId, userId, metadata.botId));
+              (await generateSandboxId(
+                env.PER_SESSION_SANDBOX_ORG_IDS,
+                metadata.orgId,
+                userId,
+                metadata.sessionId,
+                metadata.botId
+              ));
 
             logger.setTags({ sandboxId, orgId: metadata.orgId ?? '(personal)' });
 
@@ -175,7 +181,13 @@ export function createSessionManagementHandlers() {
 
             const sandboxId: SandboxId =
               metadata.sandboxId ??
-              (await generateSandboxId(metadata.orgId, userId, metadata.botId));
+              (await generateSandboxId(
+                env.PER_SESSION_SANDBOX_ORG_IDS,
+                metadata.orgId,
+                userId,
+                metadata.sessionId,
+                metadata.botId
+              ));
 
             logger.setTags({ sandboxId, orgId: metadata.orgId ?? '(personal)' });
 
@@ -355,7 +367,14 @@ export function createSessionManagementHandlers() {
 
           // Compute sandboxId for log correlation
           const sandboxId =
-            metadata.sandboxId ?? (await generateSandboxId(metadata.orgId, userId, metadata.botId));
+            metadata.sandboxId ??
+            (await generateSandboxId(
+              env.PER_SESSION_SANDBOX_ORG_IDS,
+              metadata.orgId,
+              userId,
+              metadata.sessionId,
+              metadata.botId
+            ));
 
           logger.setTags({ sandboxId, orgId: metadata.orgId ?? '(personal)' });
           logger.info('Session metadata retrieved successfully');

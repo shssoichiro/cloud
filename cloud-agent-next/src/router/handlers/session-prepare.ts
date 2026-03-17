@@ -17,13 +17,7 @@ import {
   UpdateSessionInput,
   UpdateSessionOutput,
 } from '../schemas.js';
-import {
-  generateSandboxId,
-  generatePerSessionSandboxId,
-  isPerSessionSandboxOrg,
-  getSandboxNamespace,
-} from '../../sandbox-id.js';
-import type { SandboxId } from '../../types.js';
+import { generateSandboxId, getSandboxNamespace } from '../../sandbox-id.js';
 import {
   checkDiskAndCleanBeforeSetup,
   setupWorkspace,
@@ -105,9 +99,13 @@ const prepareSessionHandler = internalApiProtectedProcedure
 
       // 1. Generate new cloudAgentSessionId and sandboxId
       const cloudAgentSessionId = generateSessionId();
-      const sandboxId: SandboxId = isPerSessionSandboxOrg(ctx.env, input.kilocodeOrganizationId)
-        ? await generatePerSessionSandboxId(cloudAgentSessionId)
-        : await generateSandboxId(input.kilocodeOrganizationId, ctx.userId, ctx.botId);
+      const sandboxId = await generateSandboxId(
+        ctx.env.PER_SESSION_SANDBOX_ORG_IDS,
+        input.kilocodeOrganizationId,
+        ctx.userId,
+        cloudAgentSessionId,
+        ctx.botId
+      );
 
       logger.setTags({
         cloudAgentSessionId,

@@ -195,14 +195,20 @@ describe('router sessionId validation', () => {
     describe('format validation', () => {
       it('should generate sandboxId with org prefix for organization accounts', async () => {
         const { generateSandboxId } = await import('./sandbox-id.js');
-        const sandboxId = await generateSandboxId('org-123', 'user-456');
+        const sandboxId = await generateSandboxId(undefined, 'org-123', 'user-456', 's');
         expect(sandboxId).toMatch(/^org-[0-9a-f]{48}$/);
         expect(sandboxId.length).toBe(52);
       });
 
       it('should generate sandboxId with bot prefix when botId is provided', async () => {
         const { generateSandboxId } = await import('./sandbox-id.js');
-        const sandboxId = await generateSandboxId('org-123', 'user-456', 'reviewer');
+        const sandboxId = await generateSandboxId(
+          undefined,
+          'org-123',
+          'user-456',
+          's',
+          'reviewer'
+        );
         expect(sandboxId).toMatch(/^bot-[0-9a-f]{48}$/);
         expect(sandboxId.length).toBe(52);
       });
@@ -211,14 +217,14 @@ describe('router sessionId validation', () => {
     describe('personal accounts', () => {
       it('should generate sandboxId with usr prefix for personal accounts', async () => {
         const { generateSandboxId } = await import('./sandbox-id.js');
-        const sandboxId = await generateSandboxId(undefined, 'abc-123');
+        const sandboxId = await generateSandboxId(undefined, undefined, 'abc-123', 's');
         expect(sandboxId).toMatch(/^usr-[0-9a-f]{48}$/);
         expect(sandboxId.length).toBe(52);
       });
 
       it('should generate sandboxId with ubt prefix for personal bot accounts', async () => {
         const { generateSandboxId } = await import('./sandbox-id.js');
-        const sandboxId = await generateSandboxId(undefined, 'abc-123', 'reviewer');
+        const sandboxId = await generateSandboxId(undefined, undefined, 'abc-123', 's', 'reviewer');
         expect(sandboxId).toMatch(/^ubt-[0-9a-f]{48}$/);
         expect(sandboxId.length).toBe(52);
       });
@@ -229,8 +235,8 @@ describe('router sessionId validation', () => {
         const { generateSandboxId } = await import('./sandbox-id.js');
         const userId = 'same-user-id';
 
-        const orgSandboxId = await generateSandboxId('org-123', userId);
-        const personalSandboxId = await generateSandboxId(undefined, userId);
+        const orgSandboxId = await generateSandboxId(undefined, 'org-123', userId, 's');
+        const personalSandboxId = await generateSandboxId(undefined, undefined, userId, 's');
 
         expect(orgSandboxId).not.toBe(personalSandboxId);
         expect(orgSandboxId).toMatch(/^org-[0-9a-f]{48}$/);
@@ -625,8 +631,8 @@ describe('router sessionId validation', () => {
         const userId = 'user-456';
         const botId = 'reviewer';
 
-        const userSandboxId = await generateSandboxId(orgId, userId);
-        const botSandboxId = await generateSandboxId(orgId, userId, botId);
+        const userSandboxId = await generateSandboxId(undefined, orgId, userId, 's');
+        const botSandboxId = await generateSandboxId(undefined, orgId, userId, 's', botId);
 
         expect(userSandboxId).not.toBe(botSandboxId);
         expect(userSandboxId).toMatch(/^org-[0-9a-f]{48}$/);
