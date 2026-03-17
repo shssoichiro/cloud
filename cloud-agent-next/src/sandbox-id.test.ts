@@ -186,6 +186,16 @@ describe('generateSandboxId', () => {
       const id = await generateSandboxId('anything', undefined, 'user', 'session');
       expect(id).toMatch(/^usr-/);
     });
+
+    it('should treat "*" as wildcard matching any org', async () => {
+      const id = await generateSandboxId('*', 'any-org', 'user', 'session');
+      expect(id).toMatch(/^ses-/);
+    });
+
+    it('should still fall back to shared with "*" when orgId is undefined', async () => {
+      const id = await generateSandboxId('*', undefined, 'user', 'session');
+      expect(id).toMatch(/^usr-/);
+    });
   });
 });
 

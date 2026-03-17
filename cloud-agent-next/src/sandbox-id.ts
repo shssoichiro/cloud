@@ -53,7 +53,8 @@ export async function generateSandboxId(
   sessionId: string,
   botId?: string
 ): Promise<SandboxId> {
-  if (orgId !== undefined && parseOrgIdList(perSessionOrgIds).has(orgId)) {
+  const perSessionOrgs = parseOrgIdList(perSessionOrgIds);
+  if (orgId !== undefined && (perSessionOrgs.has('*') || perSessionOrgs.has(orgId))) {
     return hashToSandboxId(sessionId, 'ses');
   }
 
