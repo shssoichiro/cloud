@@ -13,6 +13,7 @@ function computeEtag(content: string): string {
   return crypto.createHash('md5').update(content).digest('hex');
 }
 
+/** Keep in sync with: kiloclaw/src/.../gateway.ts (Zod), src/lib/kiloclaw/kiloclaw-internal-client.ts */
 interface FileNode {
   name: string;
   path: string;

@@ -286,6 +286,7 @@ export async function replaceConfigOnMachine(
   }
 }
 
+/** Keep in sync with: controller/src/routes/files.ts, src/lib/kiloclaw/kiloclaw-internal-client.ts */
 const FileNodeSchema: z.ZodType<{
   name: string;
   path: string;

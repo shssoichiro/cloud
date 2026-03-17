@@ -28,6 +28,7 @@ import type {
   GmailNotificationsResponse,
 } from './types';
 
+/** Keep in sync with: kiloclaw/controller/src/routes/files.ts, kiloclaw/src/.../gateway.ts (Zod) */
 export interface FileNode {
   name: string;
   path: string;
