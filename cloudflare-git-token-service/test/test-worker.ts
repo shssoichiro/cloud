@@ -11,11 +11,14 @@
  * Endpoints:
  *   POST /getTokenForRepo - { githubRepo, userId, orgId? }
  *   POST /getToken - { installationId, appType? }
+ *   POST /getGitLabToken - { userId, orgId? }
  */
 import type {
   GitTokenRPCEntrypoint,
   GetTokenForRepoParams,
   GetTokenForRepoResult,
+  GetGitLabTokenParams,
+  GetGitLabTokenResult,
 } from '../src/index.js';
 import type { GitHubAppType } from '../src/github-token-service.js';
 
@@ -46,12 +49,22 @@ export default {
         return Response.json({ success: true, data: { token } });
       }
 
+      if (url.pathname === '/getGitLabToken' && request.method === 'POST') {
+        const body = (await request.json()) as GetGitLabTokenParams;
+        const result: GetGitLabTokenResult = await env.GIT_TOKEN_SERVICE.getGitLabToken(body);
+        if (!result.success) {
+          return Response.json(result, { status: 404 });
+        }
+        return Response.json(result);
+      }
+
       return Response.json(
         {
           error: 'Not Found',
           endpoints: [
             'POST /getTokenForRepo - { githubRepo, userId, orgId? }',
             'POST /getToken - { installationId, appType? }',
+            'POST /getGitLabToken - { userId, orgId? }',
           ],
         },
         { status: 404 }

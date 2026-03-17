@@ -1,5 +1,7 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { GitHubTokenService, type GitHubAppType } from './github-token-service.js';
+import { GitLabLookupService } from './gitlab-lookup-service.js';
+import { GitLabTokenService } from './gitlab-token-service.js';
 import { InstallationLookupService } from './installation-lookup-service.js';
 
 export type GetTokenForRepoParams = {
@@ -27,14 +29,42 @@ export type GetTokenForRepoFailure = {
 
 export type GetTokenForRepoResult = GetTokenForRepoSuccess | GetTokenForRepoFailure;
 
+export type GetGitLabTokenParams = {
+  userId: string;
+  orgId?: string;
+};
+
+export type GetGitLabTokenSuccess = {
+  success: true;
+  token: string;
+  instanceUrl: string;
+};
+
+export type GetGitLabTokenFailure = {
+  success: false;
+  reason:
+    | 'database_not_configured'
+    | 'no_integration_found'
+    | 'invalid_org_id'
+    | 'no_token'
+    | 'token_refresh_failed'
+    | 'token_expired_no_refresh';
+};
+
+export type GetGitLabTokenResult = GetGitLabTokenSuccess | GetGitLabTokenFailure;
+
 export class GitTokenRPCEntrypoint extends WorkerEntrypoint<CloudflareEnv> {
   private githubService: GitHubTokenService;
   private installationLookupService: InstallationLookupService;
+  private gitlabLookupService: GitLabLookupService;
+  private gitlabTokenService: GitLabTokenService;
 
   constructor(ctx: ExecutionContext, env: CloudflareEnv) {
     super(ctx, env);
     this.githubService = new GitHubTokenService(env);
     this.installationLookupService = new InstallationLookupService(env);
+    this.gitlabLookupService = new GitLabLookupService(env);
+    this.gitlabTokenService = new GitLabTokenService(env);
   }
 
   /**
@@ -82,6 +112,24 @@ export class GitTokenRPCEntrypoint extends WorkerEntrypoint<CloudflareEnv> {
    */
   async getToken(installationId: string, appType: GitHubAppType = 'standard'): Promise<string> {
     return this.githubService.getToken(installationId, appType);
+  }
+
+  /**
+   * Get a GitLab token for the user/org.
+   *
+   * Looks up the GitLab integration and returns a valid access token,
+   * refreshing OAuth tokens if needed.
+   *
+   * @param params - The user and optional org context
+   * @returns Token and instance URL, or a failure reason
+   */
+  async getGitLabToken(params: GetGitLabTokenParams): Promise<GetGitLabTokenResult> {
+    const integration = await this.gitlabLookupService.findGitLabIntegration(params);
+    if (!integration.success) {
+      return integration;
+    }
+
+    return this.gitlabTokenService.getToken(integration.integrationId, integration.metadata);
   }
 }
 
