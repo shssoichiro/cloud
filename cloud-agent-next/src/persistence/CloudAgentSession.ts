@@ -1808,6 +1808,14 @@ export class CloudAgentSession extends DurableObject {
           return this.buildStartError('BAD_REQUEST', 'No model specified');
         }
 
+        const sandboxId = await generateSandboxId(
+          (this.env as unknown as WorkerEnv).PER_SESSION_SANDBOX_ORG_IDS,
+          request.orgId,
+          request.userId,
+          sessionId,
+          request.botId
+        );
+
         const prepareResult = await this.prepare({
           sessionId,
           userId: request.userId,
@@ -1828,6 +1836,7 @@ export class CloudAgentSession extends DurableObject {
           mcpServers: request.mcpServers,
           autoCommit: request.autoCommit,
           upstreamBranch: request.upstreamBranch,
+          sandboxId,
         });
 
         if (!prepareResult.success) {
@@ -1848,14 +1857,6 @@ export class CloudAgentSession extends DurableObject {
             initiateResult.error ?? 'Failed to initiate session'
           );
         }
-
-        const sandboxId = await generateSandboxId(
-          (this.env as unknown as WorkerEnv).PER_SESSION_SANDBOX_ORG_IDS,
-          request.orgId,
-          request.userId,
-          sessionId,
-          request.botId
-        );
         const initContext: InitializeContext = {
           kilocodeToken: request.authToken,
           kilocodeModel: request.model,

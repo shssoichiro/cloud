@@ -192,9 +192,9 @@ describe('generateSandboxId', () => {
       expect(id).toMatch(/^ses-/);
     });
 
-    it('should still fall back to shared with "*" when orgId is undefined', async () => {
+    it('should use per-session sandbox with "*" even when orgId is undefined', async () => {
       const id = await generateSandboxId('*', undefined, 'user', 'session');
-      expect(id).toMatch(/^usr-/);
+      expect(id).toMatch(/^ses-/);
     });
   });
 });

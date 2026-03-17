@@ -1625,7 +1625,7 @@ export class SessionService {
     },
     existing?: CloudAgentSessionState
   ): Promise<void> {
-    const { orgId, userId, sessionId, botId, platform } = context;
+    const { orgId, userId, sessionId, botId, platform, sandboxId } = context;
     const doKey = `${userId}:${sessionId}`;
 
     // Build metadata, preserving prepared session fields from existing if provided
@@ -1639,6 +1639,7 @@ export class SessionService {
       userId,
       botId,
       platform,
+      sandboxId,
       timestamp: Date.now(),
       // Apply the new data (may override some existing fields, which is intentional)
       githubRepo: data.githubRepo,
