@@ -676,11 +676,10 @@ platform.get('/files/tree', async c => {
   if (!userId) {
     return c.json({ error: 'userId query parameter is required' }, 400);
   }
-  const admin = c.req.query('admin') === 'true';
   try {
     const result = await withDORetry(
       instanceStubFactory(c.env, userId),
-      stub => stub.getFileTree(admin),
+      stub => stub.getFileTree(),
       'getFileTree'
     );
     if (!result) {
@@ -707,11 +706,10 @@ platform.get('/files/read', async c => {
   if (!filePath) {
     return c.json({ error: 'path query parameter is required' }, 400);
   }
-  const admin = c.req.query('admin') === 'true';
   try {
     const result = await withDORetry(
       instanceStubFactory(c.env, userId),
-      stub => stub.readFile(filePath, admin),
+      stub => stub.readFile(filePath),
       'readFile'
     );
     if (!result) {
@@ -733,18 +731,17 @@ const WriteFileSchema = z.object({
   path: z.string().min(1),
   content: z.string(),
   etag: z.string().optional(),
-  admin: z.boolean().optional(),
 });
 
 // POST /api/platform/files/write
 platform.post('/files/write', async c => {
   const result = await parseBody(c, WriteFileSchema);
   if ('error' in result) return result.error;
-  const { userId, path: filePath, content, etag, admin } = result.data;
+  const { userId, path: filePath, content, etag } = result.data;
   try {
     const response = await withDORetry(
       instanceStubFactory(c.env, userId),
-      stub => stub.writeFile(filePath, content, etag, admin),
+      stub => stub.writeFile(filePath, content, etag),
       'writeFile'
     );
     if (!response) {

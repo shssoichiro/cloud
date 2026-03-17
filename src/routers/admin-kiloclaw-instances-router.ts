@@ -453,7 +453,7 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
     .query(async ({ input }) => {
       try {
         const client = new KiloClawInternalClient();
-        const result = await client.getFileTree(input.userId, true);
+        const result = await client.getFileTree(input.userId);
         return result.tree;
       } catch (err) {
         throwKiloclawAdminError(err, 'Failed to fetch file tree');
@@ -465,7 +465,7 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
     .query(async ({ input }) => {
       try {
         const client = new KiloClawInternalClient();
-        return await client.readFile(input.userId, input.path, true);
+        return await client.readFile(input.userId, input.path);
       } catch (err) {
         throwKiloclawAdminError(err, 'Failed to read file');
       }
@@ -483,7 +483,7 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
     .mutation(async ({ input }) => {
       try {
         const client = new KiloClawInternalClient();
-        return await client.writeFile(input.userId, input.path, input.content, input.etag, true);
+        return await client.writeFile(input.userId, input.path, input.content, input.etag);
       } catch (err) {
         // Propagate file_etag_conflict with UpstreamApiError so the UI can detect it
         if (err instanceof KiloClawApiError && err.statusCode === 409) {

@@ -8,24 +8,8 @@ import { resolveSafePath, verifyCanonicalized, SafePathError } from '../safe-pat
 import { atomicWrite } from '../atomic-write';
 import { backupFile } from '../backup-file';
 
-const ALLOWED_EXTENSIONS = new Set(['.json', '.json5', '.md', '.txt', '.yaml', '.yml', '.toml']);
-const FILTERED_PATTERNS = [/\.bak\./, /\.kilotmp\./];
-const FILTERED_DIRS = new Set(['credentials']);
-
 function computeEtag(content: string): string {
   return crypto.createHash('md5').update(content).digest('hex');
-}
-
-function isAllowedExtension(filePath: string): boolean {
-  return ALLOWED_EXTENSIONS.has(path.extname(filePath).toLowerCase());
-}
-
-function isFiltered(name: string): boolean {
-  return FILTERED_PATTERNS.some(p => p.test(name));
-}
-
-function isAdminMode(c: { req: { query: (k: string) => string | undefined } }): boolean {
-  return c.req.query('mode') === 'admin';
 }
 
 interface FileNode {
@@ -35,7 +19,7 @@ interface FileNode {
   children?: FileNode[];
 }
 
-function buildTree(dir: string, rootDir: string, admin = false): FileNode[] {
+function buildTree(dir: string, rootDir: string): FileNode[] {
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -45,8 +29,6 @@ function buildTree(dir: string, rootDir: string, admin = false): FileNode[] {
   const nodes: FileNode[] = [];
 
   for (const entry of entries) {
-    if (!admin && isFiltered(entry.name)) continue;
-    if (!admin && FILTERED_DIRS.has(entry.name) && entry.isDirectory()) continue;
     if (entry.isSymbolicLink()) continue;
 
     const relativePath = path.relative(rootDir, path.join(dir, entry.name));
@@ -56,11 +38,9 @@ function buildTree(dir: string, rootDir: string, admin = false): FileNode[] {
         name: entry.name,
         path: relativePath,
         type: 'directory',
-        children: buildTree(path.join(dir, entry.name), rootDir, admin),
+        children: buildTree(path.join(dir, entry.name), rootDir),
       });
     } else {
-      // Only show files with allowed text extensions (unless admin mode)
-      if (!admin && !isAllowedExtension(entry.name)) continue;
       nodes.push({
         name: entry.name,
         path: relativePath,
@@ -81,12 +61,11 @@ type FileValidationError = { error: string; code?: string; status: 400 | 404 };
  */
 function resolveAndValidateFile(
   relativePath: string,
-  rootDir: string,
-  options?: { admin?: boolean }
+  rootDir: string
 ): string | FileValidationError {
   let resolved: string;
   try {
-    resolved = resolveSafePath(relativePath, rootDir, options);
+    resolved = resolveSafePath(relativePath, rootDir, { admin: true });
   } catch (e) {
     if (e instanceof SafePathError) {
       return { error: e.message, status: 400 };
@@ -100,7 +79,7 @@ function resolveAndValidateFile(
 
   // Canonicalize to catch symlinked ancestors escaping the root
   try {
-    verifyCanonicalized(fs.realpathSync(resolved), rootDir, options);
+    verifyCanonicalized(fs.realpathSync(resolved), rootDir, { admin: true });
   } catch (e) {
     if (e instanceof SafePathError) {
       return { error: e.message, status: 400 };
@@ -129,8 +108,7 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
   });
 
   app.get('/_kilo/files/tree', c => {
-    const admin = isAdminMode(c);
-    const tree = buildTree(rootDir, rootDir, admin);
+    const tree = buildTree(rootDir, rootDir);
     return c.json({ tree });
   });
 
@@ -140,12 +118,7 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
       return c.json({ error: 'Missing path parameter' }, 400);
     }
 
-    const admin = isAdminMode(c);
-    if (!admin && !isAllowedExtension(relativePath)) {
-      return c.json({ error: 'File type not allowed' }, 400);
-    }
-
-    const result = resolveAndValidateFile(relativePath, rootDir, { admin });
+    const result = resolveAndValidateFile(relativePath, rootDir);
     if (typeof result !== 'string') {
       return c.json(
         { error: result.error, ...(result.code && { code: result.code }) },
@@ -164,12 +137,7 @@ export function registerFileRoutes(app: Hono, expectedToken: string, rootDir: st
       return c.json({ error: 'Missing path or content' }, 400);
     }
 
-    const admin = isAdminMode(c);
-    if (!admin && !isAllowedExtension(body.path)) {
-      return c.json({ error: 'File type not allowed' }, 400);
-    }
-
-    const result = resolveAndValidateFile(body.path, rootDir, { admin });
+    const result = resolveAndValidateFile(body.path, rootDir);
     if (typeof result !== 'string') {
       return c.json(
         { error: result.error, ...(result.code && { code: result.code }) },
