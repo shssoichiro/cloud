@@ -13,6 +13,8 @@ import type { Supervisor } from './supervisor';
 import { registerHealthRoute } from './routes/health';
 import { registerGatewayRoutes } from './routes/gateway';
 import { registerConfigRoutes } from './routes/config';
+import { registerPairingRoutes } from './routes/pairing';
+import { createPairingCache } from './pairing-cache';
 import { registerEnvRoutes } from './routes/env';
 import { registerGmailPushRoute } from './routes/gmail-push';
 import { registerFileRoutes } from './routes/files';
@@ -135,8 +137,11 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
     console.error('[gog] Failed to write credentials:', err);
   }
 
+  const pairingCache = createPairingCache();
+
   const supervisor = createSupervisor({
     args: ['gateway', ...config.gatewayArgs],
+    onStdoutLine: line => pairingCache.onPairingLogLine(line),
   });
 
   let gmailWatchSupervisor: Supervisor | null = null;
@@ -184,6 +189,7 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
   registerHealthRoute(app, supervisor, config.expectedToken);
   registerGatewayRoutes(app, supervisor, config.expectedToken);
   registerConfigRoutes(app, supervisor, config.expectedToken);
+  registerPairingRoutes(app, pairingCache, config.expectedToken);
   registerEnvRoutes(app, supervisor, config.expectedToken);
   registerGmailPushRoute(app, gmailWatchSupervisor, config.expectedToken);
   registerFileRoutes(app, config.expectedToken, '/root/.openclaw');
@@ -219,6 +225,7 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
   });
 
   await supervisor.start();
+  pairingCache.start();
   if (gmailWatchSupervisor && googleAccountEmail) {
     await gmailWatchSupervisor.start();
     startWatchRenewal(googleAccountEmail);
@@ -242,6 +249,7 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
     shuttingDown = true;
     console.log(`[controller] Received ${signal}, shutting down`);
 
+    pairingCache.cleanup();
     stopWatchRenewal();
     await Promise.all(
       [supervisor.shutdown(signal), gmailWatchSupervisor?.shutdown(signal)].filter(Boolean)
@@ -253,10 +261,16 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
   };
 
   process.on('SIGTERM', () => {
-    void onSignal('SIGTERM');
+    void onSignal('SIGTERM').catch(err => {
+      console.error('[controller] Shutdown failed:', err);
+      process.exit(1);
+    });
   });
   process.on('SIGINT', () => {
-    void onSignal('SIGINT');
+    void onSignal('SIGINT').catch(err => {
+      console.error('[controller] Shutdown failed:', err);
+      process.exit(1);
+    });
   });
 }
 
