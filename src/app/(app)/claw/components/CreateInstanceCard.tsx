@@ -177,14 +177,15 @@ export function CreateInstanceCard({
       }
     }
 
-    onProvisionStart?.();
-
     mutations.provision.mutate(
       {
         kilocodeDefaultModel: `kilocode/${selectedModel}`,
         channels: buildChannelsPayload(),
       },
       {
+        onSuccess: () => {
+          onProvisionStart?.();
+        },
         onError: err => {
           toast.error(`Failed to create: ${err.message}`);
         },
