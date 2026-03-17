@@ -105,6 +105,8 @@ export async function generateUserNotifications(user: User): Promise<KiloNotific
   ]);
   const ctx: NotificationContext = {
     userOrganizations,
+    // Replaces the old userHasOrganizations() LIMIT-1 existence check; acceptable
+    // because getUserOrganizationsWithSeats is already needed by other generators.
     isInTeam: userOrganizations.length > 0,
     balance,
   };
