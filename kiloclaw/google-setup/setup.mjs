@@ -704,7 +704,7 @@ console.log('');
 console.log('  Next steps:');
 console.log('  1. Redeploy your kiloclaw instance to activate Google services');
 if (pushSetupOk) {
-  console.log('  2. Enable Gmail notifications in Settings → Google Account');
+  console.log('  2. Gmail push notifications have been enabled automatically.');
 } else {
   console.log('  2. Gmail push notifications could not be set up (see errors above).');
   console.log('     Google Workspace access will still work. Re-run setup to retry.');
