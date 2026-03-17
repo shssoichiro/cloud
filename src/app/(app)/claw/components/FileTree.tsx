@@ -4,6 +4,13 @@ import { useState, useCallback } from 'react';
 import { ChevronRight, ChevronDown, File, Folder } from 'lucide-react';
 import type { FileNode } from '@/lib/kiloclaw/kiloclaw-internal-client';
 
+function sortNodes(nodes: FileNode[]): FileNode[] {
+  return [...nodes].sort((a, b) => {
+    if (a.type === b.type) return a.name.localeCompare(b.name);
+    return a.type === 'directory' ? -1 : 1;
+  });
+}
+
 function FileTreeNode({
   node,
   depth,
@@ -53,7 +60,7 @@ function FileTreeNode({
       </button>
       {isDir &&
         isExpanded &&
-        node.children?.map(child => (
+        sortNodes(node.children ?? []).map(child => (
           <FileTreeNode
             key={child.path}
             node={child}
@@ -104,7 +111,7 @@ export function FileTree({
       <div className="text-muted-foreground px-3 py-2 text-[10px] font-medium tracking-wider uppercase">
         /root/.openclaw
       </div>
-      {tree.map(node => (
+      {sortNodes(tree).map(node => (
         <FileTreeNode
           key={node.path}
           node={node}

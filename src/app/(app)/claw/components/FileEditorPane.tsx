@@ -148,7 +148,7 @@ export function FileEditorPane({
         <Suspense fallback={<EditorLoading />}>
           {showDiff && hasChanges ? (
             <DiffEditor
-              height="450px"
+              height="100%"
               language={language}
               original={serverContent}
               modified={currentValue}
@@ -171,7 +171,7 @@ export function FileEditorPane({
             />
           ) : (
             <Editor
-              height="450px"
+              height="100%"
               language={language}
               value={currentValue}
               onChange={handleEditorChange}

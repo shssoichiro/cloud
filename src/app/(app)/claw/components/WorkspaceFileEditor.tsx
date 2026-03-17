@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useFileTree, type useKiloClawMutations } from '@/hooks/useKiloClaw';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,29 @@ export function WorkspaceFileEditor({
     { type: 'switch'; path: string } | { type: 'close' } | null
   >(null);
   const hasUnsavedChangesRef = useRef(false);
+  const [sidebarWidth, setSidebarWidth] = useState(220);
+  const isDragging = useRef(false);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      e.preventDefault();
+      setSidebarWidth(prev => Math.min(Math.max(e.movementX + prev, 140), 500));
+    };
+    const handleMouseUp = () => {
+      if (isDragging.current) {
+        isDragging.current = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   const handleDirtyChange = useCallback((dirty: boolean) => {
     hasUnsavedChangesRef.current = dirty;
@@ -95,10 +118,18 @@ export function WorkspaceFileEditor({
           Close
         </Button>
       </div>
-      <div className="flex overflow-hidden rounded-md border" style={{ height: '520px' }}>
-        <div className="w-[220px] shrink-0 overflow-y-auto border-r">
+      <div className="flex overflow-hidden rounded-md border">
+        <div className="shrink-0 overflow-y-auto" style={{ width: `${sidebarWidth}px` }}>
           <FileTree tree={tree} selectedPath={selectedPath} onSelect={handleSelect} />
         </div>
+        <div
+          className="hover:bg-border bg-border/50 w-1 shrink-0 cursor-col-resize"
+          onMouseDown={() => {
+            isDragging.current = true;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+          }}
+        />
         <div className="flex min-w-0 flex-1 flex-col">
           {selectedPath ? (
             <FileEditorPane
