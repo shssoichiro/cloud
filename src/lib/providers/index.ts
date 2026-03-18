@@ -7,6 +7,7 @@ import type {
   OpenRouterChatCompletionRequest,
   OpenRouterGeneration,
   GatewayRequest,
+  GatewayMessagesRequest,
 } from '@/lib/providers/openrouter/types';
 import {
   applyMistralModelSettings,
@@ -119,7 +120,7 @@ async function checkBYOK(
 
 export async function getProvider(
   requestedModel: string,
-  request: OpenRouterChatCompletionRequest | GatewayResponsesRequest,
+  request: OpenRouterChatCompletionRequest | GatewayResponsesRequest | GatewayMessagesRequest,
   user: User | AnonymousUserContext,
   organizationId: string | undefined,
   taskId: string | undefined
@@ -268,7 +269,10 @@ function getPreferredProviderOrder(requestedModel: string): string[] {
 
 function applyPreferredProvider(
   requestedModel: string,
-  requestToMutate: OpenRouterChatCompletionRequest | GatewayResponsesRequest
+  requestToMutate:
+    | OpenRouterChatCompletionRequest
+    | GatewayResponsesRequest
+    | GatewayMessagesRequest
 ) {
   const preferredProviderOrder = getPreferredProviderOrder(requestedModel);
   if (preferredProviderOrder.length === 0) {
@@ -360,7 +364,7 @@ export async function openRouterRequest({
   path: string;
   search: string;
   method: string;
-  body: OpenRouterChatCompletionRequest | GatewayResponsesRequest;
+  body: OpenRouterChatCompletionRequest | GatewayResponsesRequest | GatewayMessagesRequest;
   extraHeaders: Record<string, string>;
   provider: Provider;
   signal?: AbortSignal;
