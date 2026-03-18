@@ -104,7 +104,9 @@ export async function tryDispatchPendingReviews(owner: Owner): Promise<DispatchR
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
       if (result.status === 'fulfilled') {
-        dispatched++;
+        if (result.value) {
+          dispatched++;
+        }
       } else {
         const review = pendingReviews[i];
         const error = result.reason;
@@ -153,11 +155,34 @@ export async function tryDispatchPendingReviews(owner: Owner): Promise<DispatchR
 }
 
 /**
- * Dispatch a single review to Cloudflare Worker
+ * Dispatch a single review to Cloudflare Worker.
+ * Returns true if the review was dispatched, false if it was already claimed
+ * by another concurrent dispatcher.
  */
-async function dispatchReview(review: CloudAgentCodeReview, owner: Owner): Promise<void> {
+async function dispatchReview(review: CloudAgentCodeReview, owner: Owner): Promise<boolean> {
   // Get platform from review (defaults to 'github' for backward compatibility)
   const platform = (review.platform || 'github') as CodeReviewPlatform;
+
+  // 1. Atomically claim the review (pending → queued) to prevent concurrent
+  //    dispatchers from picking the same review. The conditional WHERE ensures
+  //    only one dispatcher wins the claim.
+  const claimed = await db
+    .update(cloud_agent_code_reviews)
+    .set({ status: 'queued' })
+    .where(
+      and(
+        eq(cloud_agent_code_reviews.id, review.id),
+        eq(cloud_agent_code_reviews.status, 'pending')
+      )
+    )
+    .returning({ id: cloud_agent_code_reviews.id });
+
+  if (claimed.length === 0) {
+    logExceptInTest('[dispatchReview] Review already claimed by another dispatcher', {
+      reviewId: review.id,
+    });
+    return false;
+  }
 
   logExceptInTest('[dispatchReview] Dispatching review', {
     reviewId: review.id,
@@ -165,7 +190,7 @@ async function dispatchReview(review: CloudAgentCodeReview, owner: Owner): Promi
     platform,
   });
 
-  // 1. Get agent config for owner (use platform from review)
+  // 2. Get agent config for owner (use platform from review)
   const agentConfig = await getAgentConfigForOwner(owner, 'code_review', platform);
 
   if (!agentConfig) {
@@ -174,7 +199,7 @@ async function dispatchReview(review: CloudAgentCodeReview, owner: Owner): Promi
     );
   }
 
-  // 2. Evaluate feature flag: use cloud-agent-next?
+  // 3. Evaluate feature flag: use cloud-agent-next?
   const useCloudAgentNext =
     process.env.NODE_ENV === 'development' ||
     (await isFeatureFlagEnabled('code-review-cloud-agent-next', owner.userId));
@@ -185,7 +210,7 @@ async function dispatchReview(review: CloudAgentCodeReview, owner: Owner): Promi
     useCloudAgentNext,
   });
 
-  // 3. Prepare complete payload for cloud agent
+  // 4. Prepare complete payload for cloud agent
   const payload = await prepareReviewPayload({
     reviewId: review.id,
     owner,
@@ -193,9 +218,7 @@ async function dispatchReview(review: CloudAgentCodeReview, owner: Owner): Promi
     platform,
   });
 
-  // 4. Dispatch to Cloudflare Worker to create CodeReviewOrchestrator DO
-  // This is done before the DB status update so that if dispatch fails, the
-  // review stays "pending" and can be retried on the next dispatch cycle.
+  // 5. Dispatch to Cloudflare Worker to create CodeReviewOrchestrator DO
   const agentVersion = useCloudAgentNext ? 'v2' : 'v1';
   await codeReviewWorkerClient.dispatchReview({
     ...payload,
@@ -203,11 +226,13 @@ async function dispatchReview(review: CloudAgentCodeReview, owner: Owner): Promi
     agentVersion,
   });
 
-  // 5. Update status to "queued" (no longer pending) and record which agent version to use
+  // 6. Record which agent version was dispatched
   await updateCodeReviewStatus(review.id, 'queued', { agentVersion });
 
   logExceptInTest('[dispatchReview] Review dispatched successfully', {
     reviewId: review.id,
     platform,
   });
+
+  return true;
 }
