@@ -419,7 +419,7 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
       output: void;
       meta: object;
     }>;
-    getTownConfig: import('@trpc/server').TRPCQueryProcedure<{
+     getTownConfig: import('@trpc/server').TRPCQueryProcedure<{
       input: {
         townId: string;
       };
@@ -432,6 +432,7 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
           platform_integration_id?: string | undefined;
         };
         owner_user_id?: string | undefined;
+        created_by_user_id?: string | undefined;
         kilocode_token?: string | undefined;
         default_model?: string | undefined;
         small_model?: string | undefined;
@@ -1456,6 +1457,7 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
               platform_integration_id?: string | undefined;
             };
             owner_user_id?: string | undefined;
+            created_by_user_id?: string | undefined;
             kilocode_token?: string | undefined;
             default_model?: string | undefined;
             small_model?: string | undefined;
