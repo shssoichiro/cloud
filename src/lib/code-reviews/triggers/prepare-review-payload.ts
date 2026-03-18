@@ -322,7 +322,10 @@ export async function prepareReviewPayload(
     // continuation) are derived from the same review row to avoid mismatches.
     let previousHeadSha: string | null = null;
     let previousCloudAgentSessionId: string | undefined;
-    const incrementalEnabled = await isFeatureFlagEnabled(FEATURE_FLAG_INCREMENTAL_REVIEW);
+    const incrementalEnabled = await isFeatureFlagEnabled(
+      FEATURE_FLAG_INCREMENTAL_REVIEW,
+      owner.userId
+    );
 
     if (incrementalEnabled) {
       try {
