@@ -2,7 +2,7 @@ import { NextResponse, type NextResponse as NextResponseType } from 'next/server
 import { type NextRequest } from 'next/server';
 import { isOpenCodeBasedClient, isRooCodeBasedClient, stripRequiredPrefix } from '@/lib/utils';
 import { applyTrackingIds } from '@/lib/providerHash';
-import { extractPromptInfo } from '@/lib/processUsage';
+import { extractPromptInfo as extractChatCompletionsPromptInfo } from '@/lib/processUsage';
 import { validateFeatureHeader, FEATURE_HEADER } from '@/lib/feature-detection';
 import type {
   OpenRouterChatCompletionRequest,
@@ -98,6 +98,16 @@ function validatePath(
     return { path: pathSuffix };
   }
   return { errorResponse: invalidPathResponse() };
+}
+
+function extractPromptInfo(requestBodyParsed: GatewayRequest): PromptInfo {
+  if (requestBodyParsed.kind === 'messages') {
+    return extractMessagesPromptInfo(requestBodyParsed.body);
+  }
+  if (requestBodyParsed.kind === 'responses') {
+    return extractResponsesPromptInfo(requestBodyParsed.body);
+  }
+  return extractChatCompletionsPromptInfo(requestBodyParsed.body);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponseType<unknown>> {
@@ -318,12 +328,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   }
 
   // Extract properties for usage context
-  const promptInfo: PromptInfo =
-    requestBodyParsed.kind === 'chat_completions'
-      ? extractPromptInfo(requestBodyParsed.body)
-      : requestBodyParsed.kind === 'messages'
-        ? extractMessagesPromptInfo(requestBodyParsed.body)
-        : extractResponsesPromptInfo(requestBodyParsed.body);
+  const promptInfo = extractPromptInfo(requestBodyParsed);
 
   const usageContext: MicrodollarUsageContext = {
     api_kind: requestBodyParsed.kind,
