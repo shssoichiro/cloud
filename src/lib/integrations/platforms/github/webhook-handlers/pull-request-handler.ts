@@ -141,26 +141,6 @@ export async function handlePullRequestCodeReview(
       );
     }
 
-    // 3b. Skip merge commits on synchronize (e.g. merging base branch into feature branch)
-    if (payload.action === GITHUB_ACTION.SYNCHRONIZE) {
-      const [syncOwner, syncRepo] = repository.full_name.split('/');
-      const mergeCommit = await isMergeCommit(
-        integration.platform_installation_id as string,
-        syncOwner,
-        syncRepo,
-        pull_request.head.sha,
-        integration.github_app_type ?? 'standard'
-      );
-      if (mergeCommit) {
-        logExceptInTest('Skipping merge commit:', {
-          pr_number: pull_request.number,
-          repo: repository.full_name,
-          head_sha: pull_request.head.sha,
-        });
-        return NextResponse.json({ message: 'Skipped merge commit' }, { status: 200 });
-      }
-    }
-
     // 4. Cancel any existing reviews for this PR (different SHA)
     // This prevents spam when user pushes multiple commits quickly
     const oldReviewIds = await findActiveReviewsForPR(
@@ -183,6 +163,28 @@ export async function handlePullRequestCodeReview(
           })
         )
       );
+    }
+
+    // 4b. Skip merge commits on synchronize (e.g. merging base branch into feature branch)
+    // Placed after step 4 so old reviews are still cancelled before we bail out.
+    if (payload.action === GITHUB_ACTION.SYNCHRONIZE) {
+      const headRepo = checkoutRef.headRepoFullName ?? repository.full_name;
+      const [headOwner, headRepoName] = headRepo.split('/');
+      const mergeCommit = await isMergeCommit(
+        integration.platform_installation_id as string,
+        headOwner,
+        headRepoName,
+        pull_request.head.sha,
+        integration.github_app_type ?? 'standard'
+      );
+      if (mergeCommit) {
+        logExceptInTest('Skipping merge commit:', {
+          pr_number: pull_request.number,
+          repo: repository.full_name,
+          head_sha: pull_request.head.sha,
+        });
+        return NextResponse.json({ message: 'Skipped merge commit' }, { status: 200 });
+      }
     }
 
     // 5. Check for duplicate review (same repo, PR, SHA)
