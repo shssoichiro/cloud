@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useGastownTRPC } from '@/lib/gastown/trpc';
+import { useUser } from '@/hooks/useUser';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -84,9 +85,12 @@ function scrollToSection(id: string) {
 export function TownSettingsPageClient({ townId, readOnly = false }: Props) {
   const trpc = useGastownTRPC();
   const queryClient = useQueryClient();
+  const { data: currentUser } = useUser();
 
   const townQuery = useQuery(trpc.gastown.getTown.queryOptions({ townId }));
   const configQuery = useQuery(trpc.gastown.getTownConfig.queryOptions({ townId }));
+
+  const effectiveReadOnly = readOnly && currentUser?.id !== configQuery.data?.created_by_user_id;
 
   const updateConfig = useMutation(
     trpc.gastown.updateTownConfig.mutationOptions({
@@ -232,7 +236,7 @@ export function TownSettingsPageClient({ townId, readOnly = false }: Props) {
           <h1 className="text-lg font-semibold tracking-tight text-white/90">Settings</h1>
           <span className="text-sm text-white/30">{townQuery.data?.name}</span>
         </div>
-        {!readOnly && (
+        {!effectiveReadOnly && (
           <Button
             onClick={handleSave}
             disabled={updateConfig.isPending}
@@ -244,8 +248,10 @@ export function TownSettingsPageClient({ townId, readOnly = false }: Props) {
             {updateConfig.isPending ? 'Saving...' : 'Save'}
           </Button>
         )}
-        {readOnly && (
-          <span className="text-xs text-white/30">View only — only org owners can edit</span>
+        {effectiveReadOnly && (
+          <span className="text-xs text-white/30">
+            View only — only town creators and org owners can edit
+          </span>
         )}
       </div>
 
@@ -647,7 +653,7 @@ export function TownSettingsPageClient({ townId, readOnly = false }: Props) {
               </ul>
 
               {/* Save button mirrored in sidebar */}
-              {!readOnly && (
+              {!effectiveReadOnly && (
                 <div className="mt-6 border-t border-white/[0.06] pt-4">
                   <Button
                     onClick={handleSave}
