@@ -5,6 +5,7 @@ import { getGatewayErrorRate } from '@/lib/providers/gateway-error-rate';
 import { isGeminiModel } from '@/lib/providers/google';
 import { isMinimaxModel } from '@/lib/providers/minimax';
 import { isMoonshotModel } from '@/lib/providers/moonshotai';
+import { isOpenAiOssModel } from '@/lib/providers/openai';
 import type { VercelUserByokInferenceProviderId } from '@/lib/providers/openrouter/inference-provider-id';
 import {
   AutocompleteUserByokProviderIdSchema,
@@ -94,7 +95,8 @@ export async function shouldRouteToVercel(
     !isAnthropicModel(requestedModel) &&
     !isGeminiModel(requestedModel) &&
     !isMinimaxModel(requestedModel) &&
-    !isMoonshotModel(requestedModel)
+    !isMoonshotModel(requestedModel) &&
+    !isOpenAiOssModel(requestedModel)
   ) {
     console.debug(`[shouldRouteToVercel] model family not allowed for randomized Vercel routing`);
     return false;
