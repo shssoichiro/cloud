@@ -494,6 +494,20 @@ describe('writeBaseConfig', () => {
     expect(args).toContain('--skip-health');
   });
 
+  it('forces tools.profile to full even without KILOCLAW_FRESH_INSTALL', () => {
+    // writeBaseConfig is used for both fresh installs and config restores.
+    // The restore endpoint doesn't set KILOCLAW_FRESH_INSTALL, but the config
+    // should still get tools.profile='full' (not the onboard default 'messaging').
+    const { deps, written } = fakeDeps();
+    const env = minimalEnv();
+    // Explicitly unset to simulate the restore endpoint path
+    delete env.KILOCLAW_FRESH_INSTALL;
+    writeBaseConfig(env, '/tmp/openclaw.json', deps);
+
+    const config = JSON.parse(written[0].data);
+    expect(config.tools.profile).toBe('full');
+  });
+
   it('throws if KILOCODE_API_KEY is missing', () => {
     const { deps } = fakeDeps();
     const env = { ...minimalEnv() };

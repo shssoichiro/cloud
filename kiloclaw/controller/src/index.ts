@@ -120,6 +120,20 @@ async function handleHttpRequest(
   Readable.fromWeb(response.body as never).pipe(res);
 }
 
+/**
+ * Strip potential secrets from error messages before exposing on the
+ * unauthenticated /_kilo/health endpoint. execFileSync errors include the
+ * full argv (e.g. --kilocode-api-key <secret>), and other errors may
+ * contain env var values. The detailed error is always logged to stdout.
+ */
+export function sanitizeErrorForHealth(fullError: string, currentState: ControllerState): string {
+  // Include the phase so operators know where it failed without needing logs.
+  const phase = currentState.state === 'bootstrapping' ? currentState.phase : 'unknown';
+  // Use a generic message. The phase already tells you what step failed;
+  // the full error with potential secrets stays in container logs only.
+  return `Bootstrap failed during ${phase} phase`;
+}
+
 /** Serialize a ControllerState to the health response JSON. */
 function healthJson(state: ControllerState): string {
   if (state.state === 'bootstrapping') {
@@ -188,9 +202,9 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
 
   // Register shutdown handlers early so degraded mode can still be killed cleanly.
   let shuttingDown = false;
-  let supervisor: Supervisor | null = null;
-  let gmailWatchSupervisor: Supervisor | null = null;
-  let pairingCache: ReturnType<typeof createPairingCache> | null = null;
+  let supervisor: Supervisor | undefined;
+  let gmailWatchSupervisor: Supervisor | undefined;
+  let pairingCache: ReturnType<typeof createPairingCache> | undefined;
 
   const onSignal = async (signal: NodeJS.Signals): Promise<void> => {
     if (shuttingDown) return;
@@ -231,124 +245,149 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
       controllerState.current = { state: 'bootstrapping', phase };
     });
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    controllerState.current = { state: 'degraded', error };
-    console.error('[controller] Bootstrap failed, running in degraded mode:', error);
+    const fullError = err instanceof Error ? err.message : String(err);
+    // Log full error for operators (Docker logs / Fly log drain) but expose
+    // only a sanitized version on the unauthenticated health endpoint.
+    // execFileSync errors can include full argv with secrets (e.g. --kilocode-api-key).
+    const publicError = sanitizeErrorForHealth(fullError, controllerState.current);
+    controllerState.current = { state: 'degraded', error: publicError };
+    console.error('[controller] Bootstrap failed, running in degraded mode:', fullError);
     return; // HTTP server stays alive for health probes
   }
 
   // ── Phase 3: Load runtime config ────────────────────────────────────
-  const config = loadRuntimeConfig(env);
-
-  // ── Phase 4: Best-effort pre-gateway setup ──────────────────────────
+  let config: RuntimeConfig;
   try {
-    writeKiloCliConfig(env as Record<string, string | undefined>);
+    config = loadRuntimeConfig(env);
   } catch (err) {
-    console.error('[kilo-cli] Failed to write config:', err);
+    const fullError = err instanceof Error ? err.message : String(err);
+    const publicError = `Runtime config failed: ${fullError}`;
+    controllerState.current = { state: 'degraded', error: publicError };
+    console.error('[controller] Runtime config failed, running in degraded mode:', fullError);
+    return;
   }
 
+  // ── Phases 4-6 are wrapped so any failure degrades instead of crashing ──
   try {
-    await writeGogCredentials(env as Record<string, string | undefined>);
-  } catch (err) {
-    console.error('[gog] Failed to write credentials:', err);
-  }
-
-  // ── Phase 5: Create supervisors and register full routes ────────────
-  pairingCache = createPairingCache();
-
-  supervisor = createSupervisor({
-    args: ['gateway', ...config.gatewayArgs],
-    onStdoutLine: line => pairingCache.onPairingLogLine(line),
-  });
-
-  let googleAccountEmail: string | null = null;
-  const hasGogCredentials = Boolean(env.KILOCLAW_GOG_CONFIG_TARBALL);
-
-  if (hasGogCredentials) {
-    const email = env.KILOCLAW_GOOGLE_ACCOUNT_EMAIL;
-    const hooksToken = env.KILOCLAW_HOOKS_TOKEN;
-    if (!email || !hooksToken) {
-      console.warn(
-        `[controller] KILOCLAW_GOG_CONFIG_TARBALL present but missing: ${!email ? 'KILOCLAW_GOOGLE_ACCOUNT_EMAIL' : ''} ${!hooksToken ? 'KILOCLAW_HOOKS_TOKEN' : ''}, skipping gmail watch`
-      );
-    } else {
-      googleAccountEmail = email;
-      gmailWatchSupervisor = createSupervisor({
-        command: 'gog',
-        args: [
-          'gmail',
-          'watch',
-          'serve',
-          '--account',
-          googleAccountEmail,
-          '--bind',
-          '127.0.0.1',
-          '--port',
-          '3002',
-          '--path',
-          '/gmail-pubsub',
-          '--token',
-          config.expectedToken,
-          '--hook-url',
-          `http://127.0.0.1:3001/hooks/gmail`,
-          '--hook-token',
-          hooksToken,
-          '--include-body',
-          '--max-bytes',
-          '20000',
-        ],
-      });
+    // Phase 4: Best-effort pre-gateway setup
+    try {
+      writeKiloCliConfig(env as Record<string, string | undefined>);
+    } catch (err) {
+      console.error('[kilo-cli] Failed to write config:', err);
     }
-  }
 
-  // Register all routes on a fresh Hono app — no shadowing issues.
-  const honoApp = new Hono();
-  registerHealthRoute(honoApp, supervisor, config.expectedToken, controllerState);
-  registerGatewayRoutes(honoApp, supervisor, config.expectedToken);
-  registerConfigRoutes(honoApp, supervisor, config.expectedToken);
-  registerPairingRoutes(honoApp, pairingCache, config.expectedToken);
-  registerEnvRoutes(honoApp, supervisor, config.expectedToken);
-  registerGmailPushRoute(honoApp, gmailWatchSupervisor, config.expectedToken);
-  honoApp.all(
-    '*',
-    createHttpProxy({
-      expectedToken: config.expectedToken,
-      requireProxyToken: config.requireProxyToken,
-      supervisor,
-    })
-  );
+    try {
+      await writeGogCredentials(env as Record<string, string | undefined>);
+    } catch (err) {
+      console.error('[gog] Failed to write credentials:', err);
+    }
 
-  // Activate the Hono app — the HTTP server handler checks this ref on each request.
-  app = honoApp;
+    // Phase 5: Create supervisors and register full routes
+    const pc = createPairingCache();
+    pairingCache = pc;
 
-  const wsState = { activeConnections: 0 };
-  server.on('upgrade', (req, socket, head) => {
-    handleWebSocketUpgrade(req, socket, head, {
-      expectedToken: config.expectedToken,
-      requireProxyToken: config.requireProxyToken,
-      supervisor,
-      wsIdleTimeoutMs: config.wsIdleTimeoutMs,
-      wsHandshakeTimeoutMs: config.wsHandshakeTimeoutMs,
-      maxWsConnections: config.maxWsConnections,
-      wsState,
+    supervisor = createSupervisor({
+      args: ['gateway', ...config.gatewayArgs],
+      onStdoutLine: line => pc.onPairingLogLine(line),
     });
-  });
 
-  // ── Phase 6: Start gateway ──────────────────────────────────────────
-  controllerState.current = { state: 'starting' };
+    let googleAccountEmail: string | null = null;
+    const hasGogCredentials = Boolean(env.KILOCLAW_GOG_CONFIG_TARBALL);
 
-  await supervisor.start();
-  pairingCache.start();
-  if (gmailWatchSupervisor && googleAccountEmail) {
-    await gmailWatchSupervisor.start();
-    startWatchRenewal(googleAccountEmail);
-    console.log('[controller] Gmail watch process started');
+    if (hasGogCredentials) {
+      const email = env.KILOCLAW_GOOGLE_ACCOUNT_EMAIL;
+      const hooksToken = env.KILOCLAW_HOOKS_TOKEN;
+      if (!email || !hooksToken) {
+        console.warn(
+          `[controller] KILOCLAW_GOG_CONFIG_TARBALL present but missing: ${!email ? 'KILOCLAW_GOOGLE_ACCOUNT_EMAIL' : ''} ${!hooksToken ? 'KILOCLAW_HOOKS_TOKEN' : ''}, skipping gmail watch`
+        );
+      } else {
+        googleAccountEmail = email;
+        gmailWatchSupervisor = createSupervisor({
+          command: 'gog',
+          args: [
+            'gmail',
+            'watch',
+            'serve',
+            '--account',
+            googleAccountEmail,
+            '--bind',
+            '127.0.0.1',
+            '--port',
+            '3002',
+            '--path',
+            '/gmail-pubsub',
+            '--token',
+            config.expectedToken,
+            '--hook-url',
+            `http://127.0.0.1:3001/hooks/gmail`,
+            '--hook-token',
+            hooksToken,
+            '--include-body',
+            '--max-bytes',
+            '20000',
+          ],
+        });
+      }
+    }
+
+    // Register all routes on a fresh Hono app — no shadowing issues.
+    const honoApp = new Hono();
+    registerHealthRoute(honoApp, supervisor, config.expectedToken, controllerState);
+    registerGatewayRoutes(honoApp, supervisor, config.expectedToken);
+    registerConfigRoutes(honoApp, supervisor, config.expectedToken);
+    registerPairingRoutes(honoApp, pairingCache, config.expectedToken);
+    registerEnvRoutes(honoApp, supervisor, config.expectedToken);
+    registerGmailPushRoute(honoApp, gmailWatchSupervisor ?? null, config.expectedToken);
+    honoApp.all(
+      '*',
+      createHttpProxy({
+        expectedToken: config.expectedToken,
+        requireProxyToken: config.requireProxyToken,
+        supervisor,
+      })
+    );
+
+    // Activate the Hono app — the HTTP server handler checks this ref on each request.
+    app = honoApp;
+
+    const wsState = { activeConnections: 0 };
+    server.on('upgrade', (req, socket, head) => {
+      handleWebSocketUpgrade(req, socket, head, {
+        expectedToken: config.expectedToken,
+        requireProxyToken: config.requireProxyToken,
+        supervisor,
+        wsIdleTimeoutMs: config.wsIdleTimeoutMs,
+        wsHandshakeTimeoutMs: config.wsHandshakeTimeoutMs,
+        maxWsConnections: config.maxWsConnections,
+        wsState,
+      });
+    });
+
+    // Phase 6: Start gateway
+    controllerState.current = { state: 'starting' };
+
+    await supervisor.start();
+    pairingCache.start();
+    if (gmailWatchSupervisor && googleAccountEmail) {
+      await gmailWatchSupervisor.start();
+      startWatchRenewal(googleAccountEmail);
+      console.log('[controller] Gmail watch process started');
+    }
+
+    controllerState.current = { state: 'ready' };
+    console.log(
+      `[controller] Ready version=${CONTROLLER_VERSION} commit=${CONTROLLER_COMMIT} requireProxyToken=${config.requireProxyToken} wsIdleTimeoutMs=${config.wsIdleTimeoutMs} wsHandshakeTimeoutMs=${config.wsHandshakeTimeoutMs} maxWsConnections=${config.maxWsConnections}`
+    );
+  } catch (err) {
+    const fullError = err instanceof Error ? err.message : String(err);
+    controllerState.current = { state: 'degraded', error: `Post-bootstrap failure: ${fullError}` };
+    console.error(
+      '[controller] Post-bootstrap startup failed, running in degraded mode:',
+      fullError
+    );
+    // HTTP server stays alive — don't return/exit
   }
-
-  controllerState.current = { state: 'ready' };
-  console.log(
-    `[controller] Ready version=${CONTROLLER_VERSION} commit=${CONTROLLER_COMMIT} requireProxyToken=${config.requireProxyToken} wsIdleTimeoutMs=${config.wsIdleTimeoutMs} wsHandshakeTimeoutMs=${config.wsHandshakeTimeoutMs} maxWsConnections=${config.maxWsConnections}`
-  );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

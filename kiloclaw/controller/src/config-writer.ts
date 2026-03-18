@@ -344,8 +344,17 @@ export function writeBaseConfig(
     });
     console.log('Onboard completed, patching config...');
 
-    // 4. Patch the fresh onboard config with env-var-derived fields
+    // 4. Patch the fresh onboard config with env-var-derived fields.
+    // writeBaseConfig is called for both fresh installs (bootstrap onboard path)
+    // and config restores (/_kilo/config/restore). In both cases, tools.profile
+    // should be forced to 'full' — the onboard default 'messaging' leaves agents
+    // without shell/file/web tools.
+    const prevFreshInstall = env.KILOCLAW_FRESH_INSTALL;
+    env.KILOCLAW_FRESH_INSTALL = 'true';
     const config = generateBaseConfig(env, tmpPath, deps);
+    // Restore the original value so callers that set it before calling us
+    // (like bootstrap's runOnboardOrDoctor) don't get surprised.
+    env.KILOCLAW_FRESH_INSTALL = prevFreshInstall;
 
     // 5. Serialize and validate roundtrip
     const serialized = JSON.stringify(config, null, 2);

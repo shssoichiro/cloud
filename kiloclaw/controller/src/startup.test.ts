@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { loadRuntimeConfig } from './index';
+import { loadRuntimeConfig, sanitizeErrorForHealth } from './index';
 import { buildGatewayArgs } from './bootstrap';
+import type { ControllerState } from './bootstrap';
 import {
   DEFAULT_MAX_WS_CONNS,
   DEFAULT_WS_HANDSHAKE_TIMEOUT_MS,
@@ -108,5 +109,23 @@ describe('controller startup config', () => {
 
     expect(config.gatewayArgs).toEqual(args);
     expect(config.expectedToken).toBe('tok-123');
+  });
+});
+
+describe('sanitizeErrorForHealth', () => {
+  it('strips error details and includes the bootstrap phase', () => {
+    const state: ControllerState = { state: 'bootstrapping', phase: 'onboard' };
+    const result = sanitizeErrorForHealth(
+      'Command failed: openclaw onboard --kilocode-api-key sk-secret-123',
+      state
+    );
+    expect(result).toBe('Bootstrap failed during onboard phase');
+    expect(result).not.toContain('sk-secret');
+  });
+
+  it('uses unknown phase when state is not bootstrapping', () => {
+    const state: ControllerState = { state: 'starting' };
+    const result = sanitizeErrorForHealth('some error', state);
+    expect(result).toBe('Bootstrap failed during unknown phase');
   });
 });
