@@ -14,7 +14,7 @@ import type { PlatformIntegration } from '@kilocode/db/schema';
 import type { Owner } from '@/lib/code-reviews/core';
 import { getBotUserId } from '@/lib/bot-users/bot-user-service';
 import type { CodeReviewAgentConfig } from '@/lib/agent-config/core/types';
-import { addReactionToPR, createCheckRun, updateCheckRun } from '../adapter';
+import { addReactionToPR, createCheckRun, isMergeCommit, updateCheckRun } from '../adapter';
 import { codeReviewWorkerClient } from '@/lib/code-reviews/client/code-review-worker-client';
 import { updateCheckRunId } from '@/lib/code-reviews/db/code-reviews';
 import { resolvePullRequestCheckoutRef } from './pull-request-checkout-ref';
@@ -139,6 +139,26 @@ export async function handlePullRequestCodeReview(
       logExceptInTest(
         `Repository ${repository.full_name} (ID: ${repository.id}) is in allowed list, proceeding with review`
       );
+    }
+
+    // 3b. Skip merge commits on synchronize (e.g. merging base branch into feature branch)
+    if (payload.action === GITHUB_ACTION.SYNCHRONIZE) {
+      const [syncOwner, syncRepo] = repository.full_name.split('/');
+      const mergeCommit = await isMergeCommit(
+        integration.platform_installation_id as string,
+        syncOwner,
+        syncRepo,
+        pull_request.head.sha,
+        integration.github_app_type ?? 'standard'
+      );
+      if (mergeCommit) {
+        logExceptInTest('Skipping merge commit:', {
+          pr_number: pull_request.number,
+          repo: repository.full_name,
+          head_sha: pull_request.head.sha,
+        });
+        return NextResponse.json({ message: 'Skipped merge commit' }, { status: 200 });
+      }
     }
 
     // 4. Cancel any existing reviews for this PR (different SHA)
