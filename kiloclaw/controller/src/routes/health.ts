@@ -54,8 +54,9 @@ export function registerHealthRoute(
   // Eagerly resolve so the first /_kilo/version request doesn't wait on the subprocess.
   void getOpenclawVersion();
 
-  // /_kilo/health: returns state progression for the CF worker.
+  // /_kilo/health: returns controller lifecycle state for the CF worker.
   // Always returns HTTP 200 + status: 'ok' so Fly health probes stay happy.
+  // Gateway process state is available separately via /_kilo/gateway/status (auth-gated).
   app.get('/_kilo/health', (c: Context) => {
     if (stateRef) {
       const s = stateRef.current;

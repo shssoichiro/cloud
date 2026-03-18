@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { loadRuntimeConfig, sanitizeErrorForHealth } from './index';
+import { loadRuntimeConfig, toPublicDegradedError } from './index';
 import { buildGatewayArgs } from './bootstrap';
-import type { ControllerState } from './bootstrap';
 import {
   DEFAULT_MAX_WS_CONNS,
   DEFAULT_WS_HANDSHAKE_TIMEOUT_MS,
@@ -112,20 +111,23 @@ describe('controller startup config', () => {
   });
 });
 
-describe('sanitizeErrorForHealth', () => {
-  it('strips error details and includes the bootstrap phase', () => {
-    const state: ControllerState = { state: 'bootstrapping', phase: 'onboard' };
-    const result = sanitizeErrorForHealth(
-      'Command failed: openclaw onboard --kilocode-api-key sk-secret-123',
-      state
-    );
-    expect(result).toBe('Bootstrap failed during onboard phase');
-    expect(result).not.toContain('sk-secret');
+describe('toPublicDegradedError', () => {
+  it('returns a generic message with the stage name', () => {
+    expect(toPublicDegradedError('bootstrap')).toBe('Startup failed during bootstrap');
   });
 
-  it('uses unknown phase when state is not bootstrapping', () => {
-    const state: ControllerState = { state: 'starting' };
-    const result = sanitizeErrorForHealth('some error', state);
-    expect(result).toBe('Bootstrap failed during unknown phase');
+  it('does not include raw error details', () => {
+    // The function takes only a stage name, not the raw error.
+    // Raw errors (which may contain secrets like --kilocode-api-key)
+    // are logged to stdout only and never stored in controller state.
+    const result = toPublicDegradedError('runtime-config');
+    expect(result).toBe('Startup failed during runtime-config');
+    expect(result).not.toContain('secret');
+  });
+
+  it('covers all degraded-state transitions', () => {
+    expect(toPublicDegradedError('bootstrap')).toMatch(/^Startup failed during /);
+    expect(toPublicDegradedError('runtime-config')).toMatch(/^Startup failed during /);
+    expect(toPublicDegradedError('post-bootstrap')).toMatch(/^Startup failed during /);
   });
 });

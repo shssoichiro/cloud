@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { Readable } from 'node:stream';
+import { Duplex, Readable } from 'node:stream';
 import { Hono } from 'hono';
 import {
   DEFAULT_MAX_WS_CONNS,
@@ -121,17 +121,15 @@ async function handleHttpRequest(
 }
 
 /**
- * Strip potential secrets from error messages before exposing on the
- * unauthenticated /_kilo/health endpoint. execFileSync errors include the
- * full argv (e.g. --kilocode-api-key <secret>), and other errors may
- * contain env var values. The detailed error is always logged to stdout.
+ * Build a public error string safe for the unauthenticated /_kilo/health endpoint.
+ *
+ * Raw error messages can contain secrets (execFileSync argv includes
+ * --kilocode-api-key), filesystem paths, validation details, etc.
+ * The full error is always logged to stdout for operators; this function
+ * returns only a generic stage label for the health response.
  */
-export function sanitizeErrorForHealth(fullError: string, currentState: ControllerState): string {
-  // Include the phase so operators know where it failed without needing logs.
-  const phase = currentState.state === 'bootstrapping' ? currentState.phase : 'unknown';
-  // Use a generic message. The phase already tells you what step failed;
-  // the full error with potential secrets stays in container logs only.
-  return `Bootstrap failed during ${phase} phase`;
+export function toPublicDegradedError(stage: string): string {
+  return `Startup failed during ${stage}`;
 }
 
 /** Serialize a ControllerState to the health response JSON. */
@@ -192,6 +190,28 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
     res.end(JSON.stringify({ error: 'Service starting', state: controllerState.current.state }));
   });
 
+  // Mutable ref for the WebSocket upgrade handler. Set once the Hono app and
+  // supervisor are ready. Registered on the server early so connections during
+  // bootstrap or degraded mode get a clean 503 rejection instead of hanging.
+  const wsUpgradeRef: {
+    handler: ((req: http.IncomingMessage, socket: Duplex, head: Buffer) => void) | null;
+  } = { handler: null };
+
+  server.on('upgrade', (req, socket, head) => {
+    if (wsUpgradeRef.handler) {
+      wsUpgradeRef.handler(req, socket, head);
+      return;
+    }
+    // No handler ready — reject the upgrade cleanly.
+    socket.write(
+      'HTTP/1.1 503 Service Unavailable\r\n' +
+        'Content-Type: application/json\r\n' +
+        'Connection: close\r\n\r\n' +
+        JSON.stringify({ error: 'Service starting', state: controllerState.current.state })
+    );
+    socket.destroy();
+  });
+
   const initialPort = Number(env.PORT ?? 18789);
   await new Promise<void>(resolve => {
     server.listen(initialPort, '0.0.0.0', () => {
@@ -246,11 +266,7 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
     });
   } catch (err) {
     const fullError = err instanceof Error ? err.message : String(err);
-    // Log full error for operators (Docker logs / Fly log drain) but expose
-    // only a sanitized version on the unauthenticated health endpoint.
-    // execFileSync errors can include full argv with secrets (e.g. --kilocode-api-key).
-    const publicError = sanitizeErrorForHealth(fullError, controllerState.current);
-    controllerState.current = { state: 'degraded', error: publicError };
+    controllerState.current = { state: 'degraded', error: toPublicDegradedError('bootstrap') };
     console.error('[controller] Bootstrap failed, running in degraded mode:', fullError);
     return; // HTTP server stays alive for health probes
   }
@@ -261,8 +277,7 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
     config = loadRuntimeConfig(env);
   } catch (err) {
     const fullError = err instanceof Error ? err.message : String(err);
-    const publicError = `Runtime config failed: ${fullError}`;
-    controllerState.current = { state: 'degraded', error: publicError };
+    controllerState.current = { state: 'degraded', error: toPublicDegradedError('runtime-config') };
     console.error('[controller] Runtime config failed, running in degraded mode:', fullError);
     return;
   }
@@ -351,8 +366,10 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
     // Activate the Hono app — the HTTP server handler checks this ref on each request.
     app = honoApp;
 
+    // Activate the WebSocket upgrade handler — the server.on('upgrade') listener
+    // registered earlier checks this ref and rejects with 503 when null.
     const wsState = { activeConnections: 0 };
-    server.on('upgrade', (req, socket, head) => {
+    wsUpgradeRef.handler = (req, socket, head) => {
       handleWebSocketUpgrade(req, socket, head, {
         expectedToken: config.expectedToken,
         requireProxyToken: config.requireProxyToken,
@@ -362,7 +379,7 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
         maxWsConnections: config.maxWsConnections,
         wsState,
       });
-    });
+    };
 
     // Phase 6: Start gateway
     controllerState.current = { state: 'starting' };
@@ -381,7 +398,7 @@ export async function startController(env: NodeJS.ProcessEnv = process.env): Pro
     );
   } catch (err) {
     const fullError = err instanceof Error ? err.message : String(err);
-    controllerState.current = { state: 'degraded', error: `Post-bootstrap failure: ${fullError}` };
+    controllerState.current = { state: 'degraded', error: toPublicDegradedError('post-bootstrap') };
     console.error(
       '[controller] Post-bootstrap startup failed, running in degraded mode:',
       fullError
