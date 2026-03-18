@@ -10,6 +10,7 @@ import {
 } from '@/lib/config.server';
 import { getFraudDetectionHeaders } from '@/lib/utils';
 import type {
+  GatewayMessagesRequest,
   GatewayRequest,
   GatewayResponsesRequest,
   OpenRouterChatCompletionRequest,
@@ -32,28 +33,7 @@ function extractFullPrompts(request: GatewayRequest): {
     return extractFullPromptsFromResponses(request.body);
   }
   if (request.kind === 'messages') {
-    const systemContent = request.body.system;
-    const systemPrompt =
-      typeof systemContent === 'string'
-        ? systemContent
-        : Array.isArray(systemContent)
-          ? systemContent.map(b => b.text).join('\n')
-          : null;
-    const lastUserMessage = request.body.messages.filter(m => m.role === 'user').at(-1);
-    let userPrompt: string | null = null;
-    if (lastUserMessage) {
-      const content = lastUserMessage.content;
-      if (typeof content === 'string') {
-        userPrompt = content;
-      } else if (Array.isArray(content)) {
-        userPrompt =
-          content
-            .filter(c => c.type === 'text')
-            .map(c => ('text' in c ? c.text : ''))
-            .join('\n') || null;
-      }
-    }
-    return { systemPrompt: systemPrompt || null, userPrompt };
+    return extractFullPromptFromMessages(request.body);
   }
   return extractFullPromptsFromChatCompletions(request.body);
 }
@@ -115,6 +95,31 @@ function extractFullPromptsFromResponses(body: GatewayResponsesRequest): {
   }
 
   return { systemPrompt, userPrompt };
+}
+
+function extractFullPromptFromMessages(body: GatewayMessagesRequest) {
+  const systemContent = body.system;
+  const systemPrompt =
+    typeof systemContent === 'string'
+      ? systemContent
+      : Array.isArray(systemContent)
+        ? systemContent.map(b => b.text).join('\n')
+        : null;
+  const lastUserMessage = body.messages.filter(m => m.role === 'user').at(-1);
+  let userPrompt: string | null = null;
+  if (lastUserMessage) {
+    const content = lastUserMessage.content;
+    if (typeof content === 'string') {
+      userPrompt = content;
+    } else if (Array.isArray(content)) {
+      userPrompt =
+        content
+          .filter(c => c.type === 'text')
+          .map(c => c.text)
+          .join('\n') || null;
+    }
+  }
+  return { systemPrompt: systemPrompt || null, userPrompt };
 }
 
 /**
