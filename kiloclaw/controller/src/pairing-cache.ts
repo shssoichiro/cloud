@@ -62,6 +62,7 @@ export const DEBOUNCE_DELAY_MS = 2_000;
 
 export const FAILURE_RETRY_BASE_MS = 30_000;
 export const FAILURE_RETRY_MAX_MS = 300_000;
+export const APPROVE_TIMEOUT_MS = 45_000;
 export const CONFIG_PATH = '/root/.openclaw/openclaw.json';
 
 // TTL constants — exact matches to openclaw source
@@ -119,6 +120,7 @@ function defaultExecImpl(
 ): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync(command, args, {
     encoding: 'utf8',
+    timeout: APPROVE_TIMEOUT_MS,
     env: { ...process.env, HOME: '/root' },
   });
 }
@@ -239,6 +241,7 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
     const allRequests: ChannelPairingRequest[] = [];
     let anySuccess = false;
     let anyHadPriorData = false;
+    let anyUnexpectedColdFailure = false;
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
       if (result.status === 'fulfilled') {
@@ -252,7 +255,11 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
           anyHadPriorData = true;
           console.warn(`[pairing-cache] WARNING: keeping stale data for ${channels[i]}: ${msg}`);
           allRequests.push(...priorRequests);
+        } else if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          // Cold-start: file not written yet — silently ignore
         } else {
+          // Unexpected failure (permissions, corrupt JSON, etc.) with no prior data
+          anyUnexpectedColdFailure = true;
           console.log(`[pairing-cache] channel ${channels[i]}: read failed: ${msg}`);
         }
       }
@@ -267,8 +274,11 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
       // All channels failed but some had prior data — already warned per-channel above
       console.warn('[pairing-cache] channel refresh: all channels failed, cache not updated');
       return false;
+    } else if (anyUnexpectedColdFailure) {
+      // Non-ENOENT failures with no prior data — trigger backoff
+      return false;
     }
-    // else: all failures had no prior data (e.g. cold-start ENOENT) — stay silent
+    // else: all failures were cold-start ENOENT — stay silent
     return true;
   };
 

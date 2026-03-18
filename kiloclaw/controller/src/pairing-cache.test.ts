@@ -592,6 +592,38 @@ describe('createPairingCache', () => {
       expect(cache.getDevicePairing().requests).toHaveLength(0);
     });
 
+    it('non-ENOENT cold-start channel failure → returns false (triggers backoff)', async () => {
+      const readChannelPairingImpl = vi
+        .fn<ReadChannelPairingImpl>()
+        .mockRejectedValue(Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }));
+      const readConfigImpl = vi.fn(() => ({
+        channels: { telegram: { enabled: true, botToken: 'tok' } },
+      }));
+
+      const { cache } = createTestHarness({ readChannelPairingImpl, readConfigImpl });
+      // refreshChannelPairingInternal returns false for non-ENOENT cold-start failures
+      // so that backoff fires rather than silently treating the error as success
+      await cache.refreshChannelPairing();
+
+      // Cache stays empty — nothing to preserve
+      expect(cache.getChannelPairing().requests).toHaveLength(0);
+
+      // Verify backoff was armed: after a false return, consecutiveFailureCount > 0
+      // which means nextAllowedRefreshAt is in the future. Start the cache and check
+      // that a debounce triggered immediately after is skipped.
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      cache.start();
+      await vi.advanceTimersByTimeAsync(0); // flush initial refresh (also fails → backoff set)
+      cache.onPairingLogLine('pairing event');
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_DELAY_MS);
+      const skipped = consoleLogSpy.mock.calls.some(args =>
+        String(args[0]).includes('debounced refresh skipped')
+      );
+      expect(skipped).toBe(true);
+      consoleLogSpy.mockRestore();
+      cache.cleanup();
+    });
+
     it('ENOENT on first channel read → empty cache, no warning logged', async () => {
       const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const enoentError = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
