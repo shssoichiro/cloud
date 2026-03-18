@@ -11,7 +11,7 @@
 
 import { db } from '@/lib/drizzle';
 import { cloud_agent_code_reviews, type CloudAgentCodeReview } from '@kilocode/db/schema';
-import { eq, and, or, count, lt, sql } from 'drizzle-orm';
+import { eq, and, or, count, gte, lt, sql } from 'drizzle-orm';
 import type { Owner } from '../core';
 import { prepareReviewPayload } from '../triggers/prepare-review-payload';
 import { getAgentConfigForOwner } from '@/lib/agent-config/db/agent-configs';
@@ -43,7 +43,10 @@ export async function tryDispatchPendingReviews(owner: Owner): Promise<DispatchR
   try {
     logExceptInTest(`[tryDispatchPendingReviews] Starting dispatch check`, { owner });
 
-    // 1. Get active review count for this owner
+    const staleCutoff = sql`now() - interval '${sql.raw(String(STALE_CLAIM_MINUTES))} minutes'`;
+
+    // 1. Get active review count for this owner.
+    //    Stale queued rows are excluded so abandoned claims do not block recovery.
     const activeCountResult = await db
       .select({ count: count() })
       .from(cloud_agent_code_reviews)
@@ -53,8 +56,11 @@ export async function tryDispatchPendingReviews(owner: Owner): Promise<DispatchR
             ? eq(cloud_agent_code_reviews.owned_by_organization_id, owner.id)
             : eq(cloud_agent_code_reviews.owned_by_user_id, owner.id),
           or(
-            eq(cloud_agent_code_reviews.status, 'queued'),
-            eq(cloud_agent_code_reviews.status, 'running')
+            eq(cloud_agent_code_reviews.status, 'running'),
+            and(
+              eq(cloud_agent_code_reviews.status, 'queued'),
+              gte(cloud_agent_code_reviews.updated_at, staleCutoff)
+            )
           )
         )
       );
@@ -77,7 +83,6 @@ export async function tryDispatchPendingReviews(owner: Owner): Promise<DispatchR
     // 3. Get dispatchable reviews: pending, or queued-but-stale (abandoned claim).
     //    A review is stale-queued if it was claimed but the process crashed
     //    before the worker dispatch completed.
-    const staleCutoff = sql`now() - interval '${sql.raw(String(STALE_CLAIM_MINUTES))} minutes'`;
     const pendingReviews = await db
       .select()
       .from(cloud_agent_code_reviews)
@@ -244,7 +249,9 @@ async function dispatchReview(
   }
 
   // 5. Dispatch to Cloudflare Worker to create CodeReviewOrchestrator DO.
-  //    If this fails, revert the claim so the review stays retriable.
+  //    If this fails, keep the claim in `queued` and rely on stale-claim
+  //    recovery. A transport failure is ambiguous: the worker may have
+  //    created the DO even if this request did not observe the response.
   const agentVersion = useCloudAgentNext ? 'v2' : 'v1';
   try {
     await codeReviewWorkerClient.dispatchReview({
@@ -253,14 +260,7 @@ async function dispatchReview(
       agentVersion,
     });
   } catch (dispatchError) {
-    // Revert claim — review goes back to pending for the next dispatch cycle.
-    // Don't re-throw: the review is retriable and the caller should not mark
-    // it as permanently failed.
-    await db
-      .update(cloud_agent_code_reviews)
-      .set({ status: 'pending' })
-      .where(eq(cloud_agent_code_reviews.id, review.id));
-    errorExceptInTest('[dispatchReview] Worker dispatch failed, reverted to pending', {
+    errorExceptInTest('[dispatchReview] Worker dispatch failed, leaving review queued', {
       reviewId: review.id,
       error: dispatchError,
     });
@@ -271,8 +271,23 @@ async function dispatchReview(
     return false;
   }
 
-  // 6. Record which agent version was dispatched
-  await updateCodeReviewStatus(review.id, 'queued', { agentVersion });
+  // 6. Record which agent version was dispatched without rewriting status.
+  //    The worker may already have advanced the review to running/completed.
+  try {
+    await db
+      .update(cloud_agent_code_reviews)
+      .set({ agent_version: agentVersion })
+      .where(eq(cloud_agent_code_reviews.id, review.id));
+  } catch (error) {
+    errorExceptInTest('[dispatchReview] Failed to persist agent version after dispatch', {
+      reviewId: review.id,
+      error,
+    });
+    captureException(error, {
+      tags: { operation: 'dispatch-review-record-agent-version' },
+      extra: { reviewId: review.id, owner, agentVersion },
+    });
+  }
 
   logExceptInTest('[dispatchReview] Review dispatched successfully', {
     reviewId: review.id,
