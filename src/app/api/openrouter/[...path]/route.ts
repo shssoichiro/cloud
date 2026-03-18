@@ -449,15 +449,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   );
 
   let response: Response;
-  if (customLlm) {
-    if (requestBodyParsed.kind === 'responses' || requestBodyParsed.kind === 'messages') {
-      return NextResponse.json(
-        {
-          error: `This model is not available on the ${requestBodyParsed.kind} API`,
-        },
-        { status: 404 }
-      );
-    }
+  if (customLlm && requestBodyParsed.kind === 'chat_completions') {
     response = await customLlmRequest(
       customLlm,
       requestBodyParsed.body,
