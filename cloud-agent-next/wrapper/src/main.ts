@@ -141,9 +141,9 @@ async function main() {
     failStartup(`Invalid agent session ID: ${agentSessionId}`);
   }
 
-  // The wrapper process is started with cwd outside the workspace so bun
-  // doesn't auto-load the repo's .env files. Switch into the workspace now
-  // so the kilo server (started in-process) sees the correct project root.
+  // The wrapper process is started with cwd outside the workspace. 
+  // Switch into the workspace now so the kilo server (started in-process) sees the correct project root.
+  // This is an attempt to fix an issue where bun process crashes in some repos
   process.chdir(workspacePath);
 
   // Set log path if not already set
