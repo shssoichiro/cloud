@@ -44,6 +44,7 @@ import { applyAlibabaProviderSettings } from '@/lib/providers/qwen';
 import type { ProviderId } from '@/lib/providers/provider-id';
 import { isZaiModel } from '@/lib/providers/zai';
 import { isMinimaxModel } from '@/lib/providers/minimax';
+import { isXiaomiModel } from '@/lib/providers/xiaomi';
 
 export type Provider = {
   id: ProviderId;
@@ -247,8 +248,14 @@ function getPreferredProviderOrder(requestedModel: string): string[] {
   if (isMoonshotModel(requestedModel)) {
     return [OpenRouterInferenceProviderIdSchema.enum.moonshotai];
   }
+  if (isXiaomiModel(requestedModel)) {
+    return [OpenRouterInferenceProviderIdSchema.enum['xiaomi']];
+  }
   if (isZaiModel(requestedModel)) {
-    return [OpenRouterInferenceProviderIdSchema.enum['z-ai']];
+    return [
+      OpenRouterInferenceProviderIdSchema.enum.friendli,
+      OpenRouterInferenceProviderIdSchema.enum['z-ai'],
+    ];
   }
   return [];
 }

@@ -70,6 +70,7 @@ import { fixOpenCodeDuplicateReasoning } from '@/lib/providers/fixOpenCodeDuplic
 import type { MicrodollarUsageContext, PromptInfo } from '@/lib/processUsage.types';
 import { extractResponsesPromptInfo } from '@/lib/processUsage.responses';
 import { getMaxTokens, hasMiddleOutTransform } from '@/lib/providers/openrouter/request-helpers';
+import { isKiloAffiliatedUser } from '@/lib/isKiloAffiliatedUser';
 
 export const maxDuration = 800;
 
@@ -135,12 +136,17 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
 
   const requestedModel = requestBodyParsed.body.model.trim();
   const requestedModelLowerCased = requestedModel.toLowerCase();
+  const isLegacyOpenRouterPath = url.pathname.includes('/openrouter');
+
+  const feature = validateFeatureHeader(
+    request.headers.get(FEATURE_HEADER) || (isLegacyOpenRouterPath ? '' : 'direct-gateway')
+  );
 
   const modeHeader = extractHeaderAndLimitLength(request, 'x-kilocode-mode');
   let autoModel: string | null = null;
   if (isKiloAutoModel(requestedModelLowerCased)) {
     autoModel = requestedModelLowerCased;
-    applyResolvedAutoModel(requestedModelLowerCased, requestBodyParsed, modeHeader);
+    applyResolvedAutoModel(requestedModelLowerCased, requestBodyParsed, modeHeader, feature);
   }
 
   const originalModelIdLowerCased = requestBodyParsed.body.model.toLowerCase();
@@ -234,7 +240,10 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     user = maybeUser;
   }
 
-  if (requestBodyParsed.kind === 'responses' && !user.is_admin) {
+  if (
+    requestBodyParsed.kind === 'responses' &&
+    !isKiloAffiliatedUser(maybeUser, organizationId ?? null)
+  ) {
     return NextResponse.json(
       {
         error: {
@@ -266,11 +275,6 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   );
 
   console.debug(`Routing request to ${provider.id}`);
-
-  const isLegacyOpenRouterPath = url.pathname.includes('/openrouter');
-  const feature = validateFeatureHeader(
-    request.headers.get(FEATURE_HEADER) || (isLegacyOpenRouterPath ? '' : 'direct-gateway')
-  );
 
   // Start abuse classification early (non-blocking) - we'll await it before creating usage context
   const classifyPromise = classifyAbuse(request, requestBodyParsed, {

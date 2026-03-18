@@ -17,8 +17,7 @@ import {
   UpdateSessionInput,
   UpdateSessionOutput,
 } from '../schemas.js';
-import { generateSandboxId } from '../../sandbox-id.js';
-import type { SandboxId } from '../../types.js';
+import { generateSandboxId, getSandboxNamespace } from '../../sandbox-id.js';
 import {
   checkDiskAndCleanBeforeSetup,
   setupWorkspace,
@@ -28,6 +27,7 @@ import {
 } from '../../workspace.js';
 import { WrapperClient } from '../../kilo/wrapper-client.js';
 import { withDORetry } from '../../utils/do-retry.js';
+import { generateKiloSessionId } from '../../utils/kilo-session-id.js';
 import { SANDBOX_SLEEP_AFTER_SECONDS } from '../../core/lease.js';
 
 type SessionPrepareHandlers = {
@@ -100,9 +100,11 @@ const prepareSessionHandler = internalApiProtectedProcedure
 
       // 1. Generate new cloudAgentSessionId and sandboxId
       const cloudAgentSessionId = generateSessionId();
-      const sandboxId: SandboxId = await generateSandboxId(
+      const sandboxId = await generateSandboxId(
+        ctx.env.PER_SESSION_SANDBOX_ORG_IDS,
         input.kilocodeOrganizationId,
         ctx.userId,
+        cloudAgentSessionId,
         ctx.botId
       );
 
@@ -197,9 +199,112 @@ const prepareSessionHandler = internalApiProtectedProcedure
         }
       }
 
+      // --- Fast path: autoInitiate returns immediately, runs preparation asynchronously ---
+      if (input.autoInitiate) {
+        logger.info('autoInitiate=true: fast-path return, async preparation');
+
+        // Generate kiloSessionId upfront so the ID is stable from the start (no URL rewriting)
+        const kiloSessionId = generateKiloSessionId();
+        logger.setTags({ kiloSessionId });
+
+        // Create cli_sessions_v2 record immediately (stream-ticket route needs it for ownership)
+        await sessionService.createCliSessionViaSessionIngest(
+          kiloSessionId,
+          cloudAgentSessionId,
+          ctx.userId,
+          ctx.env,
+          input.kilocodeOrganizationId,
+          input.createdOnPlatform ?? 'cloud-agent'
+        );
+
+        const rollbackCliSession = async () => {
+          await sessionService
+            .deleteCliSessionViaSessionIngest(kiloSessionId, ctx.userId, ctx.env, {
+              onlyIfEmpty: true,
+            })
+            .catch((rollbackError: unknown) => {
+              logger
+                .withFields({
+                  error:
+                    rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+                })
+                .error('Failed to rollback cli_sessions_v2 record (fast path)');
+            });
+        };
+
+        // Register minimal metadata in DO (makes getSession return non-null runtimeState)
+        const doId = ctx.env.CLOUD_AGENT_SESSION.idFromName(`${ctx.userId}:${cloudAgentSessionId}`);
+        const stub = ctx.env.CLOUD_AGENT_SESSION.get(doId);
+
+        const registerResult = await stub.registerSession({
+          sessionId: cloudAgentSessionId,
+          userId: ctx.userId,
+          orgId: input.kilocodeOrganizationId,
+          botId: ctx.botId,
+          prompt: input.prompt,
+          mode: input.mode,
+          model: input.model,
+          variant: input.variant,
+          kiloSessionId,
+        });
+
+        if (!registerResult.success) {
+          await rollbackCliSession();
+          logger
+            .withFields({ error: registerResult.error })
+            .error('Failed to register session in DO');
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: registerResult.error ?? 'Failed to register session',
+          });
+        }
+
+        // Schedule async preparation via DO alarm (returns immediately)
+        try {
+          await stub.startPreparationAsync({
+            sessionId: cloudAgentSessionId,
+            kiloSessionId,
+            userId: ctx.userId,
+            orgId: input.kilocodeOrganizationId,
+            botId: ctx.botId,
+            authToken: ctx.authToken,
+            githubRepo: input.githubRepo,
+            githubToken: input.githubToken,
+            gitUrl: input.gitUrl,
+            gitToken: input.gitToken,
+            platform: input.platform,
+            prompt: input.prompt,
+            mode: input.mode,
+            model: input.model,
+            variant: input.variant,
+            envVars: input.envVars,
+            encryptedSecrets: input.encryptedSecrets,
+            setupCommands: input.setupCommands,
+            mcpServers: input.mcpServers,
+            upstreamBranch: input.upstreamBranch,
+            autoCommit: input.autoCommit,
+            condenseOnComplete: input.condenseOnComplete,
+            appendSystemPrompt: input.appendSystemPrompt,
+            callbackTarget: input.callbackTarget,
+            images: input.images,
+            createdOnPlatform: input.createdOnPlatform,
+            shallow: input.shallow,
+            gateThreshold: input.gateThreshold,
+            kilocodeOrganizationId: input.kilocodeOrganizationId,
+            autoInitiate: true,
+          });
+        } catch (error) {
+          await rollbackCliSession();
+          throw error;
+        }
+
+        logger.info('Session registered, async preparation scheduled');
+        return { cloudAgentSessionId, kiloSessionId };
+      }
+
       // 3. Get sandbox
       logger.info('Getting sandbox');
-      const sandbox = getSandbox(ctx.env.Sandbox, sandboxId, {
+      const sandbox = getSandbox(getSandboxNamespace(ctx.env, sandboxId), sandboxId, {
         sleepAfter: SANDBOX_SLEEP_AFTER_SECONDS,
       });
 
