@@ -327,6 +327,12 @@ export async function prepareReviewPayload(
       owner.userId
     );
 
+    logExceptInTest('[prepareReviewPayload] Incremental review flag evaluated', {
+      reviewId,
+      incrementalEnabled,
+      ownerId: owner.userId,
+    });
+
     if (incrementalEnabled) {
       try {
         const previousReview = await findPreviousCompletedReview(
@@ -347,6 +353,11 @@ export async function prepareReviewPayload(
               currentHeadSha: review.head_sha.substring(0, 8),
               previousCloudAgentSessionId,
             }
+          );
+        } else {
+          logExceptInTest(
+            '[prepareReviewPayload] No previous completed review found, using full review',
+            { reviewId }
           );
         }
       } catch (error) {
