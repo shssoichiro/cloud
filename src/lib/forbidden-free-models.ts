@@ -5,7 +5,7 @@
  * 429s.
  */
 
-const rateLimitedToDeathModelIds: ReadonlySet<string> = new Set([
+const forbiddenFreeModelIds: ReadonlySet<string> = new Set([
   'arcee-ai/trinity-mini:free',
   'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
   'deepseek/deepseek-r1-0528:free',
@@ -18,6 +18,7 @@ const rateLimitedToDeathModelIds: ReadonlySet<string> = new Set([
   'liquid/lfm-2.5-1.2b-thinking:free',
   'meta-llama/llama-3.2-3b-instruct:free',
   'meta-llama/llama-3.3-70b-instruct:free',
+  'minimax/minimax-m2.5:free', // only allowed through kilo-auto
   'mistralai/mistral-small-3.1-24b-instruct:free',
   'nousresearch/hermes-3-llama-3.1-405b:free',
   'nvidia/nemotron-3-nano-30b-a3b:free',
@@ -32,6 +33,6 @@ const rateLimitedToDeathModelIds: ReadonlySet<string> = new Set([
   'z-ai/glm-4.5-air:free',
 ]);
 
-export function isRateLimitedToDeath(modelId: string): boolean {
-  return rateLimitedToDeathModelIds.has(modelId);
+export function isForbiddenFreeModel(modelId: string): boolean {
+  return forbiddenFreeModelIds.has(modelId);
 }
