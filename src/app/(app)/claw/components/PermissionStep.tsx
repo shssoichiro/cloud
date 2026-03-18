@@ -1,12 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, ShieldCheck, ShieldOff } from 'lucide-react';
+import { AlertCircle, Check, Loader2, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useReadFile, type useKiloClawMutations } from '@/hooks/useKiloClaw';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
 
 type ExecPreset = 'always-ask' | 'never-ask';
@@ -111,37 +110,45 @@ export function PermissionStep({
 
   return (
     <Card className="mt-6">
-      <CardContent className="flex flex-col items-center gap-6 py-10">
-        {/* Permission toggle */}
-        <div className="w-full space-y-3">
-          <p className="text-foreground text-center text-lg font-semibold">
-            How should KiloClaw handle tool permissions?
+      <CardContent className="flex flex-col gap-6 p-6 sm:p-8">
+        {/* Step indicator */}
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+              Step 2 of 3
+            </span>
+            <div className="flex gap-1">
+              <span className="h-1.5 w-6 rounded-full bg-blue-500" />
+              <span className="h-1.5 w-6 rounded-full bg-blue-500" />
+              <span className="bg-muted h-1.5 w-6 rounded-full" />
+            </div>
+          </div>
+          <h2 className="text-foreground text-2xl font-bold">Set Bot Permissions</h2>
+          <p className="text-muted-foreground text-sm">
+            Choose how your KiloClaw bot handles actions on your behalf.
           </p>
-          <p className="text-muted-foreground text-center text-sm">
-            Choose whether KiloClaw asks you before running tools, or runs them automatically. You
-            can change this later in settings.
-          </p>
+        </div>
 
-          <RadioGroup
-            value={preset ?? undefined}
-            onValueChange={v => setPreset(v as ExecPreset)}
-            className="mt-4 grid gap-3"
-          >
-            <PresetOption
-              value="always-ask"
-              selected={preset === 'always-ask'}
-              icon={<ShieldCheck className="h-5 w-5 text-emerald-500" />}
-              label="Always ask"
-              description="KiloClaw asks you before running any new tool. Safer, more control."
-            />
-            <PresetOption
-              value="never-ask"
-              selected={preset === 'never-ask'}
-              icon={<ShieldOff className="h-5 w-5 text-amber-500" />}
-              label="Never ask"
-              description="KiloClaw runs all tools automatically. Faster, fully autonomous."
-            />
-          </RadioGroup>
+        {/* Permission cards */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <PresetCard
+            selected={preset === 'never-ask'}
+            onClick={() => setPreset('never-ask')}
+            icon={<ShieldAlert className="h-5 w-5 text-amber-400" />}
+            iconBg="bg-amber-900/50"
+            title="Allow everything"
+            description="The bot acts immediately without asking. Best for autonomous workflows, but review what it can access first."
+            caution="Use with caution"
+          />
+          <PresetCard
+            selected={preset === 'always-ask'}
+            onClick={() => setPreset('always-ask')}
+            icon={<ShieldCheck className="h-5 w-5 text-emerald-400" />}
+            iconBg="bg-emerald-900/50"
+            title="Ask for permission"
+            description="The bot pauses and asks you before taking any action. Best when you want full control over what it does."
+            badge="Recommended"
+          />
         </div>
 
         {/* Provisioning status banner */}
@@ -175,35 +182,65 @@ export function PermissionStep({
   );
 }
 
-function PresetOption({
-  value,
+function PresetCard({
   selected,
+  onClick,
   icon,
-  label,
+  iconBg,
+  title,
   description,
+  badge,
+  caution,
 }: {
-  value: string;
   selected: boolean;
+  onClick: () => void;
   icon: React.ReactNode;
-  label: string;
+  iconBg: string;
+  title: string;
   description: string;
+  badge?: string;
+  caution?: string;
 }) {
   return (
-    <label
-      htmlFor={`preset-${value}`}
+    <button
+      type="button"
+      onClick={onClick}
       className={cn(
-        'flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors',
-        selected ? 'border-foreground bg-accent' : 'border-border hover:border-foreground/50'
+        'relative flex cursor-pointer flex-col gap-4 rounded-xl border p-5 text-left transition-colors',
+        selected
+          ? 'border-blue-500 bg-blue-950/40'
+          : 'border-border hover:border-muted-foreground/40'
       )}
     >
-      <RadioGroupItem value={value} id={`preset-${value}`} className="mt-0.5" />
-      <div className="flex items-start gap-2">
-        {icon}
-        <div>
-          <p className="text-sm font-medium">{label}</p>
-          <p className="text-muted-foreground text-xs">{description}</p>
+      {/* Top row: icon + badge/checkmark */}
+      <div className="flex items-start justify-between">
+        <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', iconBg)}>
+          {icon}
         </div>
+        {selected ? (
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500">
+            <Check className="h-3.5 w-3.5 text-white" />
+          </div>
+        ) : badge ? (
+          <span className="rounded-full border border-emerald-700 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-emerald-400 uppercase">
+            {badge}
+          </span>
+        ) : null}
       </div>
-    </label>
+
+      {/* Title + description */}
+      <div className="flex flex-col gap-1.5">
+        <p className="text-sm font-bold">{title}</p>
+        <p className="text-muted-foreground text-xs leading-relaxed">{description}</p>
+      </div>
+
+      {/* Caution label */}
+      {caution && (
+        <div className="flex items-center gap-1.5 text-amber-400">
+          <AlertCircle className="h-3.5 w-3.5" />
+          <span className="text-xs font-medium">{caution}</span>
+        </div>
+      )}
+    </button>
   );
 }
