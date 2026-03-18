@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createPairingCache,
   OPENCLAW_BIN,
+  DEBOUNCE_DELAY_MS,
+  // INITIAL_REFRESH_DELAY_MS, // commented out alongside the constant — re-enable with file-read delay
+  PERIODIC_INTERVAL_MS,
+  FAILURE_RETRY_BASE_MS,
+  FAILURE_RETRY_MAX_MS,
   type ReadChannelPairingImpl,
   type ReadDevicePairingImpl,
 } from './pairing-cache';
@@ -649,14 +654,14 @@ describe('createPairingCache', () => {
       const callsAfterInitial = readCalls();
       expect(callsAfterInitial).toBeGreaterThan(0);
 
-      // Advance to 60s — periodic fires
-      await vi.advanceTimersByTimeAsync(60_000);
+      // Advance to periodic interval — periodic fires
+      await vi.advanceTimersByTimeAsync(PERIODIC_INTERVAL_MS);
       expect(readCalls()).toBeGreaterThan(callsAfterInitial);
 
       const callsBefore = readCalls();
 
-      // Advance another 60s — periodic fires again
-      await vi.advanceTimersByTimeAsync(60_000);
+      // Advance another periodic interval — periodic fires again
+      await vi.advanceTimersByTimeAsync(PERIODIC_INTERVAL_MS);
       expect(readCalls()).toBeGreaterThan(callsBefore);
 
       cache.cleanup();
@@ -675,7 +680,7 @@ describe('createPairingCache', () => {
       const { cache } = createTestHarness({ readChannelPairingImpl, readConfigImpl });
       cache.start();
 
-      // Flush the microtask queue so the fire-and-forget refreshAll resolves
+      // Flush the microtask queue so the fire-and-forget runPeriodicRefresh resolves
       await vi.advanceTimersByTimeAsync(0);
       expect(readChannelPairingImpl).toHaveBeenCalled();
 
@@ -1122,13 +1127,87 @@ describe('createPairingCache', () => {
       cache.start();
       cache.start(); // second call should be no-op
 
-      // Flush microtask queue for the immediate initial refresh
+      // Flush the immediate initial refresh
       await vi.advanceTimersByTimeAsync(0);
 
       // With one channel (telegram): 1 readChannelPairingImpl call + 1 readDevicePairingImpl call
       // If start() wasn't idempotent, we'd see 4 calls
       expect(readChannelPairingImpl.mock.calls.length).toBe(1);
       expect(readDevicePairingImpl.mock.calls.length).toBe(1);
+
+      cache.cleanup();
+    });
+  });
+
+  describe('failure backoff', () => {
+    it('uses exponential backoff and caps retries at 5 minutes', async () => {
+      // Backoff only triggers when a read fails with stale data already in cache (return false).
+      // Succeed once to populate the cache, then fail on every subsequent read.
+      let readShouldFail = false;
+      const readChannelPairingImpl = vi.fn<ReadChannelPairingImpl>().mockImplementation(() => {
+        if (readShouldFail) return Promise.reject(new Error('read error'));
+        return Promise.resolve({
+          requests: [{ code: 'ABC', id: 'id1', createdAt: new Date(RECENT_TS).toISOString() }],
+        });
+      });
+      const readDevicePairingImpl = vi.fn<ReadDevicePairingImpl>().mockResolvedValue({});
+      const readConfigImpl = vi.fn(() => ({
+        channels: { telegram: { enabled: true, botToken: 'tok' } },
+      }));
+
+      const { cache } = createTestHarness({ readChannelPairingImpl, readDevicePairingImpl, readConfigImpl });
+      cache.start();
+
+      // First refresh fires immediately and succeeds, populating stale data into cache.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(readChannelPairingImpl.mock.calls.length).toBeGreaterThan(0);
+
+      // Make subsequent reads fail — cache has stale data so channel refresh returns false.
+      readShouldFail = true;
+
+      // Advance to first periodic interval — first failure fires.
+      await vi.advanceTimersByTimeAsync(PERIODIC_INTERVAL_MS);
+      const callsAfterFirstFailure = readChannelPairingImpl.mock.calls.length;
+      expect(callsAfterFirstFailure).toBeGreaterThan(0);
+
+      // Still within first failure backoff window, so no retry yet.
+      await vi.advanceTimersByTimeAsync(FAILURE_RETRY_BASE_MS - 1);
+      expect(readChannelPairingImpl.mock.calls.length).toBe(callsAfterFirstFailure);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const callsAfterSecondFailure = readChannelPairingImpl.mock.calls.length;
+      expect(callsAfterSecondFailure).toBeGreaterThan(callsAfterFirstFailure);
+
+      // Second failure should back off longer (2x base).
+      await vi.advanceTimersByTimeAsync(FAILURE_RETRY_BASE_MS * 2 - 1);
+      expect(readChannelPairingImpl.mock.calls.length).toBe(callsAfterSecondFailure);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const callsAfterThirdFailure = readChannelPairingImpl.mock.calls.length;
+      expect(callsAfterThirdFailure).toBeGreaterThan(callsAfterSecondFailure);
+
+      // Third failure backs off to 4x base.
+      await vi.advanceTimersByTimeAsync(FAILURE_RETRY_BASE_MS * 4 - 1);
+      expect(readChannelPairingImpl.mock.calls.length).toBe(callsAfterThirdFailure);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const callsAfterFourthFailure = readChannelPairingImpl.mock.calls.length;
+      expect(callsAfterFourthFailure).toBeGreaterThan(callsAfterThirdFailure);
+
+      // Fourth failure backs off to 8x base.
+      await vi.advanceTimersByTimeAsync(FAILURE_RETRY_BASE_MS * 8 - 1);
+      expect(readChannelPairingImpl.mock.calls.length).toBe(callsAfterFourthFailure);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const callsAfterFifthFailure = readChannelPairingImpl.mock.calls.length;
+      expect(callsAfterFifthFailure).toBeGreaterThan(callsAfterFourthFailure);
+
+      // Next delay should be capped at max (5 minutes), not continue doubling.
+      await vi.advanceTimersByTimeAsync(FAILURE_RETRY_MAX_MS - 1);
+      expect(readChannelPairingImpl.mock.calls.length).toBe(callsAfterFifthFailure);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(readChannelPairingImpl.mock.calls.length).toBeGreaterThan(callsAfterFifthFailure);
 
       cache.cleanup();
     });

@@ -110,6 +110,26 @@ import {
 // Test harness
 // ============================================================================
 
+/**
+ * Find a structured doWarn call by message substring and verify the JSON envelope.
+ * Returns the parsed log payload for further assertions.
+ */
+function expectStructuredWarn(spy: Mock, messageSubstring: string) {
+  const call = spy.mock.calls.find(
+    (c: unknown[]) => typeof c[0] === 'string' && c[0].includes(messageSubstring)
+  );
+  if (!call) throw new Error(`Expected a warn call containing "${messageSubstring}"`);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- JSON.parse returns any
+  const parsed: Record<string, unknown> = JSON.parse(call[0] as string);
+  expect(parsed.tag).toBe('kiloclaw_do');
+  expect(parsed.level).toBe('warn');
+  expect(typeof parsed.message === 'string' && parsed.message.includes(messageSubstring)).toBe(
+    true
+  );
+  expect(parsed.error).toBeDefined();
+  return parsed;
+}
+
 function createFakeStorage() {
   const store = new Map<string, unknown>();
   let alarmTime: number | null = null;
@@ -1027,10 +1047,13 @@ describe('buildUserEnvVars API key refresh', () => {
 
     await callBuildUserEnvVars(instance);
 
-    expect(console.warn).toHaveBeenCalledWith(
-      '[DO] buildUserEnvVars: failed to mint fresh API key, using stored key:',
-      err
+    const warningCall = (console.warn as Mock).mock.calls.find(
+      (call: unknown[]) =>
+        typeof call[0] === 'string' &&
+        call[0].includes('buildUserEnvVars: failed to mint fresh API key') &&
+        call[0].includes('db down')
     );
+    expect(warningCall).toBeDefined();
     const options = (gatewayEnv.buildEnvVars as Mock).mock.calls[0][3] as {
       kilocodeApiKey?: string;
     };
@@ -1052,10 +1075,13 @@ describe('buildUserEnvVars API key refresh', () => {
     await expect(callBuildUserEnvVars(instance)).rejects.toThrow(
       'Cannot build env vars: stored KiloCode API key expired and fresh mint unavailable'
     );
-    expect(console.warn).toHaveBeenCalledWith(
-      '[DO] buildUserEnvVars: failed to mint fresh API key, using stored key:',
-      err
+    const warningCall = (console.warn as Mock).mock.calls.find(
+      (call: unknown[]) =>
+        typeof call[0] === 'string' &&
+        call[0].includes('buildUserEnvVars: failed to mint fresh API key') &&
+        call[0].includes('db down')
     );
+    expect(warningCall).toBeDefined();
     expect(gatewayEnv.buildEnvVars).not.toHaveBeenCalled();
   });
 
@@ -1075,9 +1101,9 @@ describe('buildUserEnvVars API key refresh', () => {
 
     const warningCall = (console.warn as Mock).mock.calls.find(
       (call: unknown[]) =>
-        call[0] === '[DO] buildUserEnvVars: failed to mint fresh API key, using stored key:' &&
-        call[1] instanceof Error &&
-        call[1].message === 'API key mint timed out'
+        typeof call[0] === 'string' &&
+        call[0].includes('buildUserEnvVars: failed to mint fresh API key') &&
+        call[0].includes('API key mint timed out')
     );
     expect(warningCall).toBeDefined();
 
@@ -3167,10 +3193,7 @@ describe('controller-first pairing', () => {
 
     await expect(instance.listPairingRequests()).rejects.toThrow();
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[DO] listPairingRequests controller call failed'),
-      expect.any(String)
-    );
+    expectStructuredWarn(warnSpy, 'listPairingRequests controller call failed');
     warnSpy.mockRestore();
     fetchSpy.mockRestore();
   });
@@ -3441,10 +3464,7 @@ describe('controller-first pairing', () => {
 
     await expect(instance.listDevicePairingRequests()).rejects.toThrow();
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[DO] listDevicePairingRequests controller call failed'),
-      expect.any(String)
-    );
+    expectStructuredWarn(warnSpy, 'listDevicePairingRequests controller call failed');
     warnSpy.mockRestore();
     fetchSpy.mockRestore();
   });
@@ -3482,10 +3502,7 @@ describe('controller-first pairing', () => {
 
     await expect(instance.approvePairingRequest('telegram', 'ABC123')).rejects.toThrow();
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[DO] approvePairingRequest controller call failed'),
-      expect.any(String)
-    );
+    expectStructuredWarn(warnSpy, 'approvePairingRequest controller call failed');
     warnSpy.mockRestore();
     fetchSpy.mockRestore();
   });
@@ -3527,10 +3544,7 @@ describe('controller-first pairing', () => {
       instance.approveDevicePairingRequest('58f4ac67-12b4-4f6e-adee-ff3463a7c30c')
     ).rejects.toThrow();
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[DO] approveDevicePairingRequest controller call failed'),
-      expect.any(String)
-    );
+    expectStructuredWarn(warnSpy, 'approveDevicePairingRequest controller call failed');
     warnSpy.mockRestore();
     fetchSpy.mockRestore();
   });

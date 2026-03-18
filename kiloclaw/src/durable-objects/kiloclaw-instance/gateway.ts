@@ -13,6 +13,7 @@ import {
 } from '../gateway-controller-types';
 import { HEALTH_PROBE_TIMEOUT_SECONDS, HEALTH_PROBE_INTERVAL_MS } from '../../config';
 import type { InstanceMutableState } from './types';
+import { doWarn, toLoggable } from './log';
 
 /**
  * Validate that the instance has all context needed for gateway controller RPCs.
@@ -112,19 +113,16 @@ export async function callGatewayController<T>(
 
   const parsed = responseSchema.safeParse(body ?? {});
   if (!parsed.success) {
-    console.warn(
-      '[DO] Gateway controller returned invalid response payload',
-      JSON.stringify({
-        path,
-        status: response.status,
-        body: rawBody.slice(0, 1024),
-        issues: parsed.error.issues.map(issue => ({
-          path: issue.path.join('.'),
-          code: issue.code,
-          message: issue.message,
-        })),
-      })
-    );
+    doWarn(state, 'Gateway controller returned invalid response payload', {
+      path,
+      status: response.status,
+      body: rawBody.slice(0, 1024),
+      issues: parsed.error.issues.map(issue => ({
+        path: issue.path.join('.'),
+        code: issue.code,
+        message: issue.message,
+      })),
+    });
     throw new GatewayControllerError(
       502,
       `Gateway controller returned invalid response for ${path}`
@@ -326,10 +324,9 @@ export async function patchConfigOnMachine(
       patch
     );
   } catch (err) {
-    console.warn(
-      '[DO] patchConfigOnMachine failed (non-fatal):',
-      err instanceof Error ? err.message : String(err)
-    );
+    doWarn(state, 'patchConfigOnMachine failed (non-fatal)', {
+      error: toLoggable(err),
+    });
   }
 }
 
@@ -392,9 +389,7 @@ export async function waitForHealthy(
     await new Promise(r => setTimeout(r, HEALTH_PROBE_INTERVAL_MS));
   }
 
-  console.warn(
-    '[DO] Gateway health probe timed out after',
-    HEALTH_PROBE_TIMEOUT_SECONDS,
-    's — proceeding anyway'
-  );
+  doWarn(state, 'Gateway health probe timed out — proceeding anyway', {
+    timeoutSeconds: HEALTH_PROBE_TIMEOUT_SECONDS,
+  });
 }

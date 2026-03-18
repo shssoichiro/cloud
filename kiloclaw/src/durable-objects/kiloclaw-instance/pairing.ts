@@ -4,6 +4,7 @@ import * as fly from '../../fly/client';
 import type { InstanceMutableState } from './types';
 import { getFlyConfig } from './types';
 import { callGatewayController, isErrorUnknownRoute } from './gateway';
+import { doError, doWarn, toLoggable } from './log';
 import {
   GatewayControllerError,
   ControllerChannelPairingResponseSchema,
@@ -71,10 +72,9 @@ export async function listPairingRequests(
     return { requests: result.requests };
   } catch (error) {
     if (!isErrorUnknownRoute(error)) {
-      console.warn(
-        `[DO] listPairingRequests controller call failed sandboxId=${state.sandboxId} appId=${state.flyAppName}:`,
-        error instanceof Error ? error.message : String(error)
-      );
+      doWarn(state, 'listPairingRequests controller call failed', {
+        error: toLoggable(error),
+      });
       throw error;
     }
     // Controller predates this route — fall through to KV cache / fly exec
@@ -101,12 +101,11 @@ export async function listPairingRequests(
 
   const empty: { requests: PairingRequest[] } = { requests: [] };
 
-  const logCtx = `sandboxId=${state.sandboxId} appId=${state.flyAppName}`;
   if (result.exit_code !== 0) {
-    console.error(
-      `[DO] pairing list failed (exit_code=${result.exit_code}) ${logCtx}:`,
-      result.stderr || result.stdout
-    );
+    doError(state, 'pairing list failed', {
+      exitCode: result.exit_code,
+      output: result.stderr || result.stdout,
+    });
     return empty;
   }
 
@@ -118,7 +117,10 @@ export async function listPairingRequests(
       pairing = { requests };
     }
   } catch (parseErr) {
-    console.error('[DO] pairing list parse error:', parseErr, '| stdout:', result.stdout, logCtx);
+    doError(state, 'pairing list parse error', {
+      error: toLoggable(parseErr),
+      stdout: result.stdout,
+    });
   }
 
   if (cacheKey) {
@@ -127,7 +129,9 @@ export async function listPairingRequests(
         expirationTtl: CACHE_TTL_SECONDS,
       });
     } catch (kvErr) {
-      console.warn('[DO] Failed to write pairing cache to KV:', kvErr);
+      doWarn(state, 'Failed to write pairing cache to KV', {
+        error: toLoggable(kvErr),
+      });
     }
   }
 
@@ -170,10 +174,9 @@ export async function approvePairingRequest(
       return { success: false, message: error.message };
     }
     if (!isErrorUnknownRoute(error)) {
-      console.warn(
-        `[DO] approvePairingRequest controller call failed sandboxId=${state.sandboxId} appId=${state.flyAppName}:`,
-        error instanceof Error ? error.message : String(error)
-      );
+      doWarn(state, 'approvePairingRequest controller call failed', {
+        error: toLoggable(error),
+      });
       throw error;
     }
     // Controller predates this route — fall through to fly exec
@@ -195,11 +198,15 @@ export async function approvePairingRequest(
       try {
         await env.KV_CLAW_CACHE.delete(cacheKey);
       } catch (kvErr) {
-        console.warn('[DO] Failed to invalidate pairing cache from KV:', kvErr);
+        doWarn(state, 'Failed to invalidate pairing cache from KV', {
+          error: toLoggable(kvErr),
+        });
       }
     }
   } else {
-    console.error('[DO] pairing approve failed:', result.stderr || result.stdout);
+    doError(state, 'pairing approve failed', {
+      output: result.stderr || result.stdout,
+    });
   }
 
   return {
@@ -242,10 +249,9 @@ export async function listDevicePairingRequests(
     return { requests: result.requests };
   } catch (error) {
     if (!isErrorUnknownRoute(error)) {
-      console.warn(
-        `[DO] listDevicePairingRequests controller call failed sandboxId=${state.sandboxId} appId=${state.flyAppName}:`,
-        error instanceof Error ? error.message : String(error)
-      );
+      doWarn(state, 'listDevicePairingRequests controller call failed', {
+        error: toLoggable(error),
+      });
       throw error;
     }
     // Controller predates this route — fall through to KV cache / fly exec
@@ -272,9 +278,10 @@ export async function listDevicePairingRequests(
 
   const empty: { requests: DevicePairingRequest[] } = { requests: [] };
 
-  const logCtx = `sandboxId=${state.sandboxId} appId=${state.flyAppName}`;
   if (result.exit_code !== 0) {
-    console.error(`[DO] device pairing list failed: ${result.stderr} ${logCtx}`);
+    doError(state, 'device pairing list failed', {
+      output: result.stderr,
+    });
     return empty;
   }
 
@@ -286,12 +293,10 @@ export async function listDevicePairingRequests(
       pairing = { requests };
     }
   } catch (parseErr) {
-    console.error(
-      `[DO] device pairing list parse error ${logCtx}:`,
-      parseErr,
-      '| stdout:',
-      result.stdout
-    );
+    doError(state, 'device pairing list parse error', {
+      error: toLoggable(parseErr),
+      stdout: result.stdout,
+    });
   }
 
   if (cacheKey) {
@@ -300,7 +305,9 @@ export async function listDevicePairingRequests(
         expirationTtl: CACHE_TTL_SECONDS,
       });
     } catch (kvErr) {
-      console.warn('[DO] Failed to write device pairing cache to KV:', kvErr);
+      doWarn(state, 'Failed to write device pairing cache to KV', {
+        error: toLoggable(kvErr),
+      });
     }
   }
 
@@ -339,10 +346,9 @@ export async function approveDevicePairingRequest(
       return { success: false, message: error.message };
     }
     if (!isErrorUnknownRoute(error)) {
-      console.warn(
-        `[DO] approveDevicePairingRequest controller call failed sandboxId=${state.sandboxId} appId=${state.flyAppName}:`,
-        error instanceof Error ? error.message : String(error)
-      );
+      doWarn(state, 'approveDevicePairingRequest controller call failed', {
+        error: toLoggable(error),
+      });
       throw error;
     }
     // Controller predates this route — fall through to fly exec
@@ -364,11 +370,15 @@ export async function approveDevicePairingRequest(
       try {
         await env.KV_CLAW_CACHE.delete(cacheKey);
       } catch (kvErr) {
-        console.warn('[DO] Failed to invalidate device pairing cache from KV:', kvErr);
+        doWarn(state, 'Failed to invalidate device pairing cache from KV', {
+          error: toLoggable(kvErr),
+        });
       }
     }
   } else {
-    console.error('[DO] device pairing approve failed:', result.stderr || result.stdout);
+    doError(state, 'device pairing approve failed', {
+      output: result.stderr || result.stdout,
+    });
   }
 
   return {

@@ -20,7 +20,7 @@ import {
 import { METADATA_KEY_USER_ID } from '../machine-config';
 import type { InstanceMutableState, DestroyResult } from './types';
 import { storageUpdate, resetMutableState } from './state';
-import { reconcileLog } from './log';
+import { reconcileLog, doError, doWarn, toLoggable } from './log';
 import { ensureVolume, staleProvisionAgeMs } from './fly-machines';
 import { mintFreshApiKey } from './config';
 import * as gateway from './gateway';
@@ -100,10 +100,9 @@ async function reconcileApiKeyExpiry(
     const info = await gateway.getControllerVersion(state, env);
     controllerVersion = info?.version ?? null;
   } catch (err) {
-    console.warn(
-      '[reconcile] controller version check failed:',
-      err instanceof Error ? err.message : String(err)
-    );
+    doWarn(state, 'controller version check failed', {
+      error: toLoggable(err),
+    });
   }
 
   reconcileLog(reason, 'api_key_expiry_approaching', {
@@ -355,7 +354,9 @@ async function reconcileStarting(
       );
     } else {
       // Transient Fly API error — leave in 'starting', alarm will retry.
-      console.error('[DO] reconcileStarting: transient error checking machine:', err);
+      doError(state, 'reconcileStarting: transient error checking machine', {
+        error: toLoggable(err),
+      });
     }
   }
 }
@@ -386,7 +387,9 @@ async function reconcileVolume(
       await ctx.storage.put(storageUpdate({ flyVolumeId: null }));
       await ensureVolume(flyConfig, ctx, state, env, reason);
     } else {
-      console.warn('[reconcile] getVolume failed (will retry next alarm):', err);
+      doWarn(state, 'getVolume failed (will retry next alarm)', {
+        error: toLoggable(err),
+      });
     }
   }
 }
@@ -507,7 +510,7 @@ export async function attemptMetadataRecovery(
     await ctx.storage.put(storageUpdate(updates));
     return true;
   } catch (err) {
-    console.error('[reconcile] metadata recovery failed:', err);
+    doError(state, 'metadata recovery failed', { error: toLoggable(err) });
     return false;
   }
 }
@@ -637,7 +640,9 @@ export async function syncStatusFromLiveCheck(
       state.status = 'stopped';
       return;
     }
-    console.warn('[DO] Live check failed, using cached status:', err);
+    doWarn(state, 'Live check failed, using cached status', {
+      error: toLoggable(err),
+    });
   }
 }
 

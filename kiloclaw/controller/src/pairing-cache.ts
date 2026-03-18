@@ -57,8 +57,11 @@ type PairingCacheOptions = {
   nowMsImpl?: () => number;
 };
 
-export const PERIODIC_INTERVAL_MS = 60_000;
+export const PERIODIC_INTERVAL_MS = 120_000;
 export const DEBOUNCE_DELAY_MS = 2_000;
+// export const INITIAL_REFRESH_DELAY_MS = 120_000; // obsolete once file-reads are fully enabled — was protecting against startup CLI churn
+export const FAILURE_RETRY_BASE_MS = 30_000;
+export const FAILURE_RETRY_MAX_MS = 300_000;
 export const CONFIG_PATH = '/root/.openclaw/openclaw.json';
 
 // TTL constants — exact matches to openclaw source
@@ -167,8 +170,12 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
 
   let started = false;
   let stopped = false;
-  let periodicTimer: ReturnType<typeof setInterval> | null = null;
+  let periodicTimer: ReturnType<typeof setTimeout> | null = null;
+  let initialTimer: ReturnType<typeof setTimeout> | null = null;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let nextAllowedRefreshAt = 0;
+  let hasCompletedInitialRefresh = false;
+  let consecutiveFailureCount = 0;
 
   // Generation counters prevent stale concurrent refreshes from overwriting
   // newer data.  Each refresh captures the counter at start; if another
@@ -176,8 +183,8 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
   let channelGeneration = 0;
   let deviceGeneration = 0;
 
-  const refreshChannelPairing = async (): Promise<void> => {
-    if (stopped) return;
+  const refreshChannelPairingInternal = async (): Promise<boolean> => {
+    if (stopped) return false;
     const gen = ++channelGeneration;
     let channels: string[];
     try {
@@ -185,14 +192,14 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
       channels = detectChannels(config);
     } catch (err) {
       console.warn(`[pairing-cache] could not read config: ${errorMessage(err)}`);
-      return;
+      return false;
     }
 
     if (channels.length === 0) {
       if (gen === channelGeneration) {
         channelCache = { requests: [], lastUpdated: nowImpl() };
       }
-      return;
+      return true;
     }
 
     const nowMs = nowMsImpl();
@@ -249,15 +256,18 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
       if (gen === channelGeneration) {
         channelCache = { requests: allRequests, lastUpdated: nowImpl() };
       }
+      return true;
     } else if (anyHadPriorData) {
       // All channels failed but some had prior data — already warned per-channel above
       console.warn('[pairing-cache] channel refresh: all channels failed, cache not updated');
+      return false;
     }
     // else: all failures had no prior data (e.g. cold-start ENOENT) — stay silent
+    return true;
   };
 
-  const refreshDevicePairing = async (): Promise<void> => {
-    if (stopped) return;
+  const refreshDevicePairingInternal = async (): Promise<boolean> => {
+    if (stopped) return false;
     const gen = ++deviceGeneration;
     try {
       const parsed: unknown = await readDevicePairingImpl();
@@ -285,13 +295,61 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
       if (gen === deviceGeneration) {
         deviceCache = { requests, lastUpdated: nowImpl() };
       }
+      return true;
     } catch (err) {
-      console.warn(`[pairing-cache] device refresh failed: ${errorMessage(err)}`);
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return true;
+      console.error(`[pairing-cache] device refresh failed: ${errorMessage(err)}`);
+      return false;
     }
   };
 
-  const refreshAll = async (): Promise<void> => {
-    await Promise.allSettled([refreshChannelPairing(), refreshDevicePairing()]);
+  const refreshAll = async (): Promise<boolean> => {
+    if (stopped) return false;
+    const [channelOk, deviceOk] = await Promise.all([
+      refreshChannelPairingInternal(),
+      refreshDevicePairingInternal(),
+    ]);
+    const ok = channelOk && deviceOk;
+    if (ok) {
+      consecutiveFailureCount = 0;
+      nextAllowedRefreshAt = 0;
+    } else {
+      consecutiveFailureCount += 1;
+      const failureDelayMs = Math.min(
+        FAILURE_RETRY_BASE_MS * 2 ** (consecutiveFailureCount - 1),
+        FAILURE_RETRY_MAX_MS
+      );
+      nextAllowedRefreshAt = Date.now() + failureDelayMs;
+    }
+    return ok;
+  };
+
+  const scheduleNextPeriodicRefresh = (delayMs: number): void => {
+    if (stopped) return;
+    if (periodicTimer !== null) {
+      clearTimeout(periodicTimer);
+    }
+    periodicTimer = setTimeout(() => {
+      void runPeriodicRefresh();
+    }, delayMs);
+  };
+
+  const runPeriodicRefresh = async (): Promise<void> => {
+    if (stopped) return;
+    const ok = await refreshAll();
+    hasCompletedInitialRefresh = true;
+    const now = Date.now();
+    const delayMs = ok ? PERIODIC_INTERVAL_MS : Math.max(0, nextAllowedRefreshAt - now);
+    scheduleNextPeriodicRefresh(delayMs);
+  };
+
+  const runDebouncedRefresh = async (): Promise<void> => {
+    if (stopped) return;
+    if (Date.now() < nextAllowedRefreshAt) return;
+    const ok = await refreshAll();
+    const now = Date.now();
+    const delayMs = ok ? PERIODIC_INTERVAL_MS : Math.max(0, nextAllowedRefreshAt - now);
+    scheduleNextPeriodicRefresh(delayMs);
   };
 
   const approveChannel = async (channel: string, code: string): Promise<ApproveResult> => {
@@ -306,7 +364,7 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
       return approveFail(errorMessage(err), 500);
     }
 
-    await refreshChannelPairing();
+    await refreshChannelPairingInternal();
     return approveOk('Pairing approved');
   };
 
@@ -321,12 +379,13 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
       return approveFail(errorMessage(err), 500);
     }
 
-    await refreshDevicePairing();
+    await refreshDevicePairingInternal();
     return approveOk('Device approved');
   };
 
   const onPairingLogLine = (line: string): void => {
     if (stopped) return;
+    if (started && !hasCompletedInitialRefresh) return;
     const lower = line.toLowerCase();
     const isPairingLine = PAIRING_KEYWORDS.some(kw => lower.includes(kw));
     if (!isPairingLine) return;
@@ -335,8 +394,16 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
 
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      void refreshAll();
+      void runDebouncedRefresh();
     }, DEBOUNCE_DELAY_MS);
+  };
+
+  const refreshChannelPairing = async (): Promise<void> => {
+    await refreshChannelPairingInternal();
+  };
+
+  const refreshDevicePairing = async (): Promise<void> => {
+    await refreshDevicePairingInternal();
   };
 
   const start = (): void => {
@@ -347,19 +414,21 @@ export function createPairingCache(options?: PairingCacheOptions): PairingCache 
     // server.listen() and delays the health endpoint past the DO's 60s startup probe.
     // An empty cache during the brief warmup window is acceptable — the DO-side
     // fallback chain (controller → KV → fly exec) handles it, and the cache
-    // self-heals within seconds via the periodic timer and log-triggered debounce.
-    void refreshAll();
-
-    periodicTimer = setInterval(() => {
-      void refreshAll();
-    }, PERIODIC_INTERVAL_MS);
+    // self-heals within ms via the periodic timer and log-triggered debounce.
+    // Note: previously delayed by INITIAL_REFRESH_DELAY_MS to protect against CLI startup churn;
+    // no longer needed now that refreshes are file reads instead of subprocess calls.
+    void runPeriodicRefresh();
   };
 
   const cleanup = (): void => {
     stopped = true;
     if (periodicTimer !== null) {
-      clearInterval(periodicTimer);
+      clearTimeout(periodicTimer);
       periodicTimer = null;
+    }
+    if (initialTimer !== null) {
+      clearTimeout(initialTimer);
+      initialTimer = null;
     }
     if (debounceTimer !== null) {
       clearTimeout(debounceTimer);

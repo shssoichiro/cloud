@@ -350,7 +350,7 @@ export const kiloclawRouter = createTRPCRouter({
         gatewayToken = tokenResp.gatewayToken;
       } catch (err) {
         console.warn(
-          '[kiloclaw] getGatewayToken failed (non-fatal):',
+          `[kiloclaw] getGatewayToken failed (non-fatal) userId=${ctx.user.id}:`,
           err instanceof Error ? err.message : String(err)
         );
       }
@@ -496,7 +496,7 @@ export const kiloclawRouter = createTRPCRouter({
     const client = new KiloClawUserClient(
       generateApiToken(ctx.user, undefined, { expiresIn: TOKEN_EXPIRY.fiveMinutes })
     );
-    return client.getConfig();
+    return client.getConfig({ userId: ctx.user.id });
   }),
 
   restartMachine: clawAccessProcedure
@@ -518,7 +518,9 @@ export const kiloclawRouter = createTRPCRouter({
       const client = new KiloClawUserClient(
         generateApiToken(ctx.user, undefined, { expiresIn: TOKEN_EXPIRY.fiveMinutes })
       );
-      return client.restartMachine(input?.imageTag ? { imageTag: input.imageTag } : undefined);
+      return client.restartMachine(input?.imageTag ? { imageTag: input.imageTag } : undefined, {
+        userId: ctx.user.id,
+      });
     }),
 
   listPairingRequests: clawAccessProcedure
