@@ -23,10 +23,13 @@ import type { PlatformIntegration } from '@kilocode/db/schema';
 import type { Owner } from '@/lib/code-reviews/core';
 import { getBotUserId } from '@/lib/bot-users/bot-user-service';
 import type { CodeReviewAgentConfig } from '@/lib/agent-config/core/types';
-import { addReactionToMR, setCommitStatus } from '../adapter';
+import { addReactionToMR, isMergeCommit, setCommitStatus } from '../adapter';
 import { codeReviewWorkerClient } from '@/lib/code-reviews/client/code-review-worker-client';
 import { getIntegrationById } from '@/lib/integrations/db/platform-integrations';
-import { getOrCreateProjectAccessToken } from '@/lib/integrations/gitlab-service';
+import {
+  getOrCreateProjectAccessToken,
+  getValidGitLabToken,
+} from '@/lib/integrations/gitlab-service';
 import { APP_URL } from '@/lib/constants';
 import { isFeatureFlagEnabled } from '@/lib/posthog-feature-flags';
 
@@ -149,6 +152,38 @@ export async function handleMergeRequestCodeReview(
         project: project.path_with_namespace,
       });
       return NextResponse.json({ message: 'No head commit found' }, { status: 400 });
+    }
+
+    // 3b. Skip merge commits on update (e.g. merging base branch into feature branch)
+    if (mr.action === GITLAB_ACTION.UPDATE) {
+      try {
+        const integrationForCheck = await getIntegrationById(integration.id);
+        if (integrationForCheck) {
+          const checkMetadata = integrationForCheck.metadata as {
+            gitlab_instance_url?: string;
+          } | null;
+          const checkInstanceUrl = checkMetadata?.gitlab_instance_url || 'https://gitlab.com';
+          const accessToken = await getValidGitLabToken(integrationForCheck);
+
+          const mergeCommit = await isMergeCommit(
+            accessToken,
+            project.id,
+            headSha,
+            checkInstanceUrl
+          );
+          if (mergeCommit) {
+            logExceptInTest('Skipping merge commit:', {
+              mr_iid: mr.iid,
+              project: project.path_with_namespace,
+              head_sha: headSha,
+            });
+            return NextResponse.json({ message: 'Skipped merge commit' }, { status: 200 });
+          }
+        }
+      } catch (error) {
+        // Fail-open: if we can't check, proceed with the review
+        logExceptInTest('Failed to check for merge commit, proceeding with review:', error);
+      }
     }
 
     // 4. Cancel any existing reviews for this MR (different SHA)
