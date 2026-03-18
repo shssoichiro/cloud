@@ -1,4 +1,4 @@
-import type { ZodType } from 'zod';
+import { z, type ZodType } from 'zod';
 import type { KiloClawEnv } from '../../types';
 import { deriveGatewayToken } from '../../auth/gateway-token';
 import {
@@ -13,6 +13,7 @@ import {
 } from '../gateway-controller-types';
 import { HEALTH_PROBE_TIMEOUT_SECONDS, HEALTH_PROBE_INTERVAL_MS } from '../../config';
 import type { InstanceMutableState } from './types';
+import { doWarn, toLoggable } from './log';
 
 /**
  * Validate that the instance has all context needed for gateway controller RPCs.
@@ -96,38 +97,32 @@ export async function callGatewayController<T>(
   }
 
   if (!response.ok) {
-    const errorCode =
-      typeof body === 'object' &&
-      body !== null &&
-      'code' in body &&
-      typeof (body as { code?: unknown }).code === 'string'
-        ? (body as { code: string }).code
-        : undefined;
-    const errorMessage =
-      typeof body === 'object' &&
-      body !== null &&
-      'error' in body &&
-      typeof (body as { error?: unknown }).error === 'string'
-        ? (body as { error: string }).error
-        : `Gateway controller request failed (${response.status})`;
+    const bodyObj =
+      typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+    const errorCode = typeof bodyObj.code === 'string' ? bodyObj.code : undefined;
+
+    let errorMessage = `Gateway controller request failed (${response.status})`;
+    if (typeof bodyObj.error === 'string') {
+      errorMessage = bodyObj.error;
+    } else if (typeof bodyObj.message === 'string') {
+      errorMessage = bodyObj.message;
+    }
+
     throw new GatewayControllerError(response.status, errorMessage, errorCode);
   }
 
   const parsed = responseSchema.safeParse(body ?? {});
   if (!parsed.success) {
-    console.warn(
-      '[DO] Gateway controller returned invalid response payload',
-      JSON.stringify({
-        path,
-        status: response.status,
-        body: rawBody.slice(0, 1024),
-        issues: parsed.error.issues.map(issue => ({
-          path: issue.path.join('.'),
-          code: issue.code,
-          message: issue.message,
-        })),
-      })
-    );
+    doWarn(state, 'Gateway controller returned invalid response payload', {
+      path,
+      status: response.status,
+      body: rawBody.slice(0, 1024),
+      issues: parsed.error.issues.map(issue => ({
+        path: issue.path.join('.'),
+        code: issue.code,
+        message: issue.message,
+      })),
+    });
     throw new GatewayControllerError(
       502,
       `Gateway controller returned invalid response for ${path}`
@@ -207,13 +202,16 @@ export function restoreConfig(
   );
 }
 
-function isErrorUnknownRoute(error: unknown): boolean {
+export function isErrorUnknownRoute(error: unknown): boolean {
   // If a controller predates a new route, the request will either:
-  //   - fall through to the catch-all proxy (401 REQUIRE_PROXY_TOKEN)
+  //   - fall through to the catch-all proxy which returns 401 with code
+  //     'controller_route_unavailable' (for /_kilo/* paths)
   //   - forward to the gateway which returns 404 for the unknown path.
+  // We intentionally do NOT match bare 401 (without the code) to avoid
+  // masking genuine authentication failures.
   return (
     error instanceof GatewayControllerError &&
-    (error.status === 404 || error.code === 'controller_route_unavailable')
+    (error.code === 'controller_route_unavailable' || (error.status === 404 && !error.code))
   );
 }
 
@@ -286,6 +284,94 @@ export async function replaceConfigOnMachine(
   }
 }
 
+/** Keep in sync with: controller/src/routes/files.ts, src/lib/kiloclaw/kiloclaw-internal-client.ts */
+const FileNodeSchema: z.ZodType<{
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  children?: { name: string; path: string; type: 'file' | 'directory'; children?: unknown[] }[];
+}> = z.lazy(() =>
+  z.object({
+    name: z.string(),
+    path: z.string(),
+    type: z.enum(['file', 'directory']),
+    children: z.array(FileNodeSchema).optional(),
+  })
+);
+
+const FileTreeResponseSchema = z.object({
+  tree: z.array(FileNodeSchema),
+});
+
+export async function getFileTree(
+  state: InstanceMutableState,
+  env: KiloClawEnv
+): Promise<{ tree: unknown[] } | null> {
+  try {
+    return await callGatewayController(
+      state,
+      env,
+      '/_kilo/files/tree',
+      'GET',
+      FileTreeResponseSchema
+    );
+  } catch (error) {
+    if (isErrorUnknownRoute(error)) return null;
+    throw error;
+  }
+}
+
+const FileReadResponseSchema = z.object({
+  content: z.string(),
+  etag: z.string(),
+});
+
+export async function readFile(
+  state: InstanceMutableState,
+  env: KiloClawEnv,
+  filePath: string
+): Promise<{ content: string; etag: string } | null> {
+  try {
+    const params = new URLSearchParams({ path: filePath });
+    return await callGatewayController(
+      state,
+      env,
+      `/_kilo/files/read?${params.toString()}`,
+      'GET',
+      FileReadResponseSchema
+    );
+  } catch (error) {
+    if (isErrorUnknownRoute(error)) return null;
+    throw error;
+  }
+}
+
+const FileWriteResponseSchema = z.object({
+  etag: z.string(),
+});
+
+export async function writeFile(
+  state: InstanceMutableState,
+  env: KiloClawEnv,
+  filePath: string,
+  content: string,
+  etag?: string
+): Promise<{ etag: string } | null> {
+  try {
+    return await callGatewayController(
+      state,
+      env,
+      '/_kilo/files/write',
+      'POST',
+      FileWriteResponseSchema,
+      { path: filePath, content, etag }
+    );
+  } catch (error) {
+    if (isErrorUnknownRoute(error)) return null;
+    throw error;
+  }
+}
+
 /**
  * Push env var updates to the running controller and signal the gateway.
  * Returns null if the instance isn't running.
@@ -326,10 +412,9 @@ export async function patchConfigOnMachine(
       patch
     );
   } catch (err) {
-    console.warn(
-      '[DO] patchConfigOnMachine failed (non-fatal):',
-      err instanceof Error ? err.message : String(err)
-    );
+    doWarn(state, 'patchConfigOnMachine failed (non-fatal)', {
+      error: toLoggable(err),
+    });
   }
 }
 
@@ -392,9 +477,7 @@ export async function waitForHealthy(
     await new Promise(r => setTimeout(r, HEALTH_PROBE_INTERVAL_MS));
   }
 
-  console.warn(
-    '[DO] Gateway health probe timed out after',
-    HEALTH_PROBE_TIMEOUT_SECONDS,
-    's — proceeding anyway'
-  );
+  doWarn(state, 'Gateway health probe timed out — proceeding anyway', {
+    timeoutSeconds: HEALTH_PROBE_TIMEOUT_SECONDS,
+  });
 }

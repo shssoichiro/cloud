@@ -7,6 +7,7 @@ export const OpenRouterInferenceProviderIdSchema = z.enum([
   'arcee-ai',
   'deepinfra',
   'fireworks',
+  'friendli',
   'google-ai-studio',
   'google-vertex',
   'inception',
@@ -18,6 +19,7 @@ export const OpenRouterInferenceProviderIdSchema = z.enum([
   'novita',
   'streamlake',
   'stealth',
+  'xiaomi',
   'z-ai',
 
   // not real OpenRouter providers
