@@ -1158,8 +1158,18 @@ export const kiloclawRouter = createTRPCRouter({
       // Expire any stale open checkout sessions so the user can start fresh.
       // This handles the case where a user started checkout, closed the tab,
       // and came back to try again.
+      // Concurrent requests may race: two requests list the same session,
+      // the first expires it, and the second gets an error from Stripe.
+      // We treat "already expired" as success to keep this idempotent.
       const staleKiloClawSessions = openSessions.data.filter(s => s.metadata?.type === 'kiloclaw');
-      await Promise.all(staleKiloClawSessions.map(s => stripe.checkout.sessions.expire(s.id)));
+      await Promise.all(
+        staleKiloClawSessions.map(s =>
+          stripe.checkout.sessions.expire(s.id).catch(err => {
+            if (err instanceof stripe.errors.StripeInvalidRequestError) return;
+            throw err;
+          })
+        )
+      );
 
       const priceId = getStripePriceIdForClawPlan(input.plan);
 
