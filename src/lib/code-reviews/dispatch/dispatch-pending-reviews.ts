@@ -11,7 +11,7 @@
 
 import { db } from '@/lib/drizzle';
 import { cloud_agent_code_reviews, type CloudAgentCodeReview } from '@kilocode/db/schema';
-import { eq, and, or, count } from 'drizzle-orm';
+import { eq, and, or, count, lt, sql } from 'drizzle-orm';
 import type { Owner } from '../core';
 import { prepareReviewPayload } from '../triggers/prepare-review-payload';
 import { getAgentConfigForOwner } from '@/lib/agent-config/db/agent-configs';
@@ -23,6 +23,11 @@ import { codeReviewWorkerClient } from '../client/code-review-worker-client';
 import type { CodeReviewPlatform } from '../core/schemas';
 
 const MAX_CONCURRENT_REVIEWS_PER_OWNER = 20;
+
+// Reviews claimed (queued) but not picked up by the worker within this
+// window are considered abandoned (e.g. process crashed after claim) and
+// become eligible for re-dispatch.
+const STALE_CLAIM_MINUTES = 5;
 
 export interface DispatchResult {
   dispatched: number;
@@ -69,7 +74,10 @@ export async function tryDispatchPendingReviews(owner: Owner): Promise<DispatchR
       return { dispatched: 0, pending: 0, activeCount };
     }
 
-    // 3. Get pending reviews for this owner (FIFO)
+    // 3. Get dispatchable reviews: pending, or queued-but-stale (abandoned claim).
+    //    A review is stale-queued if it was claimed but the process crashed
+    //    before the worker dispatch completed.
+    const staleCutoff = sql`now() - interval '${sql.raw(String(STALE_CLAIM_MINUTES))} minutes'`;
     const pendingReviews = await db
       .select()
       .from(cloud_agent_code_reviews)
@@ -78,7 +86,13 @@ export async function tryDispatchPendingReviews(owner: Owner): Promise<DispatchR
           owner.type === 'org'
             ? eq(cloud_agent_code_reviews.owned_by_organization_id, owner.id)
             : eq(cloud_agent_code_reviews.owned_by_user_id, owner.id),
-          eq(cloud_agent_code_reviews.status, 'pending')
+          or(
+            eq(cloud_agent_code_reviews.status, 'pending'),
+            and(
+              eq(cloud_agent_code_reviews.status, 'queued'),
+              lt(cloud_agent_code_reviews.updated_at, staleCutoff)
+            )
+          )
         )
       )
       .orderBy(cloud_agent_code_reviews.created_at)
@@ -163,16 +177,54 @@ async function dispatchReview(review: CloudAgentCodeReview, owner: Owner): Promi
   // Get platform from review (defaults to 'github' for backward compatibility)
   const platform = (review.platform || 'github') as CodeReviewPlatform;
 
-  // 1. Atomically claim the review (pending → queued) to prevent concurrent
-  //    dispatchers from picking the same review. The conditional WHERE ensures
-  //    only one dispatcher wins the claim.
+  logExceptInTest('[dispatchReview] Dispatching review', {
+    reviewId: review.id,
+    owner,
+    platform,
+  });
+
+  // 1. Get agent config for owner (use platform from review)
+  const agentConfig = await getAgentConfigForOwner(owner, 'code_review', platform);
+
+  if (!agentConfig) {
+    throw new Error(
+      `Agent config not found for owner ${owner.type}:${owner.id} on platform ${platform}`
+    );
+  }
+
+  // 2. Evaluate feature flag: use cloud-agent-next?
+  const useCloudAgentNext =
+    process.env.NODE_ENV === 'development' ||
+    (await isFeatureFlagEnabled('code-review-cloud-agent-next', owner.userId));
+
+  logExceptInTest('[dispatchReview] Feature flag evaluated', {
+    reviewId: review.id,
+    userId: owner.userId,
+    useCloudAgentNext,
+  });
+
+  // 3. Prepare complete payload for cloud agent
+  const payload = await prepareReviewPayload({
+    reviewId: review.id,
+    owner,
+    agentConfig,
+    platform,
+  });
+
+  // 4. Atomically claim the review to prevent concurrent dispatchers from
+  //    picking the same review. Done as late as possible (after all prep work)
+  //    to minimise the crash window between claim and dispatch.
+  //    Accepts both 'pending' (normal) and 'queued' (stale claim recovery).
   const claimed = await db
     .update(cloud_agent_code_reviews)
     .set({ status: 'queued' })
     .where(
       and(
         eq(cloud_agent_code_reviews.id, review.id),
-        eq(cloud_agent_code_reviews.status, 'pending')
+        or(
+          eq(cloud_agent_code_reviews.status, 'pending'),
+          eq(cloud_agent_code_reviews.status, 'queued')
+        )
       )
     )
     .returning({ id: cloud_agent_code_reviews.id });
@@ -184,47 +236,23 @@ async function dispatchReview(review: CloudAgentCodeReview, owner: Owner): Promi
     return false;
   }
 
-  logExceptInTest('[dispatchReview] Dispatching review', {
-    reviewId: review.id,
-    owner,
-    platform,
-  });
-
-  // 2. Get agent config for owner (use platform from review)
-  const agentConfig = await getAgentConfigForOwner(owner, 'code_review', platform);
-
-  if (!agentConfig) {
-    throw new Error(
-      `Agent config not found for owner ${owner.type}:${owner.id} on platform ${platform}`
-    );
-  }
-
-  // 3. Evaluate feature flag: use cloud-agent-next?
-  const useCloudAgentNext =
-    process.env.NODE_ENV === 'development' ||
-    (await isFeatureFlagEnabled('code-review-cloud-agent-next', owner.userId));
-
-  logExceptInTest('[dispatchReview] Feature flag evaluated', {
-    reviewId: review.id,
-    userId: owner.userId,
-    useCloudAgentNext,
-  });
-
-  // 4. Prepare complete payload for cloud agent
-  const payload = await prepareReviewPayload({
-    reviewId: review.id,
-    owner,
-    agentConfig,
-    platform,
-  });
-
-  // 5. Dispatch to Cloudflare Worker to create CodeReviewOrchestrator DO
+  // 5. Dispatch to Cloudflare Worker to create CodeReviewOrchestrator DO.
+  //    If this fails, revert the claim so the review stays retriable.
   const agentVersion = useCloudAgentNext ? 'v2' : 'v1';
-  await codeReviewWorkerClient.dispatchReview({
-    ...payload,
-    skipBalanceCheck: true,
-    agentVersion,
-  });
+  try {
+    await codeReviewWorkerClient.dispatchReview({
+      ...payload,
+      skipBalanceCheck: true,
+      agentVersion,
+    });
+  } catch (dispatchError) {
+    // Revert claim — review goes back to pending for the next dispatch cycle
+    await db
+      .update(cloud_agent_code_reviews)
+      .set({ status: 'pending' })
+      .where(eq(cloud_agent_code_reviews.id, review.id));
+    throw dispatchError;
+  }
 
   // 6. Record which agent version was dispatched
   await updateCodeReviewStatus(review.id, 'queued', { agentVersion });
