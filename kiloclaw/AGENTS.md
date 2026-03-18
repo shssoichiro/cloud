@@ -284,14 +284,14 @@ These files are COPYed by the Dockerfile and hashed by CI (`deploy-kiloclaw.yml`
 produce the content-hash image tag. If you add or remove a COPY in the Dockerfile,
 update the `find` command in the workflow's "Compute source content hash" step to match.
 
-| Path                              | Purpose                                           |
-| --------------------------------- | ------------------------------------------------- |
-| `Dockerfile`                      | Base image, apt packages, npm versions (hashed)   |
-| `controller/`                     | Compiled to `kiloclaw-controller.js` (entrypoint) |
-| `openclaw-pairing-list.js`        | Helper script used at runtime by controller       |
-| `openclaw-device-pairing-list.js` | Helper script used at runtime by controller       |
-| `skills/`                         | Custom skills copied to `/root/clawd/skills/`     |
-| `container/TOOLS.md`              | Staged to `/usr/local/share/kiloclaw/TOOLS.md`    |
+| Path                              | Purpose                                                 |
+| --------------------------------- | ------------------------------------------------------- |
+| `Dockerfile`                      | Base image, apt packages, npm versions                  |
+| `controller/`                     | Compiled to `kiloclaw-controller.js` (entrypoint)       |
+| `container/`                      | Runtime assets (e.g. `TOOLS.md`) staged outside `/root` |
+| `openclaw-pairing-list.js`        | Helper script used at runtime by controller             |
+| `openclaw-device-pairing-list.js` | Helper script used at runtime by controller             |
+| `skills/`                         | Custom skills copied to `/root/clawd/skills/`           |
 
 ## Fly Machine Lifecycle
 
