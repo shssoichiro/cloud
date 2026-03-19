@@ -5,6 +5,7 @@ import { TelegramIcon } from './icons/TelegramIcon';
 import { DiscordIcon } from './icons/DiscordIcon';
 import { SlackIcon } from './icons/SlackIcon';
 import { GitHubIcon } from './icons/GitHubIcon';
+import { AgentCardIcon } from './icons/AgentCardIcon';
 
 const ICON_MAP: Record<SecretIconKey, React.ComponentType<{ className?: string }>> = {
   send: TelegramIcon,
@@ -12,6 +13,7 @@ const ICON_MAP: Record<SecretIconKey, React.ComponentType<{ className?: string }
   slack: SlackIcon,
   key: Key,
   github: GitHubIcon,
+  'credit-card': AgentCardIcon,
 };
 
 export function getIcon(iconKey: SecretIconKey): React.ComponentType<{ className?: string }> {
@@ -24,6 +26,7 @@ const DESCRIPTION_MAP: Record<string, string> = {
   discord: 'Connect your Discord bot',
   slack: 'Connect your Slack workspace',
   github: 'Connect a GitHub account for code operations',
+  agentcard: 'Give your bot virtual debit cards for spending',
 };
 
 export function getDescription(entryId: string): string {
