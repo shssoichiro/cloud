@@ -1,12 +1,13 @@
 import { NextResponse, type NextResponse as NextResponseType } from 'next/server';
 import { type NextRequest } from 'next/server';
 import { isOpenCodeBasedClient, isRooCodeBasedClient, stripRequiredPrefix } from '@/lib/utils';
-import { generateProviderSpecificHash } from '@/lib/providerHash';
-import { extractPromptInfo } from '@/lib/processUsage';
+import { applyTrackingIds } from '@/lib/providerHash';
+import { extractPromptInfo as extractChatCompletionsPromptInfo } from '@/lib/processUsage';
 import { validateFeatureHeader, FEATURE_HEADER } from '@/lib/feature-detection';
 import type {
   OpenRouterChatCompletionRequest,
   GatewayResponsesRequest,
+  GatewayMessagesRequest,
   GatewayRequest,
 } from '@/lib/providers/openrouter/types';
 import { applyProviderSpecificLogic, getProvider, openRouterRequest } from '@/lib/providers';
@@ -69,6 +70,7 @@ import { applyResolvedAutoModel, isKiloAutoModel } from '@/lib/kilo-auto-model';
 import { fixOpenCodeDuplicateReasoning } from '@/lib/providers/fixOpenCodeDuplicateReasoning';
 import type { MicrodollarUsageContext, PromptInfo } from '@/lib/processUsage.types';
 import { extractResponsesPromptInfo } from '@/lib/processUsage.responses';
+import { extractMessagesPromptInfo } from '@/lib/processUsage.messages';
 import { getMaxTokens, hasMiddleOutTransform } from '@/lib/providers/openrouter/request-helpers';
 import { isKiloAffiliatedUser } from '@/lib/isKiloAffiliatedUser';
 
@@ -82,16 +84,30 @@ const PROMOTION_MODEL_LIMIT_REACHED = 'PROMOTION_MODEL_LIMIT_REACHED';
 function validatePath(
   url: URL
 ):
-  | { path: '/chat/completions' | '/responses' }
+  | { path: '/chat/completions' | '/responses' | '/messages' }
   | { errorResponse: ReturnType<typeof invalidPathResponse> } {
   const pathSuffix =
     stripRequiredPrefix(url.pathname, '/api/gateway') ??
     stripRequiredPrefix(url.pathname, '/api/openrouter');
 
-  if (pathSuffix === '/chat/completions' || pathSuffix === '/responses') {
+  if (
+    pathSuffix === '/chat/completions' ||
+    pathSuffix === '/responses' ||
+    pathSuffix === '/messages'
+  ) {
     return { path: pathSuffix };
   }
   return { errorResponse: invalidPathResponse() };
+}
+
+function extractPromptInfo(requestBodyParsed: GatewayRequest): PromptInfo {
+  if (requestBodyParsed.kind === 'messages') {
+    return extractMessagesPromptInfo(requestBodyParsed.body);
+  }
+  if (requestBodyParsed.kind === 'responses') {
+    return extractResponsesPromptInfo(requestBodyParsed.body);
+  }
+  return extractChatCompletionsPromptInfo(requestBodyParsed.body);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponseType<unknown>> {
@@ -113,6 +129,12 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
       // Inject or merge stream_options.include_usage = true
       body.stream_options = { ...(body.stream_options || {}), include_usage: true };
       requestBodyParsed = { kind: 'chat_completions', body };
+    } else if (path === '/messages') {
+      const body: GatewayMessagesRequest = JSON.parse(requestBodyText);
+      if (!body.cache_control && body.messages.length > 1) {
+        body.cache_control = { type: 'ephemeral' };
+      }
+      requestBodyParsed = { kind: 'messages', body };
     } else {
       const body: GatewayResponsesRequest = JSON.parse(requestBodyText);
       body.store = false;
@@ -241,13 +263,13 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   }
 
   if (
-    requestBodyParsed.kind === 'responses' &&
+    ['messages', 'responses'].includes(requestBodyParsed.kind) &&
     !isKiloAffiliatedUser(maybeUser, organizationId ?? null)
   ) {
     return NextResponse.json(
       {
         error: {
-          message: 'The Responses API is experimental and not yet available to all users.',
+          message: `The ${requestBodyParsed.kind} API is experimental and not yet available to all users.`,
         },
       },
       { status: 403 }
@@ -306,10 +328,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   }
 
   // Extract properties for usage context
-  const promptInfo: PromptInfo =
-    requestBodyParsed.kind === 'chat_completions'
-      ? extractPromptInfo(requestBodyParsed.body)
-      : extractResponsesPromptInfo(requestBodyParsed.body);
+  const promptInfo = extractPromptInfo(requestBodyParsed);
 
   const usageContext: MicrodollarUsageContext = {
     api_kind: requestBodyParsed.kind,
@@ -387,14 +406,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     return dataCollectionRequiredResponse();
   }
 
-  if (taskId) {
-    requestBodyParsed.body.prompt_cache_key = generateProviderSpecificHash(
-      user.id + taskId,
-      provider
-    );
-  }
-  requestBodyParsed.body.safety_identifier = generateProviderSpecificHash(user.id, provider);
-  requestBodyParsed.body.user = requestBodyParsed.body.safety_identifier; // deprecated, but this is what OpenRouter uses
+  applyTrackingIds(requestBodyParsed, provider, user.id, taskId ?? null);
 
   if (requestBodyParsed.kind === 'chat_completions') {
     if (ENABLE_TOOL_REPAIR) {
@@ -421,19 +433,14 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   );
 
   let response: Response;
-  if (customLlm) {
-    if (requestBodyParsed.kind === 'responses') {
-      return NextResponse.json(
-        { error: 'This model is not yet available on the Responses API' },
-        { status: 404 }
-      );
-    }
+  if (customLlm && requestBodyParsed.kind === 'chat_completions') {
     response = await customLlmRequest(
       customLlm,
       requestBodyParsed.body,
       isRooCodeBasedClient(fraudHeaders)
     );
   } else {
+    Object.assign(requestBodyParsed.body, customLlm?.extra_body ?? {});
     response = await openRouterRequest({
       path,
       search: url.search,
@@ -548,9 +555,13 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     (isKiloFreeModel(originalModelIdLowerCased) ||
       isActiveReviewPromo(botId, originalModelIdLowerCased))
   ) {
-    return requestBodyParsed.kind === 'chat_completions'
-      ? rewriteFreeModelResponse_ChatCompletions(response, originalModelIdLowerCased)
-      : rewriteFreeModelResponse_Responses(response, originalModelIdLowerCased);
+    if (requestBodyParsed.kind === 'chat_completions') {
+      return rewriteFreeModelResponse_ChatCompletions(response, originalModelIdLowerCased);
+    }
+    if (requestBodyParsed.kind === 'responses') {
+      return rewriteFreeModelResponse_Responses(response, originalModelIdLowerCased);
+    }
+    // TODO messages API
   }
 
   return wrapInSafeNextResponse(response);

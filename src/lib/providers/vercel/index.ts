@@ -20,6 +20,7 @@ import type {
   VercelProviderConfig,
   OpenRouterChatCompletionRequest,
   GatewayResponsesRequest,
+  GatewayMessagesRequest,
 } from '@/lib/providers/openrouter/types';
 import { mapModelIdToVercel } from '@/lib/providers/vercel/mapModelIdToVercel';
 import * as crypto from 'crypto';
@@ -63,7 +64,7 @@ function isLikelyAvailableOnAllGateways(requestedModel: string) {
 
 export async function shouldRouteToVercel(
   requestedModel: string,
-  request: OpenRouterChatCompletionRequest | GatewayResponsesRequest,
+  request: OpenRouterChatCompletionRequest | GatewayResponsesRequest | GatewayMessagesRequest,
   randomSeed: string
 ) {
   if (request.provider?.data_collection === 'deny') {

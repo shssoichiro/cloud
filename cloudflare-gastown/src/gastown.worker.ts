@@ -42,6 +42,9 @@ import {
   handleGetOrCreateAgent,
   handleDeleteAgent,
   handleUpdateAgentStatusMessage,
+  handleGetPendingNudges,
+  handleNudgeDelivered,
+  handleNudge,
 } from './handlers/rig-agents.handler';
 import { handleSendMail } from './handlers/rig-mail.handler';
 import { handleAppendAgentEvent, handleGetAgentEvents } from './handlers/rig-agent-events.handler';
@@ -51,6 +54,10 @@ import {
 } from './handlers/rig-review-queue.handler';
 import { handleCreateEscalation } from './handlers/rig-escalations.handler';
 import { handleResolveTriage } from './handlers/rig-triage.handler';
+import {
+  handleAddBeadDependency,
+  handleRemoveBeadDependency,
+} from './handlers/bead-dependencies.handler';
 import { handleListBeadEvents } from './handlers/rig-bead-events.handler';
 import { handleListTownEvents } from './handlers/town-events.handler';
 import {
@@ -110,6 +117,7 @@ import {
   handleMayorEscalationAcknowledge,
   handleMayorConvoyStart,
   handleMayorUiAction,
+  handleMayorGetPendingNudges,
 } from './handlers/mayor-tools.handler';
 import { mayorAuthMiddleware } from './middleware/mayor-auth.middleware';
 import { townAuthMiddleware } from './middleware/town-auth.middleware';
@@ -238,6 +246,21 @@ app.delete('/api/towns/:townId/rigs/:rigId/beads/:beadId', c =>
   )
 );
 
+// ── Bead Dependencies ──────────────────────────────────────────────────
+
+app.post('/api/towns/:townId/rigs/:rigId/beads/:beadId/dependencies', c =>
+  instrumented(c, 'POST /api/towns/:townId/rigs/:rigId/beads/:beadId/dependencies', () =>
+    handleAddBeadDependency(c, c.req.param())
+  )
+);
+app.delete('/api/towns/:townId/rigs/:rigId/beads/:beadId/dependencies/:dependsOnBeadId', c =>
+  instrumented(
+    c,
+    'DELETE /api/towns/:townId/rigs/:rigId/beads/:beadId/dependencies/:dependsOnBeadId',
+    () => handleRemoveBeadDependency(c, c.req.param())
+  )
+);
+
 // ── Agents ──────────────────────────────────────────────────────────────
 
 app.post('/api/towns/:townId/rigs/:rigId/agents', c =>
@@ -325,6 +348,15 @@ app.post('/api/towns/:townId/rigs/:rigId/agents/:agentId/status', c =>
     handleUpdateAgentStatusMessage(c, c.req.param())
   )
 );
+app.get('/api/towns/:townId/rigs/:rigId/agents/:agentId/pending-nudges', c =>
+  handleGetPendingNudges(c, c.req.param())
+);
+app.post('/api/towns/:townId/rigs/:rigId/agents/:agentId/nudge-delivered', c =>
+  handleNudgeDelivered(c, c.req.param())
+);
+
+// Agent-to-agent nudge: any authenticated agent can nudge another agent in the rig
+app.post('/api/towns/:townId/rigs/:rigId/nudge', c => handleNudge(c, c.req.param()));
 
 // ── Agent Events ─────────────────────────────────────────────────────────
 
@@ -657,6 +689,9 @@ app.post('/api/mayor/:townId/tools/ui-action', c =>
   instrumented(c, 'POST /api/mayor/:townId/tools/ui-action', () =>
     handleMayorUiAction(c, c.req.param())
   )
+);
+app.get('/api/mayor/:townId/tools/rigs/:rigId/agents/:agentId/pending-nudges', c =>
+  handleMayorGetPendingNudges(c, c.req.param())
 );
 
 app.post('/api/mayor/:townId/tools/sling', c =>
