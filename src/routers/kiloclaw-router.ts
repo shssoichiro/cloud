@@ -399,11 +399,18 @@ export const kiloclawRouter = createTRPCRouter({
     return client.stop(ctx.user.id);
   }),
 
-  destroy: clawAccessProcedure.mutation(async ({ ctx }) => {
+  destroy: baseProcedure.mutation(async ({ ctx }) => {
     const destroyedRow = await markActiveInstanceDestroyed(ctx.user.id);
     const client = new KiloClawInternalClient();
     try {
-      return await client.destroy(ctx.user.id);
+      const result = await client.destroy(ctx.user.id);
+      // Clear the destruction lifecycle so the billing cron doesn't
+      // send warning emails or attempt a redundant destroy.
+      await db
+        .update(kiloclaw_subscriptions)
+        .set({ suspended_at: null, destruction_deadline: null })
+        .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+      return result;
     } catch (error) {
       if (destroyedRow) {
         await restoreDestroyedInstance(destroyedRow.id);
