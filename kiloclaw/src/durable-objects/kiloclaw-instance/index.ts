@@ -1367,6 +1367,11 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         }
       }
 
+      // Re-check ownership before buildUserEnvVars — it can write to storage
+      // (API key refresh), and destroy() may have interleaved during the stop await.
+      const preEnvStatus = await this.ctx.storage.get('status');
+      if (preEnvStatus !== 'restarting') return;
+
       const { envVars, minSecretsVersion } = await buildUserEnvVars(this.env, this.ctx, this.s);
       const guest = guestFromSize(this.s.machineSize);
       const imageTag = resolveImageTag(this.s, this.env);
