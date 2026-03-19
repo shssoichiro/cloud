@@ -17,7 +17,7 @@ import type {
   GoogleCredentials,
   MachineSize,
 } from '../../schemas/instance-config';
-import { DEFAULT_INSTANCE_FEATURES, PersistedStateSchema } from '../../schemas/instance-config';
+import { DEFAULT_INSTANCE_FEATURES } from '../../schemas/instance-config';
 import type { FlyVolumeSnapshot } from '../../fly/types';
 import * as fly from '../../fly/client';
 import { sandboxIdFromUserId } from '../../auth/sandbox-id';
@@ -59,6 +59,7 @@ import {
   tryDeleteVolume,
   finalizeDestroyIfComplete,
   reconcileMachineMount,
+  markRestartSuccessful,
 } from './reconcile';
 import { restoreFromPostgres, markDestroyedInPostgresHelper } from './postgres';
 
@@ -1026,6 +1027,8 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     lastDestroyErrorAt: number | null;
     lastStartErrorMessage: string | null;
     lastStartErrorAt: number | null;
+    lastRestartErrorMessage: string | null;
+    lastRestartErrorAt: number | null;
   }> {
     await this.loadState();
     const alarmScheduledAt = await this.ctx.storage.getAlarm();
@@ -1065,6 +1068,8 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       lastDestroyErrorAt: this.s.lastDestroyErrorAt,
       lastStartErrorMessage: this.s.lastStartErrorMessage,
       lastStartErrorAt: this.s.lastStartErrorAt,
+      lastRestartErrorMessage: this.s.lastRestartErrorMessage,
+      lastRestartErrorAt: this.s.lastRestartErrorAt,
     };
   }
 
@@ -1166,11 +1171,20 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   }): Promise<{ success: boolean; error?: string }> {
     await this.loadState();
 
-    if (this.s.status !== 'running' || !this.s.flyMachineId) {
-      return { success: false, error: 'Instance is not running' };
+    if (!this.s.flyMachineId) {
+      return { success: false, error: 'No machine exists' };
     }
 
-    this.s.restartingAt = Date.now();
+    if (
+      this.s.status === 'provisioned' ||
+      this.s.status === 'destroying' ||
+      this.s.status === 'starting' ||
+      this.s.status === 'restarting'
+    ) {
+      return { success: false, error: 'Instance is busy' };
+    }
+
+    const previousStatus = this.s.status;
 
     const action = options?.imageTag
       ? options.imageTag === 'latest'
@@ -1221,18 +1235,48 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         }
       }
 
-      // Try to stop the machine first for a clean config swap.
-      // If the stop times out (e.g. Fly auto-restart races the poll),
-      // fall through — updateMachine on a running machine triggers a
-      // restart with the new config, which achieves the same result.
-      try {
-        await fly.stopMachineAndWait(flyConfig, this.s.flyMachineId);
-      } catch (stopErr) {
-        const isTimeout = stopErr instanceof fly.FlyApiError && stopErr.status === 408;
-        if (!isTimeout) throw stopErr;
-        doWarn(this.s, 'restartMachine: stop timed out, will update in-place', {
-          error: stopErr,
-        });
+      this.s.status = 'restarting';
+      this.s.restartingAt = Date.now();
+      this.s.lastRestartErrorMessage = null;
+      this.s.lastRestartErrorAt = null;
+      await this.ctx.storage.put(
+        storageUpdate({
+          status: 'restarting',
+          restartingAt: this.s.restartingAt,
+          lastRestartErrorMessage: null,
+          lastRestartErrorAt: null,
+        })
+      );
+      await this.scheduleAlarm();
+
+      this.ctx.waitUntil(this.restartMachineInBackground(previousStatus));
+      return { success: true };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  private async restartMachineInBackground(previousStatus: InstanceStatus | null): Promise<void> {
+    try {
+      await this.loadState();
+
+      if (!this.s.flyMachineId) {
+        throw new Error('No machine exists');
+      }
+
+      const flyConfig = getFlyConfig(this.env, this.s);
+
+      if (previousStatus === 'running') {
+        try {
+          await fly.stopMachineAndWait(flyConfig, this.s.flyMachineId);
+        } catch (stopErr) {
+          const isTimeout = stopErr instanceof fly.FlyApiError && stopErr.status === 408;
+          if (!isTimeout) throw stopErr;
+          doWarn(this.s, 'restartMachine: stop timed out, will update in-place', {
+            error: stopErr,
+          });
+        }
       }
 
       const { envVars, minSecretsVersion } = await buildUserEnvVars(this.env, this.ctx, this.s);
@@ -1259,22 +1303,21 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       });
       await fly.waitForState(flyConfig, this.s.flyMachineId, 'started', STARTUP_TIMEOUT_SECONDS);
       await gateway.waitForHealthy(this.s, this.env, flyConfig.appName, this.s.flyMachineId);
-
-      // Restore in-memory status from persisted state, in case a concurrent
-      // live check mutated it while the machine was temporarily stopped.
-      // Only restore on success — on failure the machine may actually be
-      // stopped, so let the next live check see the real Fly state.
-      const persisted = await this.ctx.storage.get('status');
-      const parsed = PersistedStateSchema.shape.status.safeParse(persisted);
-      if (parsed.success) {
-        this.s.status = parsed.data;
-      }
-      return { success: true };
+      await markRestartSuccessful(this.ctx, this.s);
+      await this.scheduleAlarm();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      return { success: false, error: errorMessage };
-    } finally {
-      this.s.restartingAt = null;
+      doError(this.s, 'restartMachine: background restart failed', {
+        error: toLoggable(err),
+      });
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this.s.lastRestartErrorMessage = errorMessage;
+      this.s.lastRestartErrorAt = Date.now();
+      await this.ctx.storage.put(
+        storageUpdate({
+          lastRestartErrorMessage: errorMessage,
+          lastRestartErrorAt: this.s.lastRestartErrorAt,
+        })
+      );
     }
   }
 

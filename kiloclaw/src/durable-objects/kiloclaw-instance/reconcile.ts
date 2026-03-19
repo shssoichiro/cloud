@@ -7,6 +7,7 @@ import {
   SELF_HEAL_THRESHOLD,
   STARTUP_TIMEOUT_SECONDS,
   STARTING_TIMEOUT_MS,
+  RESTARTING_TIMEOUT_MS,
   getProactiveRefreshThresholdMs,
 } from '../../config';
 import { ENCRYPTED_ENV_PREFIX, encryptEnvValue } from '../../utils/env-encryption';
@@ -47,6 +48,11 @@ export async function reconcileWithFly(
 
   if (state.status === 'starting') {
     await reconcileStarting(flyConfig, ctx, state, env, reason);
+    return;
+  }
+
+  if (state.status === 'restarting') {
+    await reconcileRestarting(flyConfig, ctx, state, env, reason);
     return;
   }
 
@@ -361,6 +367,105 @@ async function reconcileStarting(
   }
 }
 
+async function reconcileRestarting(
+  flyConfig: FlyClientConfig,
+  ctx: DurableObjectState,
+  state: InstanceMutableState,
+  env: KiloClawEnv,
+  reason: string
+): Promise<void> {
+  if (state.status !== 'restarting') return;
+  if (!state.flyMachineId) return;
+
+  const restartingAt = state.restartingAt;
+  const isTimedOut = restartingAt !== null && Date.now() - restartingAt > RESTARTING_TIMEOUT_MS;
+
+  try {
+    const machine = await fly.getMachine(flyConfig, state.flyMachineId);
+    if (machine.state === 'started') {
+      await markRestartSuccessful(ctx, state);
+      await reconcileVolume(flyConfig, ctx, state, env, reason);
+      return;
+    }
+
+    await syncStatusWithFly(ctx, state, machine.state, reason);
+    await reconcileVolume(flyConfig, ctx, state, env, reason);
+    const currentStatus = await ctx.storage.get('status');
+
+    if (currentStatus === 'stopped') {
+      state.status = 'stopped';
+      state.restartingAt = null;
+      await ctx.storage.put(storageUpdate({ restartingAt: null }));
+      return;
+    }
+
+    if (!isTimedOut) {
+      return;
+    }
+
+    const timeoutMessage = `Restart is taking longer than expected; still reconciling while the machine remains ${machine.state}`;
+    reconcileLog(reason, 'restarting_timeout_transient', {
+      machine_id: state.flyMachineId,
+      fly_state: machine.state,
+      elapsed_ms: restartingAt !== null ? Date.now() - restartingAt : undefined,
+      last_restart_error: state.lastRestartErrorMessage,
+    });
+    await setRestartError(ctx, state, timeoutMessage);
+
+    if (TERMINAL_STOPPED_STATES.has(machine.state) || machine.state === 'failed') {
+      state.status = 'stopped';
+      state.restartingAt = null;
+      state.lastStoppedAt = Date.now();
+      state.healthCheckFailCount = 0;
+      await ctx.storage.put(
+        storageUpdate({
+          status: 'stopped',
+          restartingAt: null,
+          lastStoppedAt: state.lastStoppedAt,
+          healthCheckFailCount: 0,
+        })
+      );
+    }
+  } catch (err) {
+    if (fly.isFlyNotFound(err)) {
+      reconcileLog(reason, 'restarting_machine_gone', {
+        machine_id: state.flyMachineId,
+        new_state: 'stopped',
+      });
+      state.flyMachineId = null;
+      state.status = 'stopped';
+      state.restartingAt = null;
+      state.lastStoppedAt = Date.now();
+      state.healthCheckFailCount = 0;
+      await ctx.storage.put(
+        storageUpdate({
+          flyMachineId: null,
+          status: 'stopped',
+          restartingAt: null,
+          lastStoppedAt: state.lastStoppedAt,
+          healthCheckFailCount: 0,
+        })
+      );
+      return;
+    }
+
+    if (isTimedOut) {
+      const timeoutMessage = err instanceof Error ? err.message : String(err);
+      reconcileLog(reason, 'restarting_timeout_error', {
+        machine_id: state.flyMachineId,
+        error: timeoutMessage,
+        elapsed_ms: restartingAt !== null ? Date.now() - restartingAt : undefined,
+      });
+      await setRestartError(ctx, state, timeoutMessage);
+      return;
+    }
+
+    doError(state, 'reconcileRestarting: transient error checking machine', {
+      error: toLoggable(err),
+    });
+  }
+}
+
 // ---- Volume reconciliation ----
 
 async function reconcileVolume(
@@ -596,6 +701,47 @@ export async function syncStatusWithFly(
       );
     }
   }
+}
+
+export async function markRestartSuccessful(
+  ctx: DurableObjectState,
+  state: InstanceMutableState
+): Promise<void> {
+  state.status = 'running';
+  state.startingAt = null;
+  state.restartingAt = null;
+  if (state.lastStartedAt === null) {
+    state.lastStartedAt = Date.now();
+  }
+  state.healthCheckFailCount = 0;
+  state.lastRestartErrorMessage = null;
+  state.lastRestartErrorAt = null;
+  await ctx.storage.put(
+    storageUpdate({
+      status: 'running',
+      startingAt: null,
+      restartingAt: null,
+      lastStartedAt: state.lastStartedAt,
+      healthCheckFailCount: 0,
+      lastRestartErrorMessage: null,
+      lastRestartErrorAt: null,
+    })
+  );
+}
+
+async function setRestartError(
+  ctx: DurableObjectState,
+  state: InstanceMutableState,
+  message: string
+): Promise<void> {
+  state.lastRestartErrorMessage = message;
+  state.lastRestartErrorAt = Date.now();
+  await ctx.storage.put(
+    storageUpdate({
+      lastRestartErrorMessage: message,
+      lastRestartErrorAt: state.lastRestartErrorAt,
+    })
+  );
 }
 
 /**
