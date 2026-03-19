@@ -489,6 +489,12 @@ async function reconcileRestarting(
         elapsed_ms: restartingAt !== null ? Date.now() - restartingAt : undefined,
       });
       await setRestartError(ctx, state, timeoutMessage);
+      // Reset restartingAt so the next alarm cycle gets a fresh timeout
+      // window. This avoids getting permanently stuck in 'restarting'
+      // when Fly is temporarily unreachable — each cycle retries for
+      // another RESTARTING_TIMEOUT_MS before re-entering this branch.
+      state.restartingAt = Date.now();
+      await ctx.storage.put(storageUpdate({ restartingAt: state.restartingAt }));
       return;
     }
 
