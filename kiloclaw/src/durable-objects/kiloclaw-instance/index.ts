@@ -1432,9 +1432,13 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         this.s.restartUpdateSent && err instanceof fly.FlyApiError && err.status === 408;
 
       if (isExpectedTimeout) {
-        doWarn(this.s, 'restartMachine: waitForState timed out after update, reconciliation will handle', {
-          error: toLoggable(err),
-        });
+        doWarn(
+          this.s,
+          'restartMachine: waitForState timed out after update, reconciliation will handle',
+          {
+            error: toLoggable(err),
+          }
+        );
       } else {
         doError(this.s, 'restartMachine: background restart failed', {
           error: toLoggable(err),
