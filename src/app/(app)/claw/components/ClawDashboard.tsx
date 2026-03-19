@@ -21,7 +21,7 @@ import { OpenClawButton } from './OpenClawButton';
 import { SettingsTab } from './SettingsTab';
 import { ChangelogCard } from './ChangelogCard';
 import { PairingCard } from './PairingCard';
-import { ChannelSelectionStep } from './ChannelSelectionStep';
+import { ChannelSelectionStepView } from './ChannelSelectionStep';
 import { PermissionStep } from './PermissionStep';
 import { ProvisioningStep } from './ProvisioningStep';
 import type { ExecPreset } from './claw.types';
@@ -158,7 +158,7 @@ export function ClawDashboard({
             }}
           />
         ) : isNewSetup && onboardingStep === 'channels' ? (
-          <ChannelSelectionStep
+          <ChannelSelectionStepView
             onSelect={(_channelId, tokens) => {
               setChannelTokens(tokens);
               setOnboardingStep('provisioning');

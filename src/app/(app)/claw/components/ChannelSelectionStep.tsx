@@ -73,16 +73,6 @@ function isChannelValid(channelId: ChannelId | null, tokens: Record<string, stri
   }
 }
 
-export function ChannelSelectionStep({
-  onSelect,
-  onSkip,
-}: {
-  onSelect: (channelId: ChannelId, tokens: Record<string, string>) => void;
-  onSkip: () => void;
-}) {
-  return <ChannelSelectionStepView onSelect={onSelect} onSkip={onSkip} />;
-}
-
 /** Pure visual shell — extracted so Storybook can render it without wiring up mutations. */
 export function ChannelSelectionStepView({
   onSelect,
