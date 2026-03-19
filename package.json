@@ -205,6 +205,9 @@
       "serialize-javascript": ">=7.0.3",
       "hono": "^4.12.7",
       "undici@^6": "^6.24.1"
+    },
+    "patchedDependencies": {
+      "@storybook/nextjs@9.1.17": "patches/@storybook__nextjs@9.1.17.patch"
     }
   }
 }
