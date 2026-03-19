@@ -4888,7 +4888,10 @@ describe('start: concurrent calls do not create duplicate machines', () => {
 describe('restartMachine restartingAt guard', () => {
   beforeEach(() => {
     (flyClient.stopMachineAndWait as Mock).mockResolvedValue(undefined);
-    (flyClient.updateMachine as Mock).mockResolvedValue(undefined);
+    (flyClient.updateMachine as Mock).mockResolvedValue({
+      id: 'machine-1',
+      instance_id: 'inst-updated-001',
+    });
     (flyClient.waitForState as Mock).mockResolvedValue(undefined);
     (flyClient.getMachine as Mock).mockResolvedValue({
       id: 'machine-1',

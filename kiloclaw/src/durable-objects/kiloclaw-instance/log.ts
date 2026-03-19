@@ -89,7 +89,7 @@ function instanceContext(state: InstanceMutableState): Record<string, unknown> {
  */
 function emitStructuredLog(
   logFn: (...args: unknown[]) => void,
-  level: 'error' | 'warn',
+  level: 'info' | 'error' | 'warn',
   state: InstanceMutableState,
   message: string,
   details: Record<string, unknown>

@@ -1387,7 +1387,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       // updateMachine on a running machine triggers a restart with the new
       // config. On a stopped machine it applies the config without starting,
       // so we explicitly start afterward.
-      await fly.updateMachine(flyConfig, this.s.flyMachineId, machineConfig, {
+      const updated = await fly.updateMachine(flyConfig, this.s.flyMachineId, machineConfig, {
         minSecretsVersion,
       });
 
@@ -1407,7 +1407,15 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         await fly.startMachine(flyConfig, this.s.flyMachineId);
       }
 
-      await fly.waitForState(flyConfig, this.s.flyMachineId, 'started', STARTUP_TIMEOUT_SECONDS);
+      // Pass the updated instance_id so waitForState waits for the new
+      // version, not a stale pre-update started state.
+      await fly.waitForState(
+        flyConfig,
+        this.s.flyMachineId,
+        'started',
+        STARTUP_TIMEOUT_SECONDS,
+        updated.instance_id
+      );
       await gateway.waitForHealthy(this.s, this.env, flyConfig.appName, this.s.flyMachineId);
 
       // Final ownership check before persisting success.
