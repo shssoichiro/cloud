@@ -112,7 +112,9 @@ async function maybeIssueYearlyRemainingCredits(params: {
     const periodEnd = lineItem.period?.end;
     if (typeof periodStart !== 'number' || typeof periodEnd !== 'number') continue;
 
-    // Skip non-yearly invoices (yearly periods span ~365 days)
+    // Skip non-yearly invoices: yearly periods span ~365 days (340 allows
+    // for leap-year and Stripe timestamp rounding while staying well above
+    // the longest monthly period of ~31 days).
     const periodDays = (periodEnd - periodStart) / 86400;
     if (periodDays < 340) continue;
 
