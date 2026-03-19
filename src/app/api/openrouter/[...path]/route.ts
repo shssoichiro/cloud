@@ -36,6 +36,7 @@ import {
   temporarilyUnavailableResponse,
   usageLimitExceededResponse,
   wrapInSafeNextResponse,
+  forbiddenFreeModelResponse,
 } from '@/lib/llm-proxy-helpers';
 import { getBalanceAndOrgSettings } from '@/lib/organizations/organization-usage';
 import { ENABLE_TOOL_REPAIR, repairTools } from '@/lib/tool-calling';
@@ -64,7 +65,7 @@ import {
 import { handleRequestLogging } from '@/lib/handleRequestLogging';
 import { customLlmRequest } from '@/lib/custom-llm/customLlmRequest';
 import { normalizeModelId } from '@/lib/model-utils';
-import { isRateLimitedToDeath } from '@/lib/rate-limited-models';
+import { isForbiddenFreeModel } from '@/lib/forbidden-free-models';
 import { isActiveReviewPromo } from '@/lib/code-reviews/core/constants';
 import { applyResolvedAutoModel, isKiloAutoModel } from '@/lib/kilo-auto-model';
 import { fixOpenCodeDuplicateReasoning } from '@/lib/providers/fixOpenCodeDuplicateReasoning';
@@ -318,13 +319,16 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     return temporarilyUnavailableResponse();
   }
 
-  if (isDeadFreeModel(originalModelIdLowerCased)) {
-    console.warn(`User requested discontinued free model ${originalModelIdLowerCased}; rejecting.`);
-    return alphaPeriodEndedResponse();
-  }
-
-  if (isRateLimitedToDeath(originalModelIdLowerCased)) {
-    return modelDoesNotExistResponse();
+  if (
+    isDeadFreeModel(originalModelIdLowerCased) ||
+    (!autoModel && isForbiddenFreeModel(originalModelIdLowerCased))
+  ) {
+    console.warn(`User requested forbidden free model ${originalModelIdLowerCased}; rejecting.`);
+    if (isRooCodeBasedClient(fraudHeaders)) {
+      return alphaPeriodEndedResponse();
+    } else {
+      return forbiddenFreeModelResponse();
+    }
   }
 
   // Extract properties for usage context
