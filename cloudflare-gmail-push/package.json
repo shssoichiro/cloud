@@ -10,14 +10,14 @@
     "cf-typegen": "wrangler types --env-file /dev/null"
   },
   "dependencies": {
-    "hono": "catalog:",
+    "hono": "^4.12.8",
     "jose": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.8.34",
+    "@cloudflare/vitest-pool-workers": "^0.8.71",
     "@kilocode/eslint-config": "workspace:*",
-    "@typescript/native-preview": "7.0.0-dev.20251019.1",
+    "@typescript/native-preview": "catalog:",
     "typescript": "catalog:",
     "vitest": "~3.2.4",
     "wrangler": "catalog:"

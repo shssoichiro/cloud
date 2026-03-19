@@ -8,23 +8,24 @@
 		"start": "wrangler dev",
 		"test": "vitest",
 		"cf-typegen": "wrangler types",
-		"typecheck": "tsc --noEmit",
+		"typecheck": "tsgo --noEmit --incremental false",
 		"lint": "eslint --config eslint.config.mjs --cache 'src/**/*.ts'"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.12.4",
+		"@cloudflare/vitest-pool-workers": "^0.12.21",
 		"@kilocode/eslint-config": "workspace:*",
-		"@types/node": "^25.1.0",
+		"@types/node": "^25.5.0",
+		"@typescript/native-preview": "catalog:",
 		"drizzle-kit": "catalog:",
 		"eslint": "catalog:",
 		"typescript": "catalog:",
-		"vitest": "~3.2.0",
+		"vitest": "~3.2.4",
 		"wrangler": "catalog:"
 	},
 	"dependencies": {
 		"@kilocode/worker-utils": "workspace:*",
 		"drizzle-orm": "catalog:",
-		"hono": "catalog:",
+		"hono": "^4.12.8",
 		"zod": "catalog:"
 	}
 }
