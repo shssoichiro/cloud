@@ -110,6 +110,8 @@ async function reconcileApiKeyExpiry(
   const thresholdMs = getProactiveRefreshThresholdMs(env.PROACTIVE_REFRESH_THRESHOLD_HOURS);
   if (timeUntilExpiry > thresholdMs) return;
 
+  const refreshStart = performance.now();
+
   // Fetch controller version for observability (best-effort, not used for gating).
   let controllerVersion: string | null = null;
   try {
@@ -241,6 +243,7 @@ async function reconcileApiKeyExpiry(
       event: 'reconcile.api_key_refreshed',
       delivery: 'reconcile',
       label: pushed ? 'refreshed+pushed' : flyConfigUpdated ? 'refreshed+fly-config' : 'refreshed',
+      durationMs: performance.now() - refreshStart,
       ...eventContextFromState(state),
     });
   }
@@ -542,6 +545,7 @@ async function reconcileVolume(
     await fly.getVolume(flyConfig, state.flyVolumeId);
   } catch (err) {
     if (fly.isFlyNotFound(err)) {
+      const repairStart = performance.now();
       reconcileLog(reason, 'replace_lost_volume', {
         data_loss: true,
         old_volume_id: state.flyVolumeId,
@@ -555,6 +559,7 @@ async function reconcileVolume(
           event: 'reconcile.volume_repaired',
           delivery: 'reconcile',
           label: `replaced lost volume ${oldVolumeId} → ${state.flyVolumeId}`,
+          durationMs: performance.now() - repairStart,
           ...eventContextFromState(state),
         });
       }
@@ -618,6 +623,7 @@ export async function attemptMetadataRecovery(
   state.lastMetadataRecoveryAt = Date.now();
   await ctx.storage.put(storageUpdate({ lastMetadataRecoveryAt: state.lastMetadataRecoveryAt }));
 
+  const recoveryStart = performance.now();
   try {
     const machines = await fly.listMachines(flyConfig, {
       [METADATA_KEY_USER_ID]: state.userId,
@@ -687,6 +693,7 @@ export async function attemptMetadataRecovery(
         event: 'reconcile.metadata_recovery',
         delivery: 'reconcile',
         label: `recovered machine ${candidate.id} (fly: ${candidate.state})`,
+        durationMs: performance.now() - recoveryStart,
         ...eventContextFromState(state),
       });
     }
@@ -1016,6 +1023,7 @@ async function recoverBoundMachineForDestroy(
     return;
   }
 
+  const recoveryStart = performance.now();
   try {
     const volume = await fly.getVolume(flyConfig, state.pendingDestroyVolumeId);
     const machineId = volume.attached_machine_id;
@@ -1056,6 +1064,7 @@ async function recoverBoundMachineForDestroy(
         event: 'reconcile.bound_machine_recovery',
         delivery: 'reconcile',
         label: `recovered machine ${machineId} from volume ${state.pendingDestroyVolumeId}`,
+        durationMs: performance.now() - recoveryStart,
         ...eventContextFromState(state),
       });
     }
