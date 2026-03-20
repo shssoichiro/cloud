@@ -86,7 +86,7 @@ export function ClawDashboard({
         toast.success('Redeploying');
         onRedeploySuccess();
       },
-      onError: (err: Error) => {
+      onError: err => {
         toast.error(err.message, { duration: 10000 });
       },
     });
@@ -100,7 +100,7 @@ export function ClawDashboard({
           toast.success('Upgrading to latest image');
           onRedeploySuccess();
         },
-        onError: (err: Error) => {
+        onError: err => {
           toast.error(err.message, { duration: 10000 });
         },
       }
