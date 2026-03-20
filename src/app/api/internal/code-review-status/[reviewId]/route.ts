@@ -29,6 +29,8 @@ import { getBotUserId } from '@/lib/bot-users/bot-user-service';
 import { logExceptInTest, errorExceptInTest } from '@/lib/utils.server';
 import {
   addReactionToPR,
+  createPRComment,
+  hasPRCommentWithMarker,
   findKiloReviewComment,
   updateKiloReviewComment,
   updateCheckRun,
@@ -36,6 +38,8 @@ import {
 import type { CheckRunConclusion } from '@/lib/integrations/platforms/github/adapter';
 import {
   addReactionToMR,
+  createMRNote,
+  hasMRNoteWithMarker,
   findKiloReviewNote,
   updateKiloReviewNote,
   setCommitStatus,
@@ -145,6 +149,13 @@ function isBillingCodeReviewTerminalReason(
     message.includes(pattern)
   );
 }
+
+const BILLING_NOTICE_MARKER = '<!-- kilo-billing-notice -->';
+
+const BILLING_NOTICE_BODY = `${BILLING_NOTICE_MARKER}
+**Kilo Code Review could not run — your account is out of credits.**
+
+Add credits at [app.kilo.ai](http://app.kilo.ai/) to enable reviews on this PR.`;
 
 /**
  * Read a review's usage data.
@@ -654,6 +665,32 @@ export async function POST(
                 `[code-review-status] Added ${reaction} reaction to ${review.repo_full_name}#${review.pr_number}`
               );
 
+              // Billing notice (failed + billing only)
+              if (
+                status === 'failed' &&
+                isBillingCodeReviewTerminalReason(terminalReason, errorMessage)
+              ) {
+                const alreadyPosted = await hasPRCommentWithMarker(
+                  integration.platform_installation_id,
+                  repoOwner,
+                  repoName,
+                  review.pr_number,
+                  BILLING_NOTICE_MARKER
+                );
+                if (!alreadyPosted) {
+                  await createPRComment(
+                    integration.platform_installation_id,
+                    repoOwner,
+                    repoName,
+                    review.pr_number,
+                    BILLING_NOTICE_BODY
+                  );
+                  logExceptInTest(
+                    `[code-review-status] Posted billing notice on ${review.repo_full_name}#${review.pr_number}`
+                  );
+                }
+              }
+
               // Usage footer (completed only)
               if (status === 'completed') {
                 const { model, tokensIn, tokensOut } = await getReviewUsageData(reviewId);
@@ -713,6 +750,32 @@ export async function POST(
               logExceptInTest(
                 `[code-review-status] Added ${emoji} reaction to GitLab MR ${review.repo_full_name}!${review.pr_number}`
               );
+
+              // Billing notice (failed + billing only)
+              if (
+                status === 'failed' &&
+                isBillingCodeReviewTerminalReason(terminalReason, errorMessage)
+              ) {
+                const alreadyPosted = await hasMRNoteWithMarker(
+                  accessToken,
+                  review.repo_full_name,
+                  review.pr_number,
+                  BILLING_NOTICE_MARKER,
+                  instanceUrl
+                );
+                if (!alreadyPosted) {
+                  await createMRNote(
+                    accessToken,
+                    review.repo_full_name,
+                    review.pr_number,
+                    BILLING_NOTICE_BODY,
+                    instanceUrl
+                  );
+                  logExceptInTest(
+                    `[code-review-status] Posted billing notice on GitLab MR ${review.repo_full_name}!${review.pr_number}`
+                  );
+                }
+              }
 
               // Usage footer (completed only)
               if (status === 'completed') {
