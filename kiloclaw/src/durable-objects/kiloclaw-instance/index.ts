@@ -38,7 +38,7 @@ import {
   ALL_SECRET_FIELD_KEYS,
   type SecretFieldKey,
 } from '@kilocode/kiloclaw-secret-catalog';
-import { parseRegions, shuffleRegions } from '../regions';
+import { parseRegions } from '../regions';
 import { buildMachineConfig, guestFromSize, volumeNameFromSandboxId } from '../machine-config';
 import type { GatewayProcessStatus } from '../gateway-controller-types';
 
@@ -125,9 +125,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     // Create Fly Volume on first provision.
     if (isNew && !this.s.flyVolumeId) {
       const flyConfig = getFlyConfig(this.env, this.s);
-      const regions = shuffleRegions(
-        parseRegions(config.region ?? this.env.FLY_REGION ?? DEFAULT_FLY_REGION)
-      );
+      const regions = parseRegions(config.region ?? this.env.FLY_REGION ?? DEFAULT_FLY_REGION);
       const guest = guestFromSize(config.machineSize ?? null);
       const volume = await fly.createVolumeWithFallback(
         flyConfig,
