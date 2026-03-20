@@ -34,19 +34,19 @@ Spec: [Connecting Socials to Kilo Accounts](https://docs.google.com/document/d/.
 
 ### Next Iteration — Discord Account Linking
 
-| Spec Requirement                                             | Planned Feature                                                                                      | Status                                   |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| Discord as auth provider (OAuth `identify+email`)            | Add `DiscordProvider` to NextAuth, `createDiscordAccountInfo()`, add `'discord'` to `AuthProviderId` | ✅ Types done, NextAuth pending          |
-| Discord on sign-in/sign-up page                              | Add to `AllAuthProviders` in `provider-metadata.tsx` (auto-propagates to sign-in page)               | ✅ Implemented                           |
-| Discord on Connected Accounts page (link/unlink)             | Same as above — `LinkableAuthProviders` derives from `AllAuthProviders` automatically                | ✅ Implemented                           |
-| Discord logo component                                       | New `DiscordLogo.tsx` SVG component in `src/components/auth/`                                        | ✅ Implemented                           |
-| Store Discord identity (user ID, username, avatar)           | Stored in `user_auth_provider` via standard provider pattern                                         | 🔲 Not started (needs NextAuth provider) |
-| Store `discord_linked_at`                                    | `user_auth_provider.created_at` serves this purpose                                                  | ✅ Automatic                             |
-| GDPR soft-delete for Discord fields                          | `softDeleteUser()` already deletes all `user_auth_provider` rows; new guild columns need nullifying  | ✅ Implemented                           |
-| Confirm user is in Kilo Discord server (bot check)           | `checkDiscordGuildMembership()` via Bot API, `user.verifyDiscordGuildMembership` tRPC mutation       | 🔲 Not started                           |
-| `discord_server_member` + `discord_server_member_at` columns | New nullable columns on `kilocode_users` for guild membership status                                 | ✅ Implemented                           |
-| "Verify Discord Server Membership" UI                        | `DiscordGuildStatus` component on `/connected-accounts` page                                         | 🔲 Not started                           |
-| Require email for Discord linking                            | Reject linking if Discord doesn't return a verified email                                            | 🔲 Not started (needs NextAuth provider) |
+| Spec Requirement                                             | Planned Feature                                                                                      | Status         |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------- |
+| Discord as auth provider (OAuth `identify+email`)            | Add `DiscordProvider` to NextAuth, `createDiscordAccountInfo()`, add `'discord'` to `AuthProviderId` | ✅ Implemented |
+| Discord on sign-in/sign-up page                              | Add to `AllAuthProviders` in `provider-metadata.tsx` (auto-propagates to sign-in page)               | ✅ Implemented |
+| Discord on Connected Accounts page (link/unlink)             | Same as above — `LinkableAuthProviders` derives from `AllAuthProviders` automatically                | ✅ Implemented |
+| Discord logo component                                       | New `DiscordLogo.tsx` SVG component in `src/components/auth/`                                        | ✅ Implemented |
+| Store Discord identity (user ID, username, avatar)           | Stored in `user_auth_provider` via standard provider pattern                                         | ✅ Implemented |
+| Store `discord_linked_at`                                    | `user_auth_provider.created_at` serves this purpose                                                  | ✅ Automatic   |
+| GDPR soft-delete for Discord fields                          | `softDeleteUser()` already deletes all `user_auth_provider` rows; new guild columns need nullifying  | ✅ Implemented |
+| Confirm user is in Kilo Discord server (bot check)           | `checkDiscordGuildMembership()` via Bot API, `user.verifyDiscordGuildMembership` tRPC mutation       | ✅ Implemented |
+| `discord_server_member` + `discord_server_member_at` columns | New nullable columns on `kilocode_users` for guild membership status                                 | ✅ Implemented |
+| "Verify Discord Server Membership" UI                        | `DiscordGuildStatus` component on `/connected-accounts` page                                         | ✅ Implemented |
+| Require email for Discord linking                            | Reject linking if Discord doesn't return a verified email (`createDiscordAccountInfo` returns null)  | ✅ Implemented |
 
 ## Implementation Plan
 
