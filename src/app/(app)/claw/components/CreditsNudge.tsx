@@ -94,7 +94,7 @@ export function CreditsNudge({
         className="w-full py-5"
       >
         <Gift className="h-4 w-4" />
-        Use the free model instead
+        Use the Kilo Auto: Free model instead
       </Button>
     </div>
   );

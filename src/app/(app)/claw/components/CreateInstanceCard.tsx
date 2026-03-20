@@ -81,7 +81,6 @@ export function CreateInstanceCard({
   const isPaymentReturn = searchParams.get('payment') === 'success';
   const hasAutoProvisioned = useRef(false);
 
-
   useEffect(() => {
     if (hasAppliedDefault.current || selectedModel !== '' || modelOptions.length === 0) return;
     if (isLoadingUser) return;
