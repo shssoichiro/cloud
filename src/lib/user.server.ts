@@ -60,8 +60,8 @@ import {
   NEXTAUTH_SECRET,
   GITLAB_CLIENT_ID,
   GITLAB_CLIENT_SECRET,
-  DISCORD_CLIENT_ID,
-  DISCORD_CLIENT_SECRET,
+  DISCORD_OAUTH_CLIENT_ID,
+  DISCORD_OAUTH_CLIENT_SECRET,
   BLACKLIST_TLDS,
 } from '@/lib/config.server';
 import jwt from 'jsonwebtoken';
@@ -312,8 +312,8 @@ const authOptions: NextAuthOptions = {
       clientSecret: GITLAB_CLIENT_SECRET,
     }),
     DiscordProvider({
-      clientId: DISCORD_CLIENT_ID ?? '',
-      clientSecret: DISCORD_CLIENT_SECRET ?? '',
+      clientId: DISCORD_OAUTH_CLIENT_ID ?? '',
+      clientSecret: DISCORD_OAUTH_CLIENT_SECRET ?? '',
     }),
     LinkedInProvider({
       clientId: LINKEDIN_CLIENT_ID,
