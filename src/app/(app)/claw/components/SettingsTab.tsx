@@ -120,9 +120,10 @@ function OnePasswordSetupGuide() {
           </div>
 
           <div>
-            <p className="mb-2 font-medium">4. Save and redeploy</p>
+            <p className="mb-2 font-medium">4. Save and upgrade</p>
             <p className="text-muted-foreground text-xs">
-              After saving, redeploy your instance. Your agent can then use the{' '}
+              After saving, use <strong>Upgrade to latest</strong> (not just Redeploy) to activate
+              the integration. Your agent can then use the{' '}
               <code className="bg-muted rounded px-1">op</code> CLI to look up credentials, e.g.{' '}
               <code className="bg-muted rounded px-1">op item get &quot;My Login&quot;</code>.
             </p>
