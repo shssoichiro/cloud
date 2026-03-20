@@ -445,6 +445,13 @@ export const kiloclawRouter = createTRPCRouter({
     });
   }),
 
+  patchExecPreset: clawAccessProcedure
+    .input(z.object({ security: z.string().optional(), ask: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const client = new KiloClawInternalClient();
+      return client.patchExecPreset(ctx.user.id, input);
+    }),
+
   /**
    * Generic secret patch — catalog-driven replacement for patchChannels.
    * Validates keys against the secret catalog, enforces allFieldsRequired,

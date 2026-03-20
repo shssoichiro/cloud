@@ -344,6 +344,33 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     };
   }
 
+  async updateExecPreset(patch: {
+    security?: string;
+    ask?: string;
+  }): Promise<{ execSecurity: string | null; execAsk: string | null }> {
+    await this.loadState();
+
+    const pending: Partial<PersistedState> = {};
+
+    if (patch.security !== undefined) {
+      this.s.execSecurity = patch.security;
+      pending.execSecurity = patch.security;
+    }
+    if (patch.ask !== undefined) {
+      this.s.execAsk = patch.ask;
+      pending.execAsk = patch.ask;
+    }
+
+    if (Object.keys(pending).length > 0) {
+      await this.ctx.storage.put(pending);
+    }
+
+    return {
+      execSecurity: this.s.execSecurity,
+      execAsk: this.s.execAsk,
+    };
+  }
+
   async updateChannels(patch: {
     telegramBotToken?: EncryptedEnvelope | null;
     discordBotToken?: EncryptedEnvelope | null;

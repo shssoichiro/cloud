@@ -54,6 +54,8 @@ export function ProvisioningStep({
   patchOpenclawConfigRef.current = mutations.patchOpenclawConfig.mutate;
   const patchChannelsRef = useRef(mutations.patchChannels.mutate);
   patchChannelsRef.current = mutations.patchChannels.mutate;
+  const patchExecPresetRef = useRef(mutations.patchExecPreset.mutate);
+  patchExecPresetRef.current = mutations.patchExecPreset.mutate;
   const channelTokensRef = useRef(channelTokens);
   channelTokensRef.current = channelTokens;
 
@@ -78,6 +80,13 @@ export function ProvisioningStep({
     const tokens = channelTokensRef.current;
     if (tokens && Object.keys(tokens).length > 0) {
       patchChannelsRef.current(tokens);
+    }
+
+    // Persist exec permissions preset to durable storage so it survives
+    // machine restarts/redeploys. Fire-and-forget — same pattern as channels.
+    if (preset !== 'always-ask') {
+      const { security, ask } = execPresetToConfig(preset);
+      patchExecPresetRef.current({ security, ask });
     }
 
     if (Object.keys(configPatch).length === 0) {
