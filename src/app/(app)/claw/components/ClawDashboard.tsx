@@ -25,7 +25,6 @@ import { PermissionStep } from './PermissionStep';
 import { ProvisioningStep } from './ProvisioningStep';
 import type { ExecPreset } from './claw.types';
 import { BillingWrapper } from './billing/BillingWrapper';
-import { useFeatureFlagVariantKey } from 'posthog-js/react';
 
 type PopulatedClawStatus = KiloClawDashboardStatus & {
   status: NonNullable<KiloClawDashboardStatus['status']>;
@@ -46,8 +45,6 @@ export function ClawDashboard({
   isNewSetup: boolean;
   onNewSetupChange: (v: boolean) => void;
 }) {
-  useFeatureFlagVariantKey('button-vs-card'); // evaluate so PostHog attaches $feature/button-vs-card to subsequent events
-
   const mutations = useKiloClawMutations();
   const gatewayUrl = useGatewayUrl(status);
   const instanceStatus = hasPopulatedStatus(status) ? status : null;
