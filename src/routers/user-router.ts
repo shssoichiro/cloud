@@ -11,9 +11,11 @@ import {
   microdollar_usage,
   credit_transactions,
   auto_top_up_configs,
+  user_auth_provider,
 } from '@kilocode/db/schema';
 import { eq, and, isNull, sql } from 'drizzle-orm';
 import crypto from 'crypto';
+import { checkDiscordGuildMembership } from '@/lib/integrations/discord-guild-membership';
 import { AuthProviderIdSchema } from '@/lib/auth/provider-metadata';
 import { AUTOCOMPLETE_MODEL } from '@/lib/constants';
 import { ensureOrganizationAccess } from '@/routers/organizations/utils';
@@ -346,4 +348,57 @@ export const userRouter = createTRPCRouter({
 
       return successResult();
     }),
+
+  getDiscordGuildStatus: baseProcedure.query(async ({ ctx }) => {
+    const discordProvider = await db.query.user_auth_provider.findFirst({
+      where: and(
+        eq(user_auth_provider.kilo_user_id, ctx.user.id),
+        eq(user_auth_provider.provider, 'discord')
+      ),
+    });
+
+    const user = await db.query.kilocode_users.findFirst({
+      where: eq(kilocode_users.id, ctx.user.id),
+      columns: {
+        discord_server_member: true,
+        discord_server_member_at: true,
+      },
+    });
+
+    return successResult({
+      linked: !!discordProvider,
+      discord_provider_account_id: discordProvider?.provider_account_id ?? null,
+      discord_avatar_url: discordProvider?.avatar_url ?? null,
+      discord_server_member: user?.discord_server_member ?? null,
+      discord_server_member_at: user?.discord_server_member_at ?? null,
+    });
+  }),
+
+  verifyDiscordGuildMembership: baseProcedure.mutation(async ({ ctx }) => {
+    const discordProvider = await db.query.user_auth_provider.findFirst({
+      where: and(
+        eq(user_auth_provider.kilo_user_id, ctx.user.id),
+        eq(user_auth_provider.provider, 'discord')
+      ),
+    });
+
+    if (!discordProvider) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'No Discord account linked. Please connect your Discord account first.',
+      });
+    }
+
+    const isMember = await checkDiscordGuildMembership(discordProvider.provider_account_id);
+
+    await db
+      .update(kilocode_users)
+      .set({
+        discord_server_member: isMember,
+        discord_server_member_at: new Date().toISOString(),
+      })
+      .where(eq(kilocode_users.id, ctx.user.id));
+
+    return successResult({ discord_server_member: isMember });
+  }),
 });
