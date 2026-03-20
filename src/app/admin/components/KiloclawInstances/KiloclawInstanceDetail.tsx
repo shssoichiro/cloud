@@ -1435,9 +1435,7 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
                   size="sm"
                   variant="outline"
                   disabled={machineActionPending || machineRestartBlocked}
-                  onClick={() =>
-                    void machineRedeploy({ instanceId: data.id, imageTag: undefined })
-                  }
+                  onClick={() => void machineRedeploy({ instanceId: data.id, imageTag: undefined })}
                 >
                   {isMachineRedeploying ? (
                     <Loader2 className="mr-1 h-4 w-4 animate-spin" />
@@ -1450,9 +1448,7 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
                   size="sm"
                   variant="outline"
                   disabled={machineActionPending || machineRestartBlocked}
-                  onClick={() =>
-                    void machineUpgrade({ instanceId: data.id, imageTag: 'latest' })
-                  }
+                  onClick={() => void machineUpgrade({ instanceId: data.id, imageTag: 'latest' })}
                 >
                   {isMachineUpgrading ? (
                     <Loader2 className="mr-1 h-4 w-4 animate-spin" />
