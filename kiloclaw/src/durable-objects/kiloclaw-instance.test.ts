@@ -5408,3 +5408,41 @@ describe('reassociateVolume', () => {
     expect(storage._store.get('flyRegion')).toBe('lax');
   });
 });
+
+// ============================================================================
+// updateExecPreset
+// ============================================================================
+
+describe('updateExecPreset', () => {
+  it('persists exec security and ask to DO storage', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    const result = await instance.updateExecPreset({ security: 'full', ask: 'off' });
+
+    expect(result.execSecurity).toBe('full');
+    expect(result.execAsk).toBe('off');
+    expect(storage._store.get('execSecurity')).toBe('full');
+    expect(storage._store.get('execAsk')).toBe('off');
+  });
+
+  it('updates only the fields that are provided', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    await instance.updateExecPreset({ security: 'full' });
+
+    expect(storage._store.get('execSecurity')).toBe('full');
+    expect(storage._store.get('execAsk')).toBeUndefined();
+  });
+
+  it('returns current state when no fields are provided', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { execSecurity: 'full', execAsk: 'off' });
+
+    const result = await instance.updateExecPreset({});
+
+    expect(result.execSecurity).toBe('full');
+    expect(result.execAsk).toBe('off');
+  });
+});
