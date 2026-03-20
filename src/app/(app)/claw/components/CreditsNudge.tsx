@@ -62,7 +62,7 @@ export function CreditsNudge({
       {/* Hidden form for POST to /payments/topup */}
       <form
         ref={formRef}
-        action={`/payments/topup?amount=${selectedAmount}`}
+        action={`/payments/topup?amount=${selectedAmount}&cancel-path=${encodeURIComponent('/claw')}`}
         method="post"
         className="hidden"
       />
