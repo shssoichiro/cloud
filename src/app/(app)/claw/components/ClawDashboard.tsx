@@ -75,6 +75,10 @@ export function ClawDashboard({
   const onSecretsChanged = useCallback((entryId: string) => {
     setDirtySecrets(prev => new Set([...prev, entryId]));
   }, []);
+  const [upgradeRequested, setUpgradeRequested] = useState(false);
+  const onRequestUpgrade = useCallback(() => setUpgradeRequested(true), []);
+  const onUpgradeHandled = useCallback(() => setUpgradeRequested(false), []);
+
   const onRedeploySuccess = useCallback(() => {
     setDirtySecrets(new Set());
   }, []);
@@ -99,8 +103,8 @@ export function ClawDashboard({
           <TriangleAlert className="size-4" />
           <AlertDescription className="flex flex-col">
             <span>
-              KiloClaw is really popular today. We&apos;re working on getting additional
-              capacity. If you have trouble starting a machine, please try again in a few minutes.
+              KiloClaw is really popular today. We&apos;re working on getting additional capacity.
+              If you have trouble starting a machine, please try again in a few minutes.
             </span>
             <span className="mt-2 flex flex-row gap-1">
               <span>You can also</span>
@@ -239,6 +243,8 @@ export function ClawDashboard({
                 status={instanceStatus}
                 mutations={mutations}
                 onRedeploySuccess={onRedeploySuccess}
+                upgradeRequested={upgradeRequested}
+                onUpgradeHandled={onUpgradeHandled}
               />
             </CardContent>
             <Tabs defaultValue="instance">
@@ -279,6 +285,7 @@ export function ClawDashboard({
                     mutations={mutations}
                     onSecretsChanged={onSecretsChanged}
                     dirtySecrets={dirtySecrets}
+                    onRequestUpgrade={onRequestUpgrade}
                   />
                 </TabsContent>
                 <TabsContent value="changelog" className="mt-0">
