@@ -25,6 +25,7 @@ import { reconcileLog, doError, doWarn, toLoggable } from './log';
 import { ensureVolume, staleProvisionAgeMs } from './fly-machines';
 import { mintFreshApiKey } from './config';
 import * as gateway from './gateway';
+import { writeEvent, eventContextFromState } from '../../utils/analytics';
 
 /**
  * Check actual Fly state against DO state and fix drift.
@@ -42,7 +43,7 @@ export async function reconcileWithFly(
   markDestroyedInPostgres?: (userId: string, sandboxId: string) => Promise<boolean>
 ): Promise<void> {
   if (state.status === 'destroying') {
-    await retryPendingDestroy(flyConfig, ctx, state, reason, markDestroyedInPostgres);
+    await retryPendingDestroy(flyConfig, ctx, state, reason, markDestroyedInPostgres, env);
     return;
   }
 
@@ -56,7 +57,7 @@ export async function reconcileWithFly(
     return;
   }
 
-  const machineReconciled = await reconcileMachine(flyConfig, ctx, state, reason);
+  const machineReconciled = await reconcileMachine(flyConfig, ctx, state, reason, env);
 
   // Auto-destroy stale provisioned instances
   const staleAge = staleProvisionAgeMs(state);
@@ -66,6 +67,15 @@ export async function reconcileWithFly(
       provisioned_at: state.provisionedAt,
       age_hours: Math.round(staleAge / 3600000),
     });
+    if (env) {
+      writeEvent(env, {
+        event: 'reconcile.stale_provision_destroyed',
+        delivery: 'reconcile',
+        label: `age: ${Math.round(staleAge / 3600000)}h`,
+        value: staleAge,
+        ...eventContextFromState(state),
+      });
+    }
     state.pendingPostgresMarkOnFinalize = true;
     await ctx.storage.put(storageUpdate({ pendingPostgresMarkOnFinalize: true }));
     await triggerDestroy();
@@ -224,6 +234,16 @@ async function reconcileApiKeyExpiry(
     flyConfigUpdated,
     controller_version: controllerVersion,
   });
+
+  // env is non-optional in this function but guard matches reconcile convention
+  if (env) {
+    writeEvent(env, {
+      event: 'reconcile.api_key_refreshed',
+      delivery: 'reconcile',
+      label: pushed ? 'refreshed+pushed' : flyConfigUpdated ? 'refreshed+fly-config' : 'refreshed',
+      ...eventContextFromState(state),
+    });
+  }
 }
 
 // ---- Starting reconciliation ----
@@ -283,7 +303,7 @@ async function reconcileStarting(
   // The machine may have started successfully despite the timeout.
   try {
     const machine = await fly.getMachine(flyConfig, state.flyMachineId);
-    await syncStatusWithFly(ctx, state, machine.state, reason);
+    await syncStatusWithFly(ctx, state, machine.state, reason, env);
     // Ensure volume reconciliation doesn't get skipped while starting.
     // Note: reconcileApiKeyExpiry and reconcileMachineMount are intentionally
     // skipped — the machine isn't running yet so there's no endpoint to push
@@ -389,7 +409,7 @@ async function reconcileRestarting(
           machine_id: state.flyMachineId,
           elapsed_ms: restartingAt !== null ? Date.now() - restartingAt : undefined,
         });
-        await markRestartSuccessful(ctx, state);
+        await markRestartSuccessful(ctx, state, env);
         await reconcileVolume(flyConfig, ctx, state, env, reason);
         return;
       }
@@ -420,7 +440,7 @@ async function reconcileRestarting(
       return;
     }
 
-    await syncStatusWithFly(ctx, state, machine.state, reason);
+    await syncStatusWithFly(ctx, state, machine.state, reason, env);
     await reconcileVolume(flyConfig, ctx, state, env, reason);
     const currentStatus = await ctx.storage.get('status');
 
@@ -526,9 +546,18 @@ async function reconcileVolume(
         data_loss: true,
         old_volume_id: state.flyVolumeId,
       });
+      const oldVolumeId = state.flyVolumeId;
       state.flyVolumeId = null;
       await ctx.storage.put(storageUpdate({ flyVolumeId: null }));
       await ensureVolume(flyConfig, ctx, state, env, reason);
+      if (env) {
+        writeEvent(env, {
+          event: 'reconcile.volume_repaired',
+          delivery: 'reconcile',
+          label: `replaced lost volume ${oldVolumeId} → ${state.flyVolumeId}`,
+          ...eventContextFromState(state),
+        });
+      }
     } else {
       doWarn(state, 'getVolume failed (will retry next alarm)', {
         error: toLoggable(err),
@@ -546,15 +575,16 @@ async function reconcileMachine(
   flyConfig: FlyClientConfig,
   ctx: DurableObjectState,
   state: InstanceMutableState,
-  reason: string
+  reason: string,
+  env?: { KILOCLAW_AE?: AnalyticsEngineDataset }
 ): Promise<boolean> {
   if (!state.flyMachineId) {
-    return attemptMetadataRecovery(flyConfig, ctx, state, reason);
+    return attemptMetadataRecovery(flyConfig, ctx, state, reason, env);
   }
 
   try {
     const machine = await fly.getMachine(flyConfig, state.flyMachineId);
-    await syncStatusWithFly(ctx, state, machine.state, reason);
+    await syncStatusWithFly(ctx, state, machine.state, reason, env);
     await reconcileMachineMount(flyConfig, ctx, state, machine, reason);
     return true;
   } catch (err) {
@@ -573,7 +603,8 @@ export async function attemptMetadataRecovery(
   flyConfig: FlyClientConfig,
   ctx: DurableObjectState,
   state: InstanceMutableState,
-  reason: string
+  reason: string,
+  env?: { KILOCLAW_AE?: AnalyticsEngineDataset }
 ): Promise<boolean> {
   if (!state.userId) return false;
 
@@ -651,6 +682,14 @@ export async function attemptMetadataRecovery(
     }
 
     await ctx.storage.put(storageUpdate(updates));
+    if (env) {
+      writeEvent(env, {
+        event: 'reconcile.metadata_recovery',
+        delivery: 'reconcile',
+        label: `recovered machine ${candidate.id} (fly: ${candidate.state})`,
+        ...eventContextFromState(state),
+      });
+    }
     return true;
   } catch (err) {
     doError(state, 'metadata recovery failed', { error: toLoggable(err) });
@@ -665,9 +704,11 @@ export async function syncStatusWithFly(
   ctx: DurableObjectState,
   state: InstanceMutableState,
   flyState: string,
-  reason: string
+  reason: string,
+  env?: { KILOCLAW_AE?: AnalyticsEngineDataset }
 ): Promise<void> {
   if (flyState === 'started' && state.status !== 'running') {
+    const oldStatus = state.status;
     reconcileLog(reason, 'sync_status', {
       old_state: state.status,
       new_state: 'running',
@@ -690,6 +731,14 @@ export async function syncStatusWithFly(
         lastStartedAt: state.lastStartedAt,
       })
     );
+    if (env) {
+      writeEvent(env, {
+        event: 'reconcile.status_drift',
+        delivery: 'reconcile',
+        label: `${oldStatus} → running (fly: started)`,
+        ...eventContextFromState(state),
+      });
+    }
     return;
   }
 
@@ -704,6 +753,7 @@ export async function syncStatusWithFly(
   // failed is definitively terminal — transition immediately without waiting for
   // SELF_HEAL_THRESHOLD consecutive checks like we do for stopped/created.
   if (flyState === 'failed' && state.status !== 'stopped') {
+    const oldStatus = state.status;
     reconcileLog(reason, 'sync_status_failed', {
       old_state: state.status,
       fly_state: flyState,
@@ -720,6 +770,14 @@ export async function syncStatusWithFly(
         healthCheckFailCount: 0,
       })
     );
+    if (env) {
+      writeEvent(env, {
+        event: 'reconcile.status_drift',
+        delivery: 'reconcile',
+        label: `${oldStatus} → stopped (fly: failed)`,
+        ...eventContextFromState(state),
+      });
+    }
     return;
   }
 
@@ -743,14 +801,25 @@ export async function syncStatusWithFly(
           healthCheckFailCount: 0,
         })
       );
+      if (env) {
+        writeEvent(env, {
+          event: 'reconcile.status_drift',
+          delivery: 'reconcile',
+          label: `running → stopped (fly: ${flyState}, threshold: ${SELF_HEAL_THRESHOLD})`,
+          value: SELF_HEAL_THRESHOLD,
+          ...eventContextFromState(state),
+        });
+      }
     }
   }
 }
 
 export async function markRestartSuccessful(
   ctx: DurableObjectState,
-  state: InstanceMutableState
+  state: InstanceMutableState,
+  env?: { KILOCLAW_AE?: AnalyticsEngineDataset }
 ): Promise<void> {
+  const restartingAt = state.restartingAt;
   reconcileLog('restart', 'restart_self_healed', {
     machine_id: state.flyMachineId,
     previous_error: state.lastRestartErrorMessage,
@@ -778,6 +847,14 @@ export async function markRestartSuccessful(
       lastRestartErrorAt: null,
     })
   );
+  if (env) {
+    writeEvent(env, {
+      event: 'instance.restarted',
+      delivery: 'do',
+      durationMs: restartingAt ? Date.now() - restartingAt : undefined,
+      ...eventContextFromState(state),
+    });
+  }
 }
 
 async function setRestartError(
@@ -913,19 +990,21 @@ async function retryPendingDestroy(
   ctx: DurableObjectState,
   state: InstanceMutableState,
   reason: string,
-  markDestroyedInPostgres?: (userId: string, sandboxId: string) => Promise<boolean>
+  markDestroyedInPostgres?: (userId: string, sandboxId: string) => Promise<boolean>,
+  env?: { KILOCLAW_AE?: AnalyticsEngineDataset }
 ): Promise<void> {
-  await recoverBoundMachineForDestroy(flyConfig, ctx, state, reason);
+  await recoverBoundMachineForDestroy(flyConfig, ctx, state, reason, env);
   await tryDeleteMachine(flyConfig, ctx, state, reason);
   await tryDeleteVolume(flyConfig, ctx, state, reason);
-  await finalizeDestroyIfComplete(ctx, state, markDestroyedInPostgres);
+  await finalizeDestroyIfComplete(ctx, state, markDestroyedInPostgres, env);
 }
 
 async function recoverBoundMachineForDestroy(
   flyConfig: FlyClientConfig,
   ctx: DurableObjectState,
   state: InstanceMutableState,
-  reason: string
+  reason: string,
+  env?: { KILOCLAW_AE?: AnalyticsEngineDataset }
 ): Promise<void> {
   if (state.pendingDestroyMachineId) return;
   if (!state.pendingDestroyVolumeId) return;
@@ -972,6 +1051,14 @@ async function recoverBoundMachineForDestroy(
         lastBoundMachineRecoveryAt: null,
       })
     );
+    if (env) {
+      writeEvent(env, {
+        event: 'reconcile.bound_machine_recovery',
+        delivery: 'reconcile',
+        label: `recovered machine ${machineId} from volume ${state.pendingDestroyVolumeId}`,
+        ...eventContextFromState(state),
+      });
+    }
   } catch (err) {
     if (fly.isFlyNotFound(err)) {
       return;
@@ -1104,7 +1191,8 @@ async function clearDestroyError(
 export async function finalizeDestroyIfComplete(
   ctx: DurableObjectState,
   state: InstanceMutableState,
-  markDestroyedInPostgres?: (userId: string, sandboxId: string) => Promise<boolean>
+  markDestroyedInPostgres?: (userId: string, sandboxId: string) => Promise<boolean>,
+  env?: { KILOCLAW_AE?: AnalyticsEngineDataset }
 ): Promise<DestroyResult> {
   if (state.pendingDestroyMachineId || state.pendingDestroyVolumeId) {
     return {
@@ -1136,6 +1224,15 @@ export async function finalizeDestroyIfComplete(
     user_id: destroyedUserId,
     sandbox_id: destroyedSandboxId,
   });
+
+  // Emit before state is wiped — eventContextFromState reads from state
+  if (env) {
+    writeEvent(env, {
+      event: 'instance.destroy_finalized',
+      delivery: 'do',
+      ...eventContextFromState(state),
+    });
+  }
 
   await ctx.storage.deleteAlarm();
   await ctx.storage.deleteAll();

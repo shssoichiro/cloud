@@ -62,6 +62,8 @@ import {
   markRestartSuccessful,
 } from './reconcile';
 import { restoreFromPostgres, markDestroyedInPostgresHelper } from './postgres';
+import { writeEvent } from '../../utils/analytics';
+import type { KiloClawEventData, KiloClawEventName } from '../../utils/analytics';
 
 // Re-export extracted helpers so existing consumers don't break.
 export { parseRegions, shuffleRegions, deprioritizeRegion } from '../regions';
@@ -99,11 +101,45 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     return buildUserEnvVars(this.env, this.ctx, this.s);
   }
 
+  /**
+   * Emit an analytics event with common DO dimensions baked in.
+   * Follows gastown's Omit<> pattern — callers provide only the
+   * event-specific fields; userId, delivery, and machine context
+   * are always filled from this.s.
+   */
+  private emitEvent(
+    data: Omit<
+      KiloClawEventData,
+      | 'userId'
+      | 'sandboxId'
+      | 'delivery'
+      | 'flyAppName'
+      | 'flyMachineId'
+      | 'openclawVersion'
+      | 'imageTag'
+      | 'flyRegion'
+    > & { event: KiloClawEventName }
+  ): void {
+    writeEvent(this.env, {
+      ...data,
+      delivery: 'do',
+      userId: this.s.userId ?? undefined,
+      sandboxId: this.s.sandboxId ?? undefined,
+      flyAppName: this.s.flyAppName ?? undefined,
+      flyMachineId: this.s.flyMachineId ?? undefined,
+      openclawVersion: this.s.openclawVersion ?? undefined,
+      imageTag: this.s.trackedImageTag ?? undefined,
+      flyRegion: this.s.flyRegion ?? undefined,
+      status: data.status ?? this.s.status ?? undefined,
+    });
+  }
+
   // ========================================================================
   // Lifecycle methods (called by platform API routes via RPC)
   // ========================================================================
 
   async provision(userId: string, config: InstanceConfig): Promise<{ sandboxId: string }> {
+    const provisionStart = performance.now();
     await this.loadState();
 
     if (this.s.status === 'destroying') {
@@ -296,6 +332,12 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     if (isNew) {
       await this.startAsync(userId);
     }
+
+    this.emitEvent({
+      event: 'instance.provisioned',
+      status: 'provisioned',
+      durationMs: performance.now() - provisionStart,
+    });
 
     return { sandboxId };
   }
@@ -778,6 +820,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       return;
     }
 
+    const startingAt = this.s.startingAt;
     this.s.status = 'running';
     this.s.startingAt = null;
     this.s.lastStartedAt = Date.now();
@@ -792,6 +835,12 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       flyMachineId: this.s.flyMachineId,
       lastStartErrorMessage: null,
       lastStartErrorAt: null,
+    });
+
+    this.emitEvent({
+      event: 'instance.started',
+      status: 'running',
+      durationMs: startingAt ? Date.now() - startingAt : undefined,
     });
 
     await this.scheduleAlarm();
@@ -877,6 +926,8 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       return;
     }
 
+    const machineUptimeMs = this.s.lastStartedAt ? Date.now() - this.s.lastStartedAt : 0;
+
     if (this.s.flyMachineId) {
       const flyConfig = getFlyConfig(this.env, this.s);
       try {
@@ -896,6 +947,12 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       lastStoppedAt: this.s.lastStoppedAt,
     });
 
+    this.emitEvent({
+      event: 'instance.stopped',
+      status: 'stopped',
+      value: machineUptimeMs,
+    });
+
     await this.scheduleAlarm();
   }
 
@@ -905,6 +962,8 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     if (!this.s.userId) {
       throw new Error('Instance not provisioned');
     }
+
+    const machineUptimeMs = this.s.lastStartedAt ? Date.now() - this.s.lastStartedAt : 0;
 
     this.s.pendingDestroyMachineId = this.s.flyMachineId;
     this.s.pendingDestroyVolumeId = this.s.flyVolumeId;
@@ -916,12 +975,22 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       pendingDestroyVolumeId: this.s.pendingDestroyVolumeId,
     });
 
+    this.emitEvent({
+      event: 'instance.destroy_started',
+      status: 'destroying',
+      value: machineUptimeMs,
+    });
+
     const flyConfig = getFlyConfig(this.env, this.s);
     await tryDeleteMachine(flyConfig, this.ctx, this.s, 'destroy');
     await tryDeleteVolume(flyConfig, this.ctx, this.s, 'destroy');
 
-    const finalized = await finalizeDestroyIfComplete(this.ctx, this.s, (userId, sandboxId) =>
-      markDestroyedInPostgresHelper(this.env, this.ctx, this.s, userId, sandboxId)
+    const finalized = await finalizeDestroyIfComplete(
+      this.ctx,
+      this.s,
+      (userId, sandboxId) =>
+        markDestroyedInPostgresHelper(this.env, this.ctx, this.s, userId, sandboxId),
+      this.env
     );
     if (!finalized.finalized) {
       doWarn(this.s, 'Destroy incomplete, alarm will retry', {
@@ -1422,7 +1491,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       const preSuccessStatus = await this.ctx.storage.get('status');
       if (preSuccessStatus !== 'restarting') return;
 
-      await markRestartSuccessful(this.ctx, this.s);
+      await markRestartSuccessful(this.ctx, this.s, this.env);
       doLog(this.s, 'restartMachine: background restart completed successfully');
       await this.scheduleAlarm();
     } catch (err) {

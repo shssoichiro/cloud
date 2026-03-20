@@ -26,6 +26,9 @@ import { upsertCatalogVersion } from '../lib/catalog-registration';
 import { z } from 'zod';
 import { withDORetry } from '@kilocode/worker-utils';
 import { deriveGatewayToken } from '../auth/gateway-token';
+import { sandboxIdFromUserId } from '../auth/sandbox-id';
+import { writeEvent } from '../utils/analytics';
+import { deriveHttpEventName } from '../middleware/analytics';
 
 const GmailHistoryIdSchema = z.object({
   userId: z.string().min(1),
@@ -47,6 +50,51 @@ const KiloCodeConfigPatchSchema = z.object({
 });
 
 const platform = new Hono<AppEnv>();
+
+// Analytics middleware — runs for every platform route. Captures timing,
+// derives event name from the request path, and extracts userId from the
+// query string (GET/DELETE routes) or request body JSON (POST/PATCH routes).
+platform.use('*', async (c, next) => {
+  const start = c.get('requestStartTime') ?? performance.now();
+  let error: string | undefined;
+  try {
+    await next();
+    if (c.res.status >= 400) {
+      error = `HTTP ${c.res.status}`;
+    }
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    const durationMs = performance.now() - start;
+    const method = c.req.method;
+    const path = c.req.path;
+
+    // userId sources (in priority order):
+    // 1. Hono context — set by parseBody() for POST/PATCH routes after
+    //    zod validation (validated, not raw input)
+    // 2. Query param — used by GET/DELETE routes (?userId=...)
+    const userId = c.get('userId') || c.req.query('userId') || '';
+    let sandboxId = '';
+    if (userId) {
+      try {
+        sandboxId = sandboxIdFromUserId(userId);
+      } catch {
+        // ignore
+      }
+    }
+
+    writeEvent(c.env, {
+      event: deriveHttpEventName(method, path),
+      delivery: 'http',
+      route: `${method} ${path}`,
+      error,
+      userId,
+      sandboxId,
+      durationMs,
+    });
+  }
+});
 
 /**
  * Create a fresh KiloClawInstance DO stub for a userId.
@@ -167,6 +215,19 @@ async function parseBody<T extends z.ZodTypeAny>(
     return {
       error: c.json({ error: 'Invalid request', details: parsed.error.flatten().fieldErrors }, 400),
     };
+  }
+
+  // Expose userId on the Hono context so the analytics middleware can
+  // read it after the handler completes. Platform routes use
+  // x-internal-api-key auth (no JWT), so userId comes from the body.
+  if (
+    parsed.data &&
+    typeof parsed.data === 'object' &&
+    'userId' in parsed.data &&
+    typeof parsed.data.userId === 'string' &&
+    parsed.data.userId
+  ) {
+    c.set('userId', parsed.data.userId);
   }
 
   return { data: parsed.data };
