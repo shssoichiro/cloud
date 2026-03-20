@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   formatDollars,
   formatIsoDateString_UsaDateOnlyFormat,
@@ -19,12 +19,15 @@ import {
   formatLargeNumber,
 } from '@/lib/utils';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { StreakCalendar } from '@/components/profile/StreakCalendar';
 import { UsageWarning } from '@/components/usage/UsageWarning';
 import type { UsageTableColumn, UsageTableRow } from '@/components/usage/UsageTableBase';
 import { UsageTableBase } from '@/components/usage/UsageTableBase';
 import { PageLayout } from '@/components/PageLayout';
+import { extractRepoFromGitUrl } from '@/components/cloud-agent/utils/git-utils';
+import { formatDate, formatRelativeTime } from '@/lib/admin-utils';
 
 import { useTRPC } from '@/lib/trpc/utils';
 
@@ -44,6 +47,92 @@ type UsageData = {
 type UsageResponse = {
   usage: UsageData[];
 };
+
+type UsageTab = 'overview' | 'sessions';
+
+type SessionUsageTableRow = UsageTableRow & {
+  id: string;
+  sessionId: string | null;
+  source: string | null;
+  lastUsedAt: string;
+  title: string | null;
+  createdOnPlatform: string | null;
+  gitUrl: string | null;
+  organizationId: string | null;
+  cost: number;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheHits: number;
+};
+
+const tabTriggerClass =
+  'text-muted-foreground hover:text-foreground data-[state=active]:border-foreground data-[state=active]:text-foreground rounded-none border-b-2 border-transparent px-0 py-3 text-sm font-medium transition-colors data-[state=active]:border-0 data-[state=active]:border-b-2 data-[state=active]:bg-transparent data-[state=active]:shadow-none';
+
+function isSessionUsageTableRow(row: UsageTableRow): row is SessionUsageTableRow {
+  return (
+    typeof row.id === 'string' &&
+    'sessionId' in row &&
+    (typeof row.sessionId === 'string' || row.sessionId === null) &&
+    'source' in row &&
+    (typeof row.source === 'string' || row.source === null) &&
+    typeof row.lastUsedAt === 'string'
+  );
+}
+
+function formatUsageSource(source: string | null): string {
+  if (source === null) {
+    return 'Unknown Source';
+  }
+
+  switch (source) {
+    case 'slack':
+      return 'Slack';
+    case 'discord':
+      return 'Discord';
+    case 'security-agent':
+      return 'Security Agent';
+    case 'embeddings':
+      return 'Embeddings';
+    case 'direct-gateway':
+      return 'Direct Gateway';
+    case 'bot':
+      return 'Bot';
+    default:
+      return source
+        .split('-')
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+  }
+}
+
+function formatSessionPlatform(createdOnPlatform: string | null): string | null {
+  if (createdOnPlatform === null) {
+    return null;
+  }
+
+  switch (createdOnPlatform) {
+    case 'cloud-agent':
+      return 'Cloud';
+    case 'cli':
+      return 'CLI';
+    case 'agent-manager':
+      return 'Agent Manager';
+    case 'slack':
+      return 'Slack';
+    default:
+      return createdOnPlatform;
+  }
+}
+
+function getSessionChatHref(sessionId: string, organizationId: string | null): string {
+  const sessionIdParam = encodeURIComponent(sessionId);
+  if (organizationId) {
+    return `/organizations/${organizationId}/cloud/chat?sessionId=${sessionIdParam}`;
+  }
+
+  return `/cloud/chat?sessionId=${sessionIdParam}`;
+}
 
 async function fetchUsageData(
   groupByModel: boolean,
@@ -149,9 +238,29 @@ const PERIOD_LABELS: Record<Period, string> = {
 export default function UsagePage() {
   const router = useRouter();
   const trpc = useTRPC();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [groupByModel, setGroupByModel] = useState(false);
   const [viewType, setViewType] = useState<string>('personal');
   const [period, setPeriod] = useState<Period>('week');
+  const tabParam = searchParams.get('tab');
+  const activeTab: UsageTab = tabParam === 'sessions' ? 'sessions' : 'overview';
+  const [sessionsPage, setSessionsPage] = useState<number>(1);
+
+  const handleTabChange = (nextTab: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (nextTab === 'overview') {
+      params.delete('tab');
+    } else {
+      params.set('tab', nextTab);
+    }
+
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, {
+      scroll: false,
+    });
+  };
 
   const {
     data: usageData,
@@ -168,6 +277,24 @@ export default function UsagePage() {
   );
 
   const { data: organizations } = useQuery(trpc.organizations.list.queryOptions());
+
+  const {
+    data: sessionUsageHistory,
+    isLoading: isLoadingSessionUsageHistory,
+    error: sessionUsageHistoryError,
+  } = useQuery({
+    ...trpc.user.getSessionUsageHistory.queryOptions({
+      viewType,
+      period,
+      page: sessionsPage,
+      limit: 100,
+    }),
+    enabled: activeTab === 'sessions',
+  });
+
+  useEffect(() => {
+    setSessionsPage(1);
+  }, [viewType, period]);
 
   // Redirect to sign-in page if user is not authenticated
   useEffect(() => {
@@ -423,6 +550,145 @@ export default function UsagePage() {
     cacheHits: item.total_cache_hit_tokens,
   }));
 
+  const renderViewTypeSelector = () => {
+    if (!organizations || organizations.length === 0) {
+      return null;
+    }
+
+    return (
+      <Select value={viewType} onValueChange={setViewType}>
+        <SelectTrigger size="sm">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="personal">Personal Only</SelectItem>
+          <SelectItem value="all">All Usage</SelectItem>
+          {organizations.map(org => (
+            <SelectItem key={org.organizationId} value={org.organizationId}>
+              {org.organizationName}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  };
+
+  const sessionTableColumns: UsageTableColumn[] = [
+    {
+      key: 'lastUsedAt',
+      label: 'Last Used',
+      render: value => {
+        if (typeof value !== 'string') {
+          return '—';
+        }
+
+        return (
+          <div className="flex flex-col">
+            <span>{formatRelativeTime(value)}</span>
+            <span className="text-muted-foreground text-xs">{formatDate(value)}</span>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'sessionId',
+      label: 'Session',
+      render: (_value, row) => {
+        if (!isSessionUsageTableRow(row)) {
+          return 'Unknown Session';
+        }
+
+        if (row.sessionId === null) {
+          return (
+            <div className="min-w-[260px] max-w-[360px]">
+              <div className="text-foreground font-medium">{formatUsageSource(row.source)}</div>
+              <div className="text-muted-foreground mt-1 text-xs">Source-backed usage</div>
+            </div>
+          );
+        }
+
+        const repository = extractRepoFromGitUrl(row.gitUrl);
+        const platformLabel = formatSessionPlatform(row.createdOnPlatform);
+        const metadataParts: string[] = [];
+
+        if (repository) {
+          metadataParts.push(repository);
+        }
+
+        if (platformLabel) {
+          metadataParts.push(platformLabel);
+        }
+
+        const title = row.title?.trim() ? row.title : 'Untitled Session';
+        const sessionHref = getSessionChatHref(row.sessionId, row.organizationId);
+
+        return (
+          <div className="min-w-[260px] max-w-[360px]">
+            <Link href={sessionHref} className="text-foreground font-medium hover:underline">
+              {title}
+            </Link>
+            <div className="text-muted-foreground mt-1 font-mono text-xs">ID: {row.sessionId}</div>
+            {metadataParts.length > 0 && (
+              <div className="text-muted-foreground mt-1 text-xs">{metadataParts.join(' • ')}</div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'cost',
+      label: 'Cost',
+      render: value =>
+        typeof value === 'number' ? formatDollars(fromMicrodollars(value)) : formatDollars(0),
+    },
+    {
+      key: 'requests',
+      label: 'Requests',
+      render: value => (typeof value === 'number' ? value.toLocaleString() : '0'),
+    },
+    {
+      key: 'inputTokens',
+      label: 'Input Tokens',
+      render: value => (typeof value === 'number' ? formatLargeNumber(value, true) : '0'),
+    },
+    {
+      key: 'outputTokens',
+      label: 'Output Tokens',
+      render: value => (typeof value === 'number' ? formatLargeNumber(value, true) : '0'),
+    },
+    {
+      key: 'cacheHits',
+      label: 'Cache Hits',
+      render: value => (typeof value === 'number' ? formatLargeNumber(value, true) : '0'),
+    },
+  ];
+
+  const sessionTableData: UsageTableRow[] =
+    sessionUsageHistory?.sessions.map((session, index) => ({
+      id: session.sessionId ?? `${session.source ?? 'source'}-${session.lastUsedAt}-${index}`,
+      sessionId: session.sessionId,
+      source: session.source,
+      lastUsedAt: session.lastUsedAt,
+      title: session.title,
+      createdOnPlatform: session.createdOnPlatform,
+      gitUrl: session.gitUrl,
+      organizationId: session.organizationId,
+      cost: session.totalCost,
+      requests: session.requestCount,
+      inputTokens: session.totalInputTokens,
+      outputTokens: session.totalOutputTokens,
+      cacheHits: session.totalCacheHitTokens,
+    })) ?? [];
+
+  const sessionsEmptyMessage =
+    sessionUsageHistoryError instanceof Error
+      ? sessionUsageHistoryError.message
+      : isLoadingSessionUsageHistory
+        ? 'Loading session usage history...'
+        : 'No usage found with a recorded session or source';
+
+  const sessionsPagination = sessionUsageHistory?.pagination;
+
   return (
     <PageLayout
       title="Usage"
@@ -542,47 +808,96 @@ export default function UsagePage() {
         </div>
       </div>
 
-      <UsageTableBase
-        title="Usage Overview"
-        columns={tableColumns}
-        data={tableData}
-        emptyMessage="No usage data found"
-        headerContent={<UsageWarning />}
-        headerActions={
-          <div className="flex items-center gap-2">
-            {organizations && organizations.length > 0 && (
-              <Select value={viewType} onValueChange={setViewType}>
-                <SelectTrigger size="sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="personal">Personal Only</SelectItem>
-                  <SelectItem value="all">All Usage</SelectItem>
-                  {organizations.map(org => (
-                    <SelectItem key={org.organizationId} value={org.organizationId}>
-                      {org.organizationName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <Button
-              variant={groupByModel ? 'outline' : 'default'}
-              size="sm"
-              onClick={() => setGroupByModel(false)}
-            >
-              By Day
-            </Button>
-            <Button
-              variant={groupByModel ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setGroupByModel(true)}
-            >
-              By Model & Day
-            </Button>
-          </div>
-        }
-      />
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <TabsList className="h-auto w-full justify-start gap-6 rounded-none border-b bg-transparent p-0">
+          <TabsTrigger value="overview" className={tabTriggerClass}>
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="sessions" className={tabTriggerClass}>
+            Sessions
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-4">
+          <UsageTableBase
+            title="Usage Overview"
+            columns={tableColumns}
+            data={tableData}
+            emptyMessage="No usage data found"
+            headerContent={<UsageWarning />}
+            headerActions={
+              <div className="flex items-center gap-2">
+                {organizations && organizations.length > 0 && (
+                  <Select value={viewType} onValueChange={setViewType}>
+                    <SelectTrigger size="sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="personal">Personal Only</SelectItem>
+                      <SelectItem value="all">All Usage</SelectItem>
+                      {organizations.map(org => (
+                        <SelectItem key={org.organizationId} value={org.organizationId}>
+                          {org.organizationName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Button
+                  variant={groupByModel ? 'outline' : 'default'}
+                  size="sm"
+                  onClick={() => setGroupByModel(false)}
+                >
+                  By Day
+                </Button>
+                <Button
+                  variant={groupByModel ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setGroupByModel(true)}
+                >
+                  By Model & Day
+                </Button>
+              </div>
+            }
+          />
+        </TabsContent>
+
+        <TabsContent value="sessions" className="mt-4">
+          <UsageTableBase
+            title="Session Usage"
+            columns={sessionTableColumns}
+            data={sessionTableData}
+            emptyMessage={sessionsEmptyMessage}
+            headerActions={
+              <div className="flex items-center gap-2">{renderViewTypeSelector()}</div>
+            }
+          />
+
+          {activeTab === 'sessions' && sessionsPagination && sessionsPagination.totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-end gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSessionsPage(page => Math.max(1, page - 1))}
+                disabled={isLoadingSessionUsageHistory || !sessionsPagination.hasPreviousPage}
+              >
+                Previous
+              </Button>
+              <div className="text-muted-foreground text-sm">
+                Page {sessionsPagination.page} of {sessionsPagination.totalPages}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSessionsPage(page => page + 1)}
+                disabled={isLoadingSessionUsageHistory || !sessionsPagination.hasNextPage}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </PageLayout>
   );
 }

@@ -14,6 +14,7 @@ import { timedUsageQuery } from '@/lib/usage-query';
 import {
   kilocode_users,
   microdollar_usage,
+  microdollar_usage_metadata,
   credit_transactions,
   auto_top_up_configs,
   user_auth_provider,
@@ -21,8 +22,11 @@ import {
   kiloclaw_subscriptions,
   user_push_tokens,
   channel_badge_counts,
+  cliSessions,
+  cli_sessions_v2,
+  feature,
 } from '@kilocode/db/schema';
-import { eq, and, isNull, inArray, sql, gt, gte, sum } from 'drizzle-orm';
+import { eq, and, or, isNull, isNotNull, inArray, sql, gt, gte, desc, sum } from 'drizzle-orm';
 import crypto from 'crypto';
 import { checkDiscordGuildMembership } from '@/lib/integrations/discord-guild-membership';
 import { AuthProviderIdSchema } from '@/lib/auth/provider-metadata';
@@ -74,6 +78,41 @@ const AutocompleteMetricsOutputSchema = z.object({
   cost: z.number(),
   requests: z.number(),
   tokens: z.number(),
+});
+
+const SessionUsageHistoryInputSchema = z.object({
+  viewType: ViewTypeSchema.default('personal'),
+  period: PeriodSchema.default('week'),
+  page: z.number().int().min(1).default(1),
+  limit: z.number().int().min(1).max(100).default(100),
+});
+
+const SessionUsageHistoryRowSchema = z.object({
+  sessionId: z.string().nullable(),
+  source: z.string().nullable(),
+  lastUsedAt: z.string(),
+  totalCost: z.number(),
+  requestCount: z.number(),
+  totalInputTokens: z.number(),
+  totalOutputTokens: z.number(),
+  totalCacheWriteTokens: z.number(),
+  totalCacheHitTokens: z.number(),
+  title: z.string().nullable(),
+  createdOnPlatform: z.string().nullable(),
+  gitUrl: z.string().nullable(),
+  organizationId: z.string().nullable(),
+});
+
+const SessionUsageHistoryOutputSchema = z.object({
+  sessions: z.array(SessionUsageHistoryRowSchema),
+  pagination: z.object({
+    page: z.number(),
+    limit: z.number(),
+    totalCount: z.number(),
+    totalPages: z.number(),
+    hasPreviousPage: z.boolean(),
+    hasNextPage: z.boolean(),
+  }),
 });
 
 const LinkAuthProviderInputSchema = z.object({
@@ -416,6 +455,159 @@ export const userRouter = createTRPCRouter({
       };
     }),
 
+  getSessionUsageHistory: baseProcedure
+    .input(SessionUsageHistoryInputSchema)
+    .output(SessionUsageHistoryOutputSchema)
+    .query(async ({ ctx, input }) => {
+      const { viewType, period, page, limit } = input;
+      const userId = ctx.user.id;
+
+      if (viewType !== 'personal' && viewType !== 'all') {
+        await ensureOrganizationAccess(ctx, viewType);
+      }
+
+      const dateThreshold = getDateThreshold(period);
+
+      let whereClause;
+      if (viewType === 'personal') {
+        whereClause = and(
+          eq(microdollar_usage.kilo_user_id, userId),
+          isNull(microdollar_usage.organization_id)
+        );
+      } else if (viewType === 'all') {
+        whereClause = eq(microdollar_usage.kilo_user_id, userId);
+      } else {
+        whereClause = and(
+          eq(microdollar_usage.kilo_user_id, userId),
+          eq(microdollar_usage.organization_id, viewType)
+        );
+      }
+
+      const offset = (page - 1) * limit;
+      const usageWhereClause = dateThreshold
+        ? and(
+            whereClause,
+            or(isNotNull(microdollar_usage_metadata.session_id), isNotNull(feature.feature)),
+            gte(microdollar_usage.created_at, dateThreshold)
+          )
+        : and(
+            whereClause,
+            or(isNotNull(microdollar_usage_metadata.session_id), isNotNull(feature.feature))
+          );
+      const usageGroupingKey = sql<string>`COALESCE(${microdollar_usage_metadata.session_id}, ${microdollar_usage.id}::text)`;
+
+      const result = await timedUsageQuery(
+        {
+          db: readDb,
+          route: 'user.getSessionUsageHistory',
+          queryLabel: 'user_session_usage_history',
+          scope: 'user',
+          period,
+        },
+        async tx => {
+          const [sessions, countRows] = await Promise.all([
+            tx
+              .select({
+                session_id: sql<string | null>`MAX(${microdollar_usage_metadata.session_id})`,
+                source: sql<string | null>`MAX(${feature.feature})`,
+                last_used_at: sql<string>`MAX(${microdollar_usage.created_at})`,
+                total_cost: sql<number>`COALESCE(SUM(${microdollar_usage.cost}), 0)::float`,
+                request_count: sql<number>`COUNT(*)::int`,
+                total_input_tokens: sql<number>`COALESCE(SUM(${microdollar_usage.input_tokens}), 0)::float`,
+                total_output_tokens: sql<number>`COALESCE(SUM(${microdollar_usage.output_tokens}), 0)::float`,
+                total_cache_write_tokens: sql<number>`COALESCE(SUM(${microdollar_usage.cache_write_tokens}), 0)::float`,
+                total_cache_hit_tokens: sql<number>`COALESCE(SUM(${microdollar_usage.cache_hit_tokens}), 0)::float`,
+                title: sql<
+                  string | null
+                >`COALESCE(MAX(${cliSessions.title}), MAX(${cli_sessions_v2.title}))`,
+                created_on_platform: sql<
+                  string | null
+                >`COALESCE(MAX(${cliSessions.created_on_platform}), MAX(${cli_sessions_v2.created_on_platform}))`,
+                git_url: sql<
+                  string | null
+                >`COALESCE(MAX(${cliSessions.git_url}), MAX(${cli_sessions_v2.git_url}))`,
+                organization_id: sql<
+                  string | null
+                >`COALESCE(MAX(${cliSessions.organization_id}::text), MAX(${cli_sessions_v2.organization_id}::text), MAX(${microdollar_usage.organization_id}::text))`,
+              })
+              .from(microdollar_usage)
+              .innerJoin(
+                microdollar_usage_metadata,
+                eq(microdollar_usage.id, microdollar_usage_metadata.id)
+              )
+              .leftJoin(feature, eq(microdollar_usage_metadata.feature_id, feature.feature_id))
+              .leftJoin(
+                cliSessions,
+                and(
+                  sql`${cliSessions.session_id}::text = ${microdollar_usage_metadata.session_id}`,
+                  eq(cliSessions.kilo_user_id, userId)
+                )
+              )
+              .leftJoin(
+                cli_sessions_v2,
+                and(
+                  eq(cli_sessions_v2.session_id, microdollar_usage_metadata.session_id),
+                  eq(cli_sessions_v2.kilo_user_id, userId)
+                )
+              )
+              .where(usageWhereClause)
+              .groupBy(usageGroupingKey)
+              .orderBy(desc(sql`MAX(${microdollar_usage.created_at})`))
+              .offset(offset)
+              .limit(limit),
+            tx
+              .select({
+                count: sql<number>`COUNT(DISTINCT ${usageGroupingKey})::int`,
+              })
+              .from(microdollar_usage)
+              .innerJoin(
+                microdollar_usage_metadata,
+                eq(microdollar_usage.id, microdollar_usage_metadata.id)
+              )
+              .leftJoin(feature, eq(microdollar_usage_metadata.feature_id, feature.feature_id))
+              .where(usageWhereClause),
+          ]);
+
+          return {
+            sessions,
+            totalCount: countRows[0]?.count ?? 0,
+          };
+        }
+      );
+
+      const totalPages = Math.ceil(result.totalCount / limit);
+
+      return {
+        sessions: result.sessions.map(row => {
+          const hasSessionId = row.session_id !== null;
+
+          return {
+            sessionId: row.session_id,
+            source: row.source,
+            lastUsedAt: row.last_used_at,
+            totalCost: row.total_cost,
+            requestCount: row.request_count,
+            totalInputTokens: row.total_input_tokens,
+            totalOutputTokens: row.total_output_tokens,
+            totalCacheWriteTokens: row.total_cache_write_tokens,
+            totalCacheHitTokens: row.total_cache_hit_tokens,
+            title: hasSessionId ? row.title : null,
+            createdOnPlatform: hasSessionId ? row.created_on_platform : null,
+            gitUrl: hasSessionId ? row.git_url : null,
+            organizationId: row.organization_id,
+          };
+        }),
+        pagination: {
+          page,
+          limit,
+          totalCount: result.totalCount,
+          totalPages,
+          hasPreviousPage: page > 1,
+          hasNextPage: page < totalPages,
+        },
+      };
+    }),
+
   toggleAutoTopUp: baseProcedure
     .input(
       z.object({
@@ -693,7 +885,11 @@ export const userRouter = createTRPCRouter({
         })
         .onConflictDoUpdate({
           target: [user_push_tokens.token],
-          set: { user_id: ctx.user.id, platform: input.platform, updated_at: sql`now()` },
+          set: {
+            user_id: ctx.user.id,
+            platform: input.platform,
+            updated_at: sql`now()`,
+          },
         });
       return { success: true };
     }),

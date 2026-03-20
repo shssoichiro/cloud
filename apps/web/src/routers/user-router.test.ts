@@ -1,9 +1,18 @@
 import { createCallerForUser } from '@/routers/test-utils';
 import { db } from '@/lib/drizzle';
-import { channel_badge_counts, kilocode_users } from '@kilocode/db/schema';
-import { eq, inArray } from 'drizzle-orm';
+import {
+  channel_badge_counts,
+  kilocode_users,
+  microdollar_usage,
+  microdollar_usage_metadata,
+  cli_sessions_v2,
+} from '@kilocode/db/schema';
+import { and, eq, inArray } from 'drizzle-orm';
 import { insertTestUser } from '@/tests/helpers/user.helper';
-import type { User } from '@kilocode/db/schema';
+import { createTestOrganization } from '@/tests/helpers/organization.helper';
+import { defineMicrodollarUsage } from '@/tests/helpers/microdollar-usage.helper';
+import { insertUsageRecord } from '@/lib/ai-gateway/processUsage';
+import type { User, Organization } from '@kilocode/db/schema';
 
 let testUser: User;
 let surveyTestUser: User;
@@ -148,7 +157,9 @@ describe('user router - submitCustomerSource', () => {
 
   it('saves the customer source to the database', async () => {
     const caller = await createCallerForUser(surveyTestUser.id);
-    const result = await caller.user.submitCustomerSource({ source: 'A YouTube video' });
+    const result = await caller.user.submitCustomerSource({
+      source: 'A YouTube video',
+    });
 
     expect(result).toEqual({ success: true });
 
@@ -187,7 +198,9 @@ describe('user router - submitCustomerSource', () => {
     const caller = await createCallerForUser(surveyTestUser.id);
     const maxString = 'a'.repeat(1000);
 
-    const result = await caller.user.submitCustomerSource({ source: maxString });
+    const result = await caller.user.submitCustomerSource({
+      source: maxString,
+    });
     expect(result).toEqual({ success: true });
 
     const updated = await db.query.kilocode_users.findFirst({
@@ -211,7 +224,9 @@ describe('user router - submitCustomerSource', () => {
   it('accepts 1000 chars of content with leading/trailing spaces (validates post-trim)', async () => {
     const caller = await createCallerForUser(surveyTestUser.id);
     const content = 'a'.repeat(1000);
-    const result = await caller.user.submitCustomerSource({ source: `  ${content}  ` });
+    const result = await caller.user.submitCustomerSource({
+      source: `  ${content}  `,
+    });
 
     expect(result).toEqual({ success: true });
 
@@ -250,7 +265,9 @@ describe('user router - submitCustomerSource', () => {
   describe('whitespace trimming on valid input', () => {
     it('trims leading and trailing whitespace before storing', async () => {
       const caller = await createCallerForUser(surveyTestUser.id);
-      const result = await caller.user.submitCustomerSource({ source: '  hello  ' });
+      const result = await caller.user.submitCustomerSource({
+        source: '  hello  ',
+      });
 
       expect(result).toEqual({ success: true });
 
@@ -262,7 +279,9 @@ describe('user router - submitCustomerSource', () => {
 
     it('preserves internal whitespace in stored value', async () => {
       const caller = await createCallerForUser(surveyTestUser.id);
-      const result = await caller.user.submitCustomerSource({ source: 'a YouTube video' });
+      const result = await caller.user.submitCustomerSource({
+        source: 'a YouTube video',
+      });
 
       expect(result).toEqual({ success: true });
 
@@ -324,7 +343,9 @@ describe('user router - skipCustomerSource', () => {
   it('does NOT overwrite a real answer when skipCustomerSource is called after submitCustomerSource', async () => {
     const caller = await createCallerForUser(skipTestUser.id);
 
-    await caller.user.submitCustomerSource({ source: 'Found it on Hacker News' });
+    await caller.user.submitCustomerSource({
+      source: 'Found it on Hacker News',
+    });
     await caller.user.skipCustomerSource();
 
     const updated = await db.query.kilocode_users.findFirst({
@@ -336,7 +357,9 @@ describe('user router - skipCustomerSource', () => {
   it('allows a real answer to overwrite a previous skip', async () => {
     const caller = await createCallerForUser(skipTestUser.id);
     await caller.user.skipCustomerSource();
-    await caller.user.submitCustomerSource({ source: 'Changed my mind — Reddit' });
+    await caller.user.submitCustomerSource({
+      source: 'Changed my mind — Reddit',
+    });
 
     const updated = await db.query.kilocode_users.findFirst({
       where: eq(kilocode_users.id, skipTestUser.id),
@@ -438,5 +461,555 @@ describe('user router - getUnreadCounts', () => {
     await db
       .delete(channel_badge_counts)
       .where(inArray(channel_badge_counts.user_id, [user.id, other.id]));
+  });
+});
+
+describe('user router - getSessionUsageHistory', () => {
+  let sessionUsageUser: User;
+  let sessionUsageOrg: Organization;
+  const insertedUsageIds: string[] = [];
+  const insertedSessionIds: string[] = [];
+
+  const insertSessionUsage = async ({
+    sessionId,
+    feature,
+    createdAt,
+    organizationId,
+    cost,
+    inputTokens,
+    outputTokens,
+    cacheHitTokens,
+    cacheWriteTokens,
+  }: {
+    sessionId: string | null;
+    feature?: string | null;
+    createdAt: string;
+    organizationId: string | null;
+    cost: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheHitTokens: number;
+    cacheWriteTokens: number;
+  }) => {
+    const { core, metadata } = defineMicrodollarUsage();
+
+    await insertUsageRecord(
+      {
+        ...core,
+        kilo_user_id: sessionUsageUser.id,
+        organization_id: organizationId,
+        created_at: createdAt,
+        cost,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cache_hit_tokens: cacheHitTokens,
+        cache_write_tokens: cacheWriteTokens,
+      },
+      {
+        ...metadata,
+        created_at: createdAt,
+        message_id: `user-router-session-history-${core.id}`,
+        session_id: sessionId,
+        feature: feature ?? null,
+      }
+    );
+
+    insertedUsageIds.push(core.id);
+  };
+
+  const insertSession = async ({
+    sessionId,
+    title,
+    createdOnPlatform,
+    gitUrl,
+    organizationId,
+  }: {
+    sessionId: string;
+    title: string;
+    createdOnPlatform: string;
+    gitUrl: string | null;
+    organizationId: string | null;
+  }) => {
+    await db.insert(cli_sessions_v2).values({
+      session_id: sessionId,
+      kilo_user_id: sessionUsageUser.id,
+      title,
+      created_on_platform: createdOnPlatform,
+      git_url: gitUrl,
+      organization_id: organizationId,
+    });
+
+    insertedSessionIds.push(sessionId);
+  };
+
+  beforeAll(async () => {
+    sessionUsageUser = await insertTestUser({
+      google_user_email: 'session-usage-history@example.com',
+      google_user_name: 'Session Usage History User',
+    });
+
+    sessionUsageOrg = await createTestOrganization(
+      'Session Usage History Org',
+      sessionUsageUser.id,
+      0
+    );
+  });
+
+  afterEach(async () => {
+    if (insertedSessionIds.length > 0) {
+      await db
+        .delete(cli_sessions_v2)
+        .where(
+          and(
+            eq(cli_sessions_v2.kilo_user_id, sessionUsageUser.id),
+            inArray(cli_sessions_v2.session_id, insertedSessionIds)
+          )
+        );
+      insertedSessionIds.length = 0;
+    }
+
+    if (insertedUsageIds.length > 0) {
+      await db
+        .delete(microdollar_usage_metadata)
+        .where(inArray(microdollar_usage_metadata.id, insertedUsageIds));
+      await db.delete(microdollar_usage).where(inArray(microdollar_usage.id, insertedUsageIds));
+      insertedUsageIds.length = 0;
+    }
+  });
+
+  it('returns newest sessions first with usage aggregation and session enrichment', async () => {
+    await insertSession({
+      sessionId: 'ses-usage-newest',
+      title: 'Newest Session',
+      createdOnPlatform: 'cli',
+      gitUrl: 'https://github.com/kilo/newest-repo.git',
+      organizationId: null,
+    });
+
+    await insertSessionUsage({
+      sessionId: 'ses-usage-newest',
+      createdAt: '2026-01-10T10:00:00.000Z',
+      organizationId: null,
+      cost: 1_000,
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheHitTokens: 10,
+      cacheWriteTokens: 5,
+    });
+
+    await insertSessionUsage({
+      sessionId: 'ses-usage-middle',
+      createdAt: '2026-01-11T10:00:00.000Z',
+      organizationId: null,
+      cost: 500,
+      inputTokens: 80,
+      outputTokens: 40,
+      cacheHitTokens: 8,
+      cacheWriteTokens: 4,
+    });
+
+    await insertSessionUsage({
+      sessionId: 'ses-usage-newest',
+      createdAt: '2026-01-12T10:00:00.000Z',
+      organizationId: null,
+      cost: 2_000,
+      inputTokens: 200,
+      outputTokens: 75,
+      cacheHitTokens: 20,
+      cacheWriteTokens: 10,
+    });
+
+    const caller = await createCallerForUser(sessionUsageUser.id);
+    const result = await caller.user.getSessionUsageHistory({
+      viewType: 'all',
+      period: 'all',
+      page: 1,
+      limit: 100,
+    });
+
+    expect(result.sessions.map(session => session.sessionId)).toEqual([
+      'ses-usage-newest',
+      'ses-usage-middle',
+    ]);
+
+    expect(result.sessions[0]).toMatchObject({
+      sessionId: 'ses-usage-newest',
+      totalCost: 3_000,
+      requestCount: 2,
+      totalInputTokens: 300,
+      totalOutputTokens: 125,
+      totalCacheHitTokens: 30,
+      totalCacheWriteTokens: 15,
+      title: 'Newest Session',
+      createdOnPlatform: 'cli',
+      gitUrl: 'https://github.com/kilo/newest-repo.git',
+      organizationId: null,
+    });
+
+    expect(new Date(result.sessions[0].lastUsedAt).toISOString()).toBe('2026-01-12T10:00:00.000Z');
+    expect(result.pagination).toMatchObject({
+      page: 1,
+      limit: 100,
+      totalCount: 2,
+      totalPages: 1,
+      hasPreviousPage: false,
+      hasNextPage: false,
+    });
+  });
+
+  it('applies personal, organization, and all usage scoping', async () => {
+    await insertSessionUsage({
+      sessionId: 'ses-scope-personal',
+      createdAt: '2026-02-01T10:00:00.000Z',
+      organizationId: null,
+      cost: 700,
+      inputTokens: 70,
+      outputTokens: 35,
+      cacheHitTokens: 7,
+      cacheWriteTokens: 3,
+    });
+
+    await insertSessionUsage({
+      sessionId: 'ses-scope-org',
+      createdAt: '2026-02-02T10:00:00.000Z',
+      organizationId: sessionUsageOrg.id,
+      cost: 900,
+      inputTokens: 90,
+      outputTokens: 45,
+      cacheHitTokens: 9,
+      cacheWriteTokens: 4,
+    });
+
+    await insertSessionUsage({
+      sessionId: null,
+      createdAt: '2026-02-03T10:00:00.000Z',
+      organizationId: null,
+      cost: 400,
+      inputTokens: 40,
+      outputTokens: 20,
+      cacheHitTokens: 4,
+      cacheWriteTokens: 2,
+    });
+
+    const caller = await createCallerForUser(sessionUsageUser.id);
+
+    const personalResult = await caller.user.getSessionUsageHistory({
+      viewType: 'personal',
+      period: 'all',
+      page: 1,
+      limit: 100,
+    });
+    expect(personalResult.sessions.map(session => session.sessionId)).toEqual([
+      'ses-scope-personal',
+    ]);
+
+    const orgResult = await caller.user.getSessionUsageHistory({
+      viewType: sessionUsageOrg.id,
+      period: 'all',
+      page: 1,
+      limit: 100,
+    });
+    expect(orgResult.sessions.map(session => session.sessionId)).toEqual(['ses-scope-org']);
+    expect(orgResult.sessions[0]?.organizationId).toBe(sessionUsageOrg.id);
+
+    const allResult = await caller.user.getSessionUsageHistory({
+      viewType: 'all',
+      period: 'all',
+      page: 1,
+      limit: 100,
+    });
+    expect(allResult.sessions.map(session => session.sessionId)).toEqual([
+      'ses-scope-org',
+      'ses-scope-personal',
+    ]);
+  });
+
+  it('includes sessionless usage rows when feature is recorded', async () => {
+    await insertSessionUsage({
+      sessionId: null,
+      feature: 'slack',
+      createdAt: '2026-02-05T10:00:00.000Z',
+      organizationId: null,
+      cost: 1_200,
+      inputTokens: 120,
+      outputTokens: 60,
+      cacheHitTokens: 12,
+      cacheWriteTokens: 6,
+    });
+
+    const caller = await createCallerForUser(sessionUsageUser.id);
+    const result = await caller.user.getSessionUsageHistory({
+      viewType: 'all',
+      period: 'all',
+      page: 1,
+      limit: 100,
+    });
+
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0]).toMatchObject({
+      sessionId: null,
+      source: 'slack',
+      totalCost: 1_200,
+      requestCount: 1,
+      totalInputTokens: 120,
+      totalOutputTokens: 60,
+      totalCacheHitTokens: 12,
+      totalCacheWriteTokens: 6,
+      title: null,
+      createdOnPlatform: null,
+      gitUrl: null,
+      organizationId: null,
+    });
+  });
+
+  it('does not group sessionless rows together when feature matches', async () => {
+    await insertSessionUsage({
+      sessionId: null,
+      feature: 'discord',
+      createdAt: '2026-02-06T10:00:00.000Z',
+      organizationId: null,
+      cost: 600,
+      inputTokens: 60,
+      outputTokens: 30,
+      cacheHitTokens: 6,
+      cacheWriteTokens: 3,
+    });
+
+    await insertSessionUsage({
+      sessionId: null,
+      feature: 'discord',
+      createdAt: '2026-02-07T10:00:00.000Z',
+      organizationId: null,
+      cost: 900,
+      inputTokens: 90,
+      outputTokens: 45,
+      cacheHitTokens: 9,
+      cacheWriteTokens: 4,
+    });
+
+    const caller = await createCallerForUser(sessionUsageUser.id);
+    const result = await caller.user.getSessionUsageHistory({
+      viewType: 'all',
+      period: 'all',
+      page: 1,
+      limit: 100,
+    });
+
+    expect(result.sessions).toHaveLength(2);
+    expect(result.sessions.map(session => session.source)).toEqual(['discord', 'discord']);
+    expect(result.sessions.map(session => session.totalCost)).toEqual([900, 600]);
+    expect(result.sessions.map(session => session.requestCount)).toEqual([1, 1]);
+    expect(result.pagination.totalCount).toBe(2);
+  });
+
+  it('excludes rows without both session id and feature', async () => {
+    await insertSessionUsage({
+      sessionId: null,
+      createdAt: '2026-02-08T10:00:00.000Z',
+      organizationId: null,
+      cost: 500,
+      inputTokens: 50,
+      outputTokens: 25,
+      cacheHitTokens: 5,
+      cacheWriteTokens: 2,
+    });
+
+    await insertSessionUsage({
+      sessionId: null,
+      feature: 'bot',
+      createdAt: '2026-02-09T10:00:00.000Z',
+      organizationId: null,
+      cost: 700,
+      inputTokens: 70,
+      outputTokens: 35,
+      cacheHitTokens: 7,
+      cacheWriteTokens: 3,
+    });
+
+    const caller = await createCallerForUser(sessionUsageUser.id);
+    const result = await caller.user.getSessionUsageHistory({
+      viewType: 'all',
+      period: 'all',
+      page: 1,
+      limit: 100,
+    });
+
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0]).toMatchObject({
+      sessionId: null,
+      source: 'bot',
+      totalCost: 700,
+      requestCount: 1,
+    });
+  });
+
+  it('applies period filtering to session and source-only rows', async () => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    await insertSessionUsage({
+      sessionId: 'ses-period-recent',
+      createdAt: new Date(now - 2 * dayMs).toISOString(),
+      organizationId: null,
+      cost: 1_000,
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheHitTokens: 10,
+      cacheWriteTokens: 5,
+    });
+
+    await insertSessionUsage({
+      sessionId: 'ses-period-old',
+      createdAt: new Date(now - 15 * dayMs).toISOString(),
+      organizationId: null,
+      cost: 1_100,
+      inputTokens: 110,
+      outputTokens: 55,
+      cacheHitTokens: 11,
+      cacheWriteTokens: 5,
+    });
+
+    await insertSessionUsage({
+      sessionId: null,
+      feature: 'embeddings',
+      createdAt: new Date(now - dayMs).toISOString(),
+      organizationId: null,
+      cost: 800,
+      inputTokens: 80,
+      outputTokens: 40,
+      cacheHitTokens: 8,
+      cacheWriteTokens: 4,
+    });
+
+    await insertSessionUsage({
+      sessionId: null,
+      feature: 'slack',
+      createdAt: new Date(now - 20 * dayMs).toISOString(),
+      organizationId: null,
+      cost: 900,
+      inputTokens: 90,
+      outputTokens: 45,
+      cacheHitTokens: 9,
+      cacheWriteTokens: 4,
+    });
+
+    const caller = await createCallerForUser(sessionUsageUser.id);
+
+    const weeklyResult = await caller.user.getSessionUsageHistory({
+      viewType: 'all',
+      period: 'week',
+      page: 1,
+      limit: 100,
+    });
+
+    expect(weeklyResult.sessions).toHaveLength(2);
+    expect(
+      weeklyResult.sessions.find(session => session.sessionId === 'ses-period-recent')
+    ).toMatchObject({
+      source: null,
+      totalCost: 1_000,
+    });
+    expect(weeklyResult.sessions.find(session => session.sessionId === null)).toMatchObject({
+      source: 'embeddings',
+      totalCost: 800,
+    });
+    expect(weeklyResult.sessions.some(session => session.sessionId === 'ses-period-old')).toBe(
+      false
+    );
+    expect(weeklyResult.sessions.some(session => session.source === 'slack')).toBe(false);
+
+    const allTimeResult = await caller.user.getSessionUsageHistory({
+      viewType: 'all',
+      period: 'all',
+      page: 1,
+      limit: 100,
+    });
+
+    expect(allTimeResult.sessions).toHaveLength(4);
+  });
+
+  it('returns expected pagination metadata and slices', async () => {
+    await insertSessionUsage({
+      sessionId: 'ses-page-1',
+      createdAt: '2026-03-01T10:00:00.000Z',
+      organizationId: null,
+      cost: 100,
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheHitTokens: 1,
+      cacheWriteTokens: 1,
+    });
+
+    await insertSessionUsage({
+      sessionId: 'ses-page-2',
+      createdAt: '2026-03-02T10:00:00.000Z',
+      organizationId: null,
+      cost: 100,
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheHitTokens: 1,
+      cacheWriteTokens: 1,
+    });
+
+    await insertSessionUsage({
+      sessionId: 'ses-page-3',
+      createdAt: '2026-03-03T10:00:00.000Z',
+      organizationId: null,
+      cost: 100,
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheHitTokens: 1,
+      cacheWriteTokens: 1,
+    });
+
+    const caller = await createCallerForUser(sessionUsageUser.id);
+
+    const page1 = await caller.user.getSessionUsageHistory({
+      viewType: 'all',
+      period: 'all',
+      page: 1,
+      limit: 1,
+    });
+    expect(page1.sessions[0]?.sessionId).toBe('ses-page-3');
+    expect(page1.pagination).toMatchObject({
+      page: 1,
+      limit: 1,
+      totalCount: 3,
+      totalPages: 3,
+      hasPreviousPage: false,
+      hasNextPage: true,
+    });
+
+    const page2 = await caller.user.getSessionUsageHistory({
+      viewType: 'all',
+      period: 'all',
+      page: 2,
+      limit: 1,
+    });
+    expect(page2.sessions[0]?.sessionId).toBe('ses-page-2');
+    expect(page2.pagination).toMatchObject({
+      page: 2,
+      limit: 1,
+      totalCount: 3,
+      totalPages: 3,
+      hasPreviousPage: true,
+      hasNextPage: true,
+    });
+
+    const page3 = await caller.user.getSessionUsageHistory({
+      viewType: 'all',
+      period: 'all',
+      page: 3,
+      limit: 1,
+    });
+    expect(page3.sessions[0]?.sessionId).toBe('ses-page-1');
+    expect(page3.pagination).toMatchObject({
+      page: 3,
+      limit: 1,
+      totalCount: 3,
+      totalPages: 3,
+      hasPreviousPage: true,
+      hasNextPage: false,
+    });
   });
 });
