@@ -2,7 +2,6 @@
 process.env.STRIPE_KILOCLAW_COMMIT_PRICE_ID ||= 'price_commit';
 process.env.STRIPE_KILOCLAW_STANDARD_PRICE_ID ||= 'price_standard';
 process.env.STRIPE_KILOCLAW_STANDARD_INTRO_PRICE_ID ||= 'price_standard_intro';
-process.env.STRIPE_KILOCLAW_BILLING_START ||= '2026-03-23T00:00:00Z';
 
 import {
   describe,

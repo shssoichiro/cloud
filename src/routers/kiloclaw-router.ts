@@ -17,7 +17,7 @@ import {
   KILOCLAW_API_URL,
   STRIPE_KILOCLAW_EARLYBIRD_PRICE_ID,
   STRIPE_KILOCLAW_EARLYBIRD_COUPON_ID,
-  STRIPE_KILOCLAW_BILLING_START,
+
   KILOCLAW_BILLING_ENFORCEMENT,
 } from '@/lib/config.server';
 import { db } from '@/lib/drizzle';
@@ -1252,10 +1252,6 @@ export const kiloclawRouter = createTRPCRouter({
         cancel_url: `${APP_URL}/claw?checkout=cancelled`,
         subscription_data: {
           metadata: { type: 'kiloclaw', plan: input.plan, kiloUserId: ctx.user.id },
-          ...(STRIPE_KILOCLAW_BILLING_START &&
-          Date.now() < new Date(STRIPE_KILOCLAW_BILLING_START).getTime()
-            ? { trial_end: Math.floor(new Date(STRIPE_KILOCLAW_BILLING_START).getTime() / 1000) }
-            : {}),
         },
         metadata: { type: 'kiloclaw', plan: input.plan, kiloUserId: ctx.user.id },
       });
