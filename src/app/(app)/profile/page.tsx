@@ -7,6 +7,7 @@ import { getCustomerInfo } from '@/lib/customerInfo';
 import { DevNukeAccountButton } from '@/components/dev/DevNukeAccountButton';
 import { DevConsumeCreditsButton } from '@/components/dev/DevConsumeCreditsButton';
 import { getUserFromAuthOrRedirect } from '@/lib/user.server';
+import { getUserAuthProviders } from '@/lib/user';
 import { getExtensionUrl } from '@/components/auth/getExtensionUrl';
 import { cookies } from 'next/headers';
 import CreditPurchaseOptions from '@/components/payment/CreditPurchaseOptions';
@@ -28,6 +29,10 @@ export default async function ProfilePage({ searchParams }: AppPageProps) {
   const user = await getUserFromAuthOrRedirect('/users/sign_in');
   const params = await searchParams;
   const customerInfo = await getCustomerInfo(user, params);
+
+  const authProviders = await getUserAuthProviders(user.id);
+  const githubProvider = authProviders.find(p => p.provider === 'github');
+  const githubOAuthDisplayName = githubProvider?.display_name ?? null;
 
   const isDevelopment = process.env.NODE_ENV === 'development';
   const isKiloPassUiEnabled =
@@ -51,6 +56,7 @@ export default async function ProfilePage({ searchParams }: AppPageProps) {
               imageUrl={user.google_user_image_url}
               linkedinUrl={user.linkedin_url ?? null}
               githubUrl={user.github_url ?? null}
+              githubOAuthDisplayName={githubOAuthDisplayName}
             />
           </CardContent>
         </Card>

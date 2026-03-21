@@ -126,6 +126,7 @@ export type CreateOrUpdateUserArgs = {
   hosted_domain: string | null;
   provider: AuthProviderId;
   provider_account_id: string;
+  display_name: string | null;
 };
 
 export async function findAndSyncExistingUser(args: CreateOrUpdateUserArgs) {
@@ -311,6 +312,7 @@ export async function createOrUpdateUser(
       avatar_url: args.google_user_image_url,
       email: args.google_user_email,
       hosted_domain: args.hosted_domain,
+      display_name: args.display_name,
     });
 
     return savedUser;
@@ -363,6 +365,7 @@ export async function linkAccountToExistingUser(
     email: authProviderData.google_user_email,
     avatar_url: authProviderData.google_user_image_url,
     hosted_domain: authProviderData.hosted_domain,
+    display_name: authProviderData.display_name,
   });
 
   if (!linkResult.success) {

@@ -14,12 +14,14 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import Link from 'next/link';
 
 type EditProfileDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   linkedinUrl: string | null;
   githubUrl: string | null;
+  githubLinkedViaOAuth: boolean;
 };
 
 function isValidHttpUrlOrEmpty(value: string): boolean {
@@ -37,6 +39,7 @@ export function EditProfileDialog({
   onOpenChange,
   linkedinUrl,
   githubUrl,
+  githubLinkedViaOAuth,
 }: EditProfileDialogProps) {
   const router = useRouter();
   const trpc = useTRPC();
@@ -89,7 +92,9 @@ export function EditProfileDialog({
 
     updateProfileMutation.mutate({
       linkedin_url: trimmedLinkedin === '' ? null : trimmedLinkedin,
-      github_url: trimmedGithub === '' ? null : trimmedGithub,
+      ...(githubLinkedViaOAuth
+        ? {}
+        : { github_url: trimmedGithub === '' ? null : trimmedGithub }),
     });
   }
 
@@ -116,17 +121,28 @@ export function EditProfileDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="github-url">GitHub Profile URL</Label>
-            <Input
-              id="github-url"
-              placeholder="https://github.com/yourusername"
-              value={githubValue}
-              onChange={e => {
-                setGithubValue(e.target.value);
-                setGithubError(null);
-              }}
-              aria-invalid={githubError !== null}
-            />
-            {githubError && <p className="text-destructive text-sm">{githubError}</p>}
+            {githubLinkedViaOAuth ? (
+              <p className="text-muted-foreground text-sm">
+                Linked via GitHub.{' '}
+                <Link href="/connected-accounts" className="text-primary hover:underline">
+                  Change in Connected Accounts
+                </Link>
+              </p>
+            ) : (
+              <>
+                <Input
+                  id="github-url"
+                  placeholder="https://github.com/yourusername"
+                  value={githubValue}
+                  onChange={e => {
+                    setGithubValue(e.target.value);
+                    setGithubError(null);
+                  }}
+                  aria-invalid={githubError !== null}
+                />
+                {githubError && <p className="text-destructive text-sm">{githubError}</p>}
+              </>
+            )}
           </div>
           {updateProfileMutation.error && (
             <p className="text-destructive text-sm">Failed to save profile. Please try again.</p>

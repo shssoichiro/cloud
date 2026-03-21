@@ -104,16 +104,20 @@ function createGoogleAccountInfo(
     hosted_domain: googleProfile.hd ?? hosted_domain_specials.non_workspace_google_account,
     provider: account.provider,
     provider_account_id: account.providerAccountId,
+    display_name: null, // Google has no public profile page
   };
 }
 
 function createGitHubAccountInfo(
   account: Account,
-  user: NextUser | AdapterUser
+  user: NextUser | AdapterUser,
+  profile: Profile | undefined
 ): CreateOrUpdateUserArgs | null {
   if (account.provider !== 'github') return null;
   assert(user.email, 'User email is required for GitHub auth');
   assert(user.name, 'User name is required for GitHub auth');
+
+  const githubProfile = profile as { login?: string } | undefined;
 
   return {
     google_user_email: user.email,
@@ -122,6 +126,7 @@ function createGitHubAccountInfo(
     google_user_image_url: user.image || '',
     provider: account.provider,
     provider_account_id: account.providerAccountId,
+    display_name: githubProfile?.login ?? null,
   };
 }
 
@@ -140,6 +145,7 @@ function createGitlabAccountInfo(
     google_user_image_url: user.image || '',
     provider: account.provider,
     provider_account_id: account.providerAccountId,
+    display_name: null, // TODO: populate with profile.username when GitLab auto-link is implemented
   };
 }
 
@@ -158,6 +164,7 @@ function createLinkedInAccountInfo(
     google_user_image_url: user.image || '',
     provider: account.provider,
     provider_account_id: account.providerAccountId,
+    display_name: null, // LinkedIn API does not expose public profile URLs
   };
 }
 
@@ -177,6 +184,7 @@ function createFakeAccountInfo(
     hosted_domain: hosted_domain_specials.fake_devonly,
     provider: account.provider,
     provider_account_id: account.providerAccountId,
+    display_name: null,
   };
 }
 
@@ -196,6 +204,7 @@ function createSSOAccountInfo(
     google_user_image_url: user.image || '',
     provider: account.provider,
     provider_account_id: account.providerAccountId,
+    display_name: null, // SSO providers don't have public profile pages
   };
 }
 
@@ -239,6 +248,7 @@ function createEmailAccountInfo(
     hosted_domain,
     provider: account.provider,
     provider_account_id: user.email,
+    display_name: null, // Email auth has no profile page
   };
 }
 
@@ -249,7 +259,7 @@ function createAccountInfo(
 ): CreateOrUpdateUserArgs {
   const accountInfo =
     createGoogleAccountInfo(account, user, profile) ??
-    createGitHubAccountInfo(account, user) ??
+    createGitHubAccountInfo(account, user, profile) ??
     createGitlabAccountInfo(account, user) ??
     createLinkedInAccountInfo(account, user) ??
     createEmailAccountInfo(account, user) ??
