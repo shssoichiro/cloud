@@ -29,6 +29,16 @@ pnpm start           # expo start
 - No inline styles or color literals in components — use the theme system in `src/constants/theme.ts`.
 - All lint rules are set to `error`, not `warn`. Fix violations, don't suppress them.
 
+## Fixing Lint Errors
+
+When resolving lint errors, always try the autofix first before editing manually:
+
+```bash
+npx eslint --fix <file-or-directory>
+```
+
+Only hand-fix errors that `--fix` cannot resolve.
+
 ## Change Checklist
 
 Before submitting any change:
