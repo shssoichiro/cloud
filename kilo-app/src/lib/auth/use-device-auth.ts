@@ -170,7 +170,6 @@ export function useDeviceAuth(): DeviceAuthResult {
   }, [cleanup, poll]);
 
   const cancel = useCallback(() => {
-    const currentCode = state.code;
     cleanup();
     setState({
       status: 'idle',
@@ -179,12 +178,7 @@ export function useDeviceAuth(): DeviceAuthResult {
       error: undefined,
       verificationUrl: undefined,
     });
-    if (currentCode) {
-      void fetch(`${API_BASE_URL}/api/device-auth/codes/${currentCode}`, {
-        method: 'DELETE',
-      });
-    }
-  }, [cleanup, state.code]);
+  }, [cleanup]);
 
   const openBrowser = useCallback(async () => {
     if (state.verificationUrl) {
