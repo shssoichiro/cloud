@@ -12,6 +12,12 @@ Kilo App is an Expo (React Native) mobile application using Expo Router for file
 - **Linting**: ESLint 9 flat config with strict type-checked rules, unicorn, sonarjs, import-x, promise, react-native
 - **Formatting**: oxfmt
 
+## Environment Setup
+
+Follow the official Expo guide to set up the development environment: https://docs.expo.dev/get-started/set-up-your-environment/
+
+The dev server (`pnpm start`) is always started by the user — do not start it yourself.
+
 ## Commands
 
 ```bash
@@ -19,7 +25,6 @@ pnpm typecheck       # tsgo --noEmit
 pnpm lint            # expo lint (eslint)
 pnpm format          # oxfmt src
 pnpm format:check    # oxfmt --list-different src
-pnpm start           # expo start
 ```
 
 ## Installing Dependencies
