@@ -1,40 +1,27 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Check, Loader2, MessageSquare } from 'lucide-react';
+import { CheckCircle2, Loader2, Send, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useKiloClawPairing, useRefreshPairing } from '@/hooks/useKiloClaw';
 import { Button } from '@/components/ui/button';
 import type { ClawMutations } from './claw.types';
 import { OnboardingStepView } from './OnboardingStepView';
-import { TelegramIcon } from './icons/TelegramIcon';
-import { DiscordIcon } from './icons/DiscordIcon';
 
 type PairingChannelId = 'telegram' | 'discord';
 
-const CHANNEL_META: Record<
-  PairingChannelId,
-  {
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    instruction: string;
-  }
-> = {
+const CHANNEL_META: Record<PairingChannelId, { label: string; instruction: string }> = {
   telegram: {
     label: 'Telegram',
-    icon: TelegramIcon,
     instruction:
-      'Open Telegram and send any message to your bot. The bot will reply with a pairing request — we\u2019ll pick it up automatically.',
+      'Open Telegram and send any message to your bot. The bot will reply with a pairing request \u2014 we\u2019ll pick it up automatically.',
   },
   discord: {
     label: 'Discord',
-    icon: DiscordIcon,
     instruction:
-      'Open Discord and send a DM to your bot. The bot will reply with a pairing request — we\u2019ll pick it up automatically.',
+      'Open Discord and send a DM to your bot. The bot will reply with a pairing request \u2014 we\u2019ll pick it up automatically.',
   },
 };
-
-// ── Stateful wrapper (hooks + mutations) ────────────────────────────
 
 export function ChannelPairingStep({
   channelId,
@@ -47,12 +34,8 @@ export function ChannelPairingStep({
   onComplete: () => void;
   onSkip: () => void;
 }) {
-  // Subscribe to the normal pairing query (shared cache with Settings tab)
   const { data: pairingData } = useKiloClawPairing(true);
 
-  // Bust the KV cache every 5 seconds so new requests appear quickly.
-  // useRefreshPairing returns a fresh closure each render, so pin it in a ref
-  // to keep the interval stable.
   const refreshPairing = useRefreshPairing();
   const refreshRef = useRef(refreshPairing);
   refreshRef.current = refreshPairing;
@@ -65,7 +48,6 @@ export function ChannelPairingStep({
     return () => clearInterval(id);
   }, []);
 
-  // Find the first pairing request matching this channel
   const matchingRequest = pairingData?.requests?.find(
     (r: { channel: string; code: string; id: string }) => r.channel === channelId
   );
@@ -123,45 +105,57 @@ export function ChannelPairingStepView({
         currentStep={5}
         totalSteps={5}
         title={`Pair your ${meta.label} bot`}
-        description="A pairing request was detected — approve it to link your account."
-        contentClassName="gap-8"
+        description={meta.instruction}
+        contentClassName="gap-6"
       >
-        <div className="border-border flex items-center justify-between rounded-lg border p-4">
-          <div className="flex items-center gap-3">
-            <MessageSquare className="text-muted-foreground h-4 w-4 shrink-0" />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">
-                  {matchingRequest.code}
-                </span>
-                <span className="text-muted-foreground text-xs capitalize">
-                  {matchingRequest.channel}
-                </span>
-              </div>
-              <p className="text-muted-foreground mt-0.5 text-xs">User {matchingRequest.id}</p>
-            </div>
+        <div className="border-border bg-muted/30 flex flex-col rounded-lg border">
+          <div className="flex items-center gap-2 px-5 pt-5 pb-4">
+            <Send className="text-muted-foreground h-4 w-4" />
+            <span className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
+              Pairing request received
+            </span>
           </div>
-          <Button
-            size="sm"
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
-            onClick={() => onApprove?.(matchingRequest.channel, matchingRequest.code)}
-            disabled={isApproving}
-          >
-            {isApproving ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Check className="h-3 w-3" />
-            )}
-            Approve
-          </Button>
+
+          <div className="border-border mx-5 flex items-center justify-between border-b pb-4">
+            <span className="text-muted-foreground text-sm">{meta.label} user ID</span>
+            <span className="text-foreground font-mono text-sm">{matchingRequest.id}</span>
+          </div>
+
+          <div className="flex flex-col items-center gap-2 px-5 py-6">
+            <span className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
+              Pairing code
+            </span>
+            <span className="text-foreground font-mono text-3xl font-bold tracking-[0.25em]">
+              {matchingRequest.code}
+            </span>
+          </div>
         </div>
+
+        <p className="text-muted-foreground/70 text-center text-sm">
+          A user on {meta.label} is requesting access to your bot. Only approve if you initiated
+          this.
+        </p>
+
+        <Button
+          className="w-full cursor-pointer bg-emerald-500 py-5 text-base font-semibold text-white hover:bg-emerald-600"
+          onClick={() => onApprove?.(matchingRequest.channel, matchingRequest.code)}
+          disabled={isApproving}
+        >
+          {isApproving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <CheckCircle2 className="h-4 w-4" />
+          )}
+          Authorize this request
+        </Button>
 
         <button
           type="button"
-          className="text-muted-foreground/50 hover:text-muted-foreground mx-auto text-sm transition-colors"
+          className="text-muted-foreground/50 hover:text-muted-foreground mx-auto flex cursor-pointer items-center gap-1.5 text-sm transition-colors"
           onClick={onSkip}
         >
-          Skip — I&apos;ll pair later from Settings
+          <XCircle className="h-3.5 w-3.5" />
+          Decline
         </button>
       </OnboardingStepView>
     );
