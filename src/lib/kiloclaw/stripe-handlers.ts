@@ -247,7 +247,20 @@ export async function ensureAutoIntroSchedule(
     if (!scheduleId) return;
     const schedule = await stripe.subscriptionSchedules.retrieve(scheduleId);
 
-    if (schedule.metadata?.origin === 'auto-intro') {
+    const isAutoIntro = schedule.metadata?.origin === 'auto-intro';
+
+    // A schedule created via from_subscription without metadata is likely a
+    // half-created auto-intro schedule (create succeeded but the subsequent
+    // update that sets metadata + phases hasn't run yet, or the worker died
+    // before it could). Claim it by tagging it before attempting repair.
+    const isUntagged = !schedule.metadata?.origin;
+    if (isUntagged) {
+      await stripe.subscriptionSchedules.update(schedule.id, {
+        metadata: { origin: 'auto-intro' },
+      });
+    }
+
+    if (isAutoIntro || isUntagged) {
       const valid = await validateOrRepairAutoIntroSchedule(schedule, stripeSubscriptionId, userId);
       if (!valid) {
         logError('Auto-intro schedule is unrecoverable, skipping', {
@@ -373,7 +386,19 @@ async function handleAutoIntroCreateRace(
   });
 
   const existingSchedule = await stripe.subscriptionSchedules.retrieve(refetchedScheduleId);
-  if (existingSchedule.metadata?.origin === 'auto-intro') {
+
+  // The race winner may not have tagged the schedule yet (metadata is set in
+  // a separate update call). Treat untagged schedules as auto-intro since
+  // only auto-intro setup creates schedules via from_subscription.
+  const isAutoIntro = existingSchedule.metadata?.origin === 'auto-intro';
+  const isUntagged = !existingSchedule.metadata?.origin;
+  if (isUntagged) {
+    await stripe.subscriptionSchedules.update(existingSchedule.id, {
+      metadata: { origin: 'auto-intro' },
+    });
+  }
+
+  if (isAutoIntro || isUntagged) {
     const valid = await validateOrRepairAutoIntroSchedule(
       existingSchedule,
       stripeSubscriptionId,
