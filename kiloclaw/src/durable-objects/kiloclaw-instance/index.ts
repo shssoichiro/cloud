@@ -1431,6 +1431,12 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       );
       await this.scheduleAlarm();
 
+      this.emitEvent({
+        event: 'instance.restarting',
+        status: 'restarting',
+        label: action,
+      });
+
       this.ctx.waitUntil(this.restartMachineInBackground());
       return { success: true };
     } catch (err) {
