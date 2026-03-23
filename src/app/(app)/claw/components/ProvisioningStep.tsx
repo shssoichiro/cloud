@@ -35,12 +35,14 @@ export function ProvisioningStep({
   channelTokens,
   instanceRunning,
   mutations,
+  totalSteps = 4,
   onComplete,
 }: {
   preset: ExecPreset;
   channelTokens: Record<string, string> | null;
   instanceRunning: boolean;
   mutations: ClawMutations;
+  totalSteps?: number;
   onComplete: () => void;
 }) {
   const completedRef = useRef(false);
@@ -110,7 +112,7 @@ export function ProvisioningStep({
     );
   }, [instanceRunning, preset]);
 
-  return <ProvisioningStepView />;
+  return <ProvisioningStepView totalSteps={totalSteps} />;
 }
 
 const PROVISIONING_MESSAGES = [
@@ -129,7 +131,7 @@ const PROVISIONING_MESSAGES = [
 ];
 
 /** Pure visual shell — extracted so Storybook can render it without wiring up mutations. */
-export function ProvisioningStepView() {
+export function ProvisioningStepView({ totalSteps = 4 }: { totalSteps?: number }) {
   const [messageIndex, setMessageIndex] = useState(0);
   const [visible, setVisible] = useState(true);
 
@@ -146,7 +148,7 @@ export function ProvisioningStepView() {
   return (
     <OnboardingStepView
       currentStep={4}
-      totalSteps={4}
+      totalSteps={totalSteps}
       stepLabel="Almost there..."
       contentClassName="items-center gap-8"
     >
