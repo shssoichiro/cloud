@@ -840,8 +840,11 @@ async function tryVerifyDiscordGuildMembership(
         .set({ discord_server_membership_verified_at: new Date().toISOString() })
         .where(eq(kilocode_users.id, kiloUserId));
     }
-  } catch {
-    // Non-critical — user can manually verify later
+  } catch (error) {
+    captureException(error, {
+      tags: { operation: 'discord_server_membership_verification' },
+      extra: { kiloUserId },
+    });
   }
 }
 
