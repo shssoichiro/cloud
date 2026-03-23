@@ -110,6 +110,15 @@ function allSent(ws: MockWS): Record<string, unknown>[] {
   });
 }
 
+/** Extract the correlationId that was sent to CLI for a given command. */
+function getCorrelationId(cliWs: MockWS, callIndex = 0): string {
+  const msgs = allSent(cliWs);
+  const cmdMsgs = msgs.filter(m => m.type === 'command');
+  const msg = cmdMsgs[callIndex];
+  if (!msg) throw new Error(`No command call at index ${callIndex}`);
+  return msg.id as string;
+}
+
 /** Instantiate a fresh DO with a mock context. Returns the DO and helpers. */
 function setup() {
   const mockCtx = createMockCtx();
@@ -471,12 +480,63 @@ describe('UserConnectionDO', () => {
       mockCtx.removeSocket(cliWs);
       disconnectCli(doInstance, cliWs);
 
-      // Web receives error response
+      // Web receives error response with original id
       const msgs = allSent(webWs);
       const errorResp = msgs.find(
         (m: Record<string, unknown>) => m.type === 'response' && m.id === 'cmd-1'
       );
       expect(errorResp).toMatchObject({ type: 'response', id: 'cmd-1', error: 'CLI disconnected' });
+    });
+
+    it('sends error for connection-routed pending commands on CLI disconnect', () => {
+      const { doInstance, mockCtx } = setup();
+      const cliWs = addCliSocket(mockCtx, 'cli-1');
+      const webWs = addWebSocket(mockCtx, 'web-1');
+
+      sendHeartbeat(doInstance, cliWs, []);
+
+      // Send command routed by connectionId (no sessionId)
+      sendCommand(doInstance, webWs, { id: 'cmd-conn', command: 'test', connectionId: 'cli-1' });
+      webWs.send.mockClear();
+
+      // CLI disconnects before responding
+      mockCtx.removeSocket(cliWs);
+      disconnectCli(doInstance, cliWs);
+
+      const msgs = allSent(webWs);
+      const errorResp = msgs.find(
+        (m: Record<string, unknown>) => m.type === 'response' && m.id === 'cmd-conn'
+      );
+      expect(errorResp).toMatchObject({
+        type: 'response',
+        id: 'cmd-conn',
+        error: 'CLI disconnected',
+      });
+    });
+
+    it('sends error for fallback-routed pending commands on CLI disconnect', () => {
+      const { doInstance, mockCtx } = setup();
+      const cliWs = addCliSocket(mockCtx, 'cli-1');
+      const webWs = addWebSocket(mockCtx, 'web-1');
+
+      sendHeartbeat(doInstance, cliWs, []);
+
+      // Send command with no sessionId or connectionId (fallback routing)
+      sendCommand(doInstance, webWs, { id: 'cmd-fallback', command: 'test' });
+      webWs.send.mockClear();
+
+      mockCtx.removeSocket(cliWs);
+      disconnectCli(doInstance, cliWs);
+
+      const msgs = allSent(webWs);
+      const errorResp = msgs.find(
+        (m: Record<string, unknown>) => m.type === 'response' && m.id === 'cmd-fallback'
+      );
+      expect(errorResp).toMatchObject({
+        type: 'response',
+        id: 'cmd-fallback',
+        error: 'CLI disconnected',
+      });
     });
 
     it('reconnecting CLI — old socket close does not destroy state', () => {
@@ -557,15 +617,15 @@ describe('UserConnectionDO', () => {
       const webWs = addWebSocket(mockCtx, 'web-1');
 
       sendHeartbeat(doInstance, cliWs, [makeSession('s1')]);
+      cliWs.send.mockClear();
       sendCommand(doInstance, webWs, { id: 'cmd-1', command: 'test', sessionId: 's1' });
+      const correlationId = getCorrelationId(cliWs);
 
       mockCtx.removeSocket(webWs);
       disconnectWeb(doInstance, webWs);
 
-      // CLI sends response, but the pending command is gone — no crash
-      sendCliResponse(doInstance, cliWs, { id: 'cmd-1', result: 'ok' });
-      // webWs.send should NOT have been called after disconnect
-      // (all calls before disconnect are from subscription messages)
+      // CLI sends response with correlationId, but the pending command is gone — no crash
+      sendCliResponse(doInstance, cliWs, { id: correlationId, result: 'ok' });
     });
   });
 
@@ -590,25 +650,30 @@ describe('UserConnectionDO', () => {
       });
 
       expect(cliWs.send).toHaveBeenCalledTimes(1);
-      expect(parseSent(cliWs)).toEqual({
+      const sent = parseSent(cliWs) as Record<string, unknown>;
+      expect(sent).toMatchObject({
         type: 'command',
-        id: 'cmd-1',
         command: 'send_message',
         sessionId: 's1',
         data: { text: 'hello' },
       });
+      expect(typeof sent.id).toBe('string');
+      expect(sent.id).not.toBe('cmd-1');
     });
 
-    it('routes CLI response to correct web socket', () => {
+    it('routes CLI response to correct web socket with original id', () => {
       const { doInstance, mockCtx } = setup();
       const cliWs = addCliSocket(mockCtx, 'cli-1');
       const webWs = addWebSocket(mockCtx, 'web-1');
 
       sendHeartbeat(doInstance, cliWs, [makeSession('s1')]);
+      cliWs.send.mockClear();
       sendCommand(doInstance, webWs, { id: 'cmd-1', command: 'test', sessionId: 's1' });
+
+      const correlationId = getCorrelationId(cliWs);
       webWs.send.mockClear();
 
-      sendCliResponse(doInstance, cliWs, { id: 'cmd-1', result: { success: true } });
+      sendCliResponse(doInstance, cliWs, { id: correlationId, result: { success: true } });
 
       expect(webWs.send).toHaveBeenCalledTimes(1);
       expect(parseSent(webWs)).toEqual({
@@ -658,6 +723,34 @@ describe('UserConnectionDO', () => {
       expect(cli2.send).toHaveBeenCalledTimes(1);
     });
 
+    it('two web sockets with the same command id each get the correct response', () => {
+      const { doInstance, mockCtx } = setup();
+      const cliWs = addCliSocket(mockCtx, 'cli-1');
+      const web1 = addWebSocket(mockCtx, 'web-1');
+      const web2 = addWebSocket(mockCtx, 'web-2');
+
+      sendHeartbeat(doInstance, cliWs, [makeSession('s1')]);
+      cliWs.send.mockClear();
+
+      // Both web sockets send commands with the same id
+      sendCommand(doInstance, web1, { id: 'dup-id', command: 'test', sessionId: 's1' });
+      const corr1 = getCorrelationId(cliWs, 0);
+
+      sendCommand(doInstance, web2, { id: 'dup-id', command: 'test', sessionId: 's1' });
+      const corr2 = getCorrelationId(cliWs, 1);
+
+      expect(corr1).not.toBe(corr2);
+
+      web1.send.mockClear();
+      web2.send.mockClear();
+
+      sendCliResponse(doInstance, cliWs, { id: corr1, result: 'result-1' });
+      sendCliResponse(doInstance, cliWs, { id: corr2, result: 'result-2' });
+
+      expect(parseSent(web1)).toEqual({ type: 'response', id: 'dup-id', result: 'result-1' });
+      expect(parseSent(web2)).toEqual({ type: 'response', id: 'dup-id', result: 'result-2' });
+    });
+
     it('routes to first CLI when no sessionId or connectionId given', () => {
       const { doInstance, mockCtx } = setup();
       const cliWs = addCliSocket(mockCtx, 'cli-1');
@@ -704,6 +797,63 @@ describe('UserConnectionDO', () => {
         data: { id: 'msg-1' },
       });
       expect(otherWeb.send).not.toHaveBeenCalled();
+    });
+
+    it('sends child events to both direct child subscribers and parent subscribers', () => {
+      const { doInstance, mockCtx } = setup();
+      const cliWs = addCliSocket(mockCtx, 'cli-1');
+      const parentWeb = addWebSocket(mockCtx, 'web-parent');
+      const childWeb = addWebSocket(mockCtx, 'web-child');
+
+      sendHeartbeat(doInstance, cliWs, [makeSession('parent-session')]);
+      sendSubscribe(doInstance, parentWeb, 'parent-session');
+      sendSubscribe(doInstance, childWeb, 'child-session-1');
+      parentWeb.send.mockClear();
+      childWeb.send.mockClear();
+
+      const eventMsg = JSON.stringify({
+        type: 'event',
+        sessionId: 'child-session-1',
+        parentSessionId: 'parent-session',
+        event: 'message.updated',
+        data: { id: 'msg-1' },
+      });
+      doInstance.webSocketMessage(cliWs as never, eventMsg);
+
+      expect(parentWeb.send).toHaveBeenCalledTimes(1);
+      expect(childWeb.send).toHaveBeenCalledTimes(1);
+      const expected = {
+        type: 'event',
+        sessionId: 'child-session-1',
+        parentSessionId: 'parent-session',
+        event: 'message.updated',
+        data: { id: 'msg-1' },
+      };
+      expect(parseSent(parentWeb)).toEqual(expected);
+      expect(parseSent(childWeb)).toEqual(expected);
+    });
+
+    it('deduplicates when same socket subscribes to both child and parent', () => {
+      const { doInstance, mockCtx } = setup();
+      const cliWs = addCliSocket(mockCtx, 'cli-1');
+      const webWs = addWebSocket(mockCtx, 'web-1');
+
+      sendHeartbeat(doInstance, cliWs, [makeSession('parent-session')]);
+      sendSubscribe(doInstance, webWs, 'parent-session');
+      sendSubscribe(doInstance, webWs, 'child-session-1');
+      webWs.send.mockClear();
+
+      const eventMsg = JSON.stringify({
+        type: 'event',
+        sessionId: 'child-session-1',
+        parentSessionId: 'parent-session',
+        event: 'message.updated',
+        data: { id: 'msg-1' },
+      });
+      doInstance.webSocketMessage(cliWs as never, eventMsg);
+
+      // Should only receive once despite subscribing to both
+      expect(webWs.send).toHaveBeenCalledTimes(1);
     });
 
     it('routes child event to parent session subscribers via parentSessionId', () => {
@@ -857,7 +1007,7 @@ describe('UserConnectionDO', () => {
       expect(cliWs?.send).toHaveBeenCalled();
       const cliMsgs = allSent(cliWs!);
       const cmdMsg = cliMsgs.find((m: Record<string, unknown>) => m.type === 'command');
-      expect(cmdMsg).toMatchObject({ type: 'command', id: 'cmd-1' });
+      expect(cmdMsg).toMatchObject({ type: 'command', command: 'test' });
     });
 
     it('reconstructs webSubscriptions from web attachments', () => {

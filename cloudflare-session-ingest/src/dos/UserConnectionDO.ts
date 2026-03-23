@@ -30,7 +30,10 @@ export class UserConnectionDO extends DurableObject<Env> {
   // Sessions per CLI connection (from heartbeat)
   private connectionSessions = new Map<string, HeartbeatSession[]>();
   // Pending command responses: correlationId → originating web socket
-  private pendingCommands = new Map<string, { ws: WebSocket; sessionId?: string }>();
+  private pendingCommands = new Map<
+    string,
+    { ws: WebSocket; sessionId?: string; originalId: string; targetConnectionId: string }
+  >();
   // Last heartbeat timestamp per CLI connectionId (for staleness eviction)
   private lastHeartbeatAt = new Map<string, number>();
 
@@ -293,10 +296,14 @@ export class UserConnectionDO extends DurableObject<Env> {
     event: string,
     data: unknown
   ): void {
-    const subscribers =
-      this.webSubscriptions.get(sessionId) ??
-      (parentSessionId ? this.webSubscriptions.get(parentSessionId) : undefined);
-    if (!subscribers) return;
+    const childSubs = this.webSubscriptions.get(sessionId);
+    const parentSubs = parentSessionId ? this.webSubscriptions.get(parentSessionId) : undefined;
+    if (!childSubs && !parentSubs) return;
+
+    const merged = new Set<WebSocket>();
+    if (childSubs) for (const ws of childSubs) merged.add(ws);
+    if (parentSubs) for (const ws of parentSubs) merged.add(ws);
+    if (merged.size === 0) return;
 
     const msg: WebInboundMessage = {
       type: 'event',
@@ -305,20 +312,19 @@ export class UserConnectionDO extends DurableObject<Env> {
       event,
       data,
     };
-    for (const ws of subscribers) {
+    for (const ws of merged) {
       this.sendToWeb(ws, msg);
     }
   }
 
   private handleCliResponse(id: string, result: unknown, error: unknown): void {
     const entry = this.pendingCommands.get(id);
-    const originWs = entry?.ws;
-    if (!originWs) return;
+    if (!entry) return;
     this.pendingCommands.delete(id);
 
-    this.sendToWeb(originWs, {
+    this.sendToWeb(entry.ws, {
       type: 'response',
-      id,
+      id: entry.originalId,
       ...(result !== undefined ? { result } : {}),
       ...(error !== undefined ? { error } : {}),
     });
@@ -444,11 +450,20 @@ export class UserConnectionDO extends DurableObject<Env> {
       return;
     }
 
-    this.pendingCommands.set(msg.id, { ws, sessionId: msg.sessionId });
+    const targetAtt = targetCli.deserializeAttachment() as WSAttachment | null;
+    const targetConnectionId = targetAtt?.role === 'cli' ? targetAtt.connectionId : 'unknown';
+
+    const correlationId = crypto.randomUUID();
+    this.pendingCommands.set(correlationId, {
+      ws,
+      sessionId: msg.sessionId,
+      originalId: msg.id,
+      targetConnectionId,
+    });
 
     this.sendToCli(targetCli, {
       type: 'command',
-      id: msg.id,
+      id: correlationId,
       command: msg.command,
       data: msg.data,
       ...(msg.sessionId ? { sessionId: msg.sessionId } : {}),
@@ -486,10 +501,13 @@ export class UserConnectionDO extends DurableObject<Env> {
     this.connectionSessions.delete(connectionId);
     this.lastHeartbeatAt.delete(connectionId);
 
-    // Clean up pending commands targeting sessions owned by the disconnecting CLI
     for (const [id, entry] of this.pendingCommands) {
-      if (entry.sessionId && ownedSessions.has(entry.sessionId)) {
-        this.sendToWeb(entry.ws, { type: 'response', id, error: 'CLI disconnected' });
+      if (entry.targetConnectionId === connectionId) {
+        this.sendToWeb(entry.ws, {
+          type: 'response',
+          id: entry.originalId,
+          error: 'CLI disconnected',
+        });
         this.pendingCommands.delete(id);
       }
     }
