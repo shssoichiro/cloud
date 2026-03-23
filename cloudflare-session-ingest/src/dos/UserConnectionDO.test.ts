@@ -96,8 +96,18 @@ function parseSent(ws: MockWS, callIndex = 0): unknown {
   return JSON.parse(call[0] as string);
 }
 
-function allSent(ws: MockWS): unknown[] {
-  return ws.send.mock.calls.map(c => JSON.parse(c[0] as string));
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function allSent(ws: MockWS): Record<string, unknown>[] {
+  return ws.send.mock.calls.map(c => {
+    const parsed: unknown = JSON.parse(String(c[0]));
+    if (!isRecord(parsed)) {
+      throw new Error(`Expected JSON object but got: ${String(c[0])}`);
+    }
+    return parsed;
+  });
 }
 
 /** Instantiate a fresh DO with a mock context. Returns the DO and helpers. */
@@ -432,7 +442,7 @@ describe('UserConnectionDO', () => {
       expect(webWs.send).toHaveBeenCalled();
       const msgs = allSent(webWs);
       const disconnectMsg = msgs.find(
-        (m: any) => m.type === 'system' && m.event === 'cli.disconnected'
+        (m: Record<string, unknown>) => m.type === 'system' && m.event === 'cli.disconnected'
       );
       expect(disconnectMsg).toEqual({
         type: 'system',
@@ -463,7 +473,9 @@ describe('UserConnectionDO', () => {
 
       // Web receives error response
       const msgs = allSent(webWs);
-      const errorResp = msgs.find((m: any) => m.type === 'response' && m.id === 'cmd-1');
+      const errorResp = msgs.find(
+        (m: Record<string, unknown>) => m.type === 'response' && m.id === 'cmd-1'
+      );
       expect(errorResp).toMatchObject({ type: 'response', id: 'cmd-1', error: 'CLI disconnected' });
     });
 
@@ -535,7 +547,7 @@ describe('UserConnectionDO', () => {
 
       // CLI should get unsubscribe for s1
       const msgs = allSent(cliWs);
-      const unsub = msgs.find((m: any) => m.type === 'unsubscribe');
+      const unsub = msgs.find((m: Record<string, unknown>) => m.type === 'unsubscribe');
       expect(unsub).toEqual({ type: 'unsubscribe', sessionId: 's1' });
     });
 
@@ -844,7 +856,7 @@ describe('UserConnectionDO', () => {
       const cliWs = mockCtx.sockets.find(s => s._tags.includes('cli'));
       expect(cliWs?.send).toHaveBeenCalled();
       const cliMsgs = allSent(cliWs!);
-      const cmdMsg = cliMsgs.find((m: any) => m.type === 'command');
+      const cmdMsg = cliMsgs.find((m: Record<string, unknown>) => m.type === 'command');
       expect(cmdMsg).toMatchObject({ type: 'command', id: 'cmd-1' });
     });
 
@@ -960,7 +972,7 @@ describe('UserConnectionDO', () => {
 
       // Should broadcast cli.disconnected
       const msgs = allSent(webWs);
-      expect(msgs.some((m: any) => m.event === 'cli.disconnected')).toBe(true);
+      expect(msgs.some((m: Record<string, unknown>) => m.event === 'cli.disconnected')).toBe(true);
     });
 
     it('CLI response for unknown correlation ID is a no-op', () => {

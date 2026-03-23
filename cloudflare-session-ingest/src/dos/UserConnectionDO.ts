@@ -619,7 +619,7 @@ export class UserConnectionDO extends DurableObject<Env> {
   private scheduleStaleCheck(): void {
     // Schedule an alarm to run after the timeout period.
     // setAlarm is idempotent if one is already scheduled sooner.
-    this.ctx.storage.setAlarm(Date.now() + UserConnectionDO.HEARTBEAT_TIMEOUT_MS);
+    void this.ctx.storage.setAlarm(Date.now() + UserConnectionDO.HEARTBEAT_TIMEOUT_MS);
   }
 
   private aggregateSessions(): Array<HeartbeatSession & { connectionId: string }> {

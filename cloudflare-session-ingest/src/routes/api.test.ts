@@ -639,7 +639,7 @@ describe('api routes', () => {
 
     expect(stubFetch).toHaveBeenCalledTimes(1);
     expect(getUserConnectionDO).toHaveBeenCalledWith(expect.anything(), { kiloUserId: 'usr_test' });
-    const forwardedReq = stubFetch.mock.calls[0]![0];
+    const forwardedReq = stubFetch.mock.calls[0][0];
     const forwardedUrl = new URL(forwardedReq.url);
     expect(forwardedUrl.pathname).toBe('/cli');
   });
@@ -662,7 +662,7 @@ describe('api routes', () => {
 
     expect(stubFetch).toHaveBeenCalledTimes(1);
     expect(getUserConnectionDO).toHaveBeenCalledWith(expect.anything(), { kiloUserId: 'usr_test' });
-    const forwardedReq = stubFetch.mock.calls[0]![0];
+    const forwardedReq = stubFetch.mock.calls[0][0];
     const forwardedUrl = new URL(forwardedReq.url);
     expect(forwardedUrl.pathname).toBe('/web');
   });
