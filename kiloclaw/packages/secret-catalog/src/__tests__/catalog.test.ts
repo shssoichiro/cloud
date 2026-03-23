@@ -367,16 +367,17 @@ describe('Secret Catalog', () => {
     });
 
     it('accepts valid Brave Search API keys', () => {
-      const pattern = '^BSA-[A-Za-z0-9]{20,}$';
-      expect(validateFieldValue('BSA-' + 'A'.repeat(20), pattern)).toBe(true);
-      expect(validateFieldValue('BSA-abcDEF123456abcDEF12', pattern)).toBe(true);
+      const pattern = '^BSAI[A-Za-z0-9_-]{20,}$';
+      expect(validateFieldValue('BSAI' + 'A'.repeat(20), pattern)).toBe(true);
+      expect(validateFieldValue('BSAIabcDEF_123-456abcDEF1234', pattern)).toBe(true);
     });
 
     it('rejects invalid Brave Search API keys', () => {
-      const pattern = '^BSA-[A-Za-z0-9]{20,}$';
+      const pattern = '^BSAI[A-Za-z0-9_-]{20,}$';
       expect(validateFieldValue('invalid', pattern)).toBe(false);
-      expect(validateFieldValue('BSA-short', pattern)).toBe(false);
-      expect(validateFieldValue('bsa-' + 'A'.repeat(20), pattern)).toBe(false);
+      expect(validateFieldValue('BSAIshort', pattern)).toBe(false);
+      expect(validateFieldValue('bsai' + 'A'.repeat(20), pattern)).toBe(false);
+      expect(validateFieldValue('BSA-' + 'A'.repeat(20), pattern)).toBe(false);
     });
 
     it('rejects empty strings', () => {
