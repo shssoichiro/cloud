@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Server, ArrowRight, Loader2 } from 'lucide-react';
+import { Server, ArrowRight, Loader2, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { useTRPC } from '@/lib/trpc/utils';
 import { Button } from '@/components/ui/button';
@@ -25,14 +25,14 @@ export function ProfileKiloClawBanner() {
 
   const hasInstance = billing.instance !== null && billing.instance.exists;
 
-  if (hasInstance) {
+  if (hasInstance && billing.hasAccess) {
     return (
       <div className="flex w-full items-center gap-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-5">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20">
           <Server className="h-5 w-5 text-emerald-400" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-emerald-100">KiloClaw is running</p>
+          <p className="text-sm font-semibold text-emerald-100">Your KiloClaw instance is active</p>
           <p className="text-sm text-emerald-300/80">
             Manage your instance, configure integrations, and monitor your Claw.
           </p>
@@ -44,6 +44,35 @@ export function ProfileKiloClawBanner() {
         >
           <Link href="/claw">
             Open Dashboard
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (hasInstance && !billing.hasAccess) {
+    return (
+      <div className="flex w-full items-center gap-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-5">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
+          <AlertTriangle className="h-5 w-5 text-amber-400" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-amber-100">
+            Your KiloClaw instance needs attention
+          </p>
+          <p className="text-sm text-amber-300/80">
+            Your access has lapsed. Visit the dashboard to resolve billing and restore your
+            instance.
+          </p>
+        </div>
+        <Button
+          asChild
+          variant="outline"
+          className="shrink-0 border-amber-500/40 text-amber-200 hover:bg-amber-500/20 hover:text-amber-100"
+        >
+          <Link href="/claw">
+            Resolve
             <ArrowRight className="h-4 w-4" />
           </Link>
         </Button>
