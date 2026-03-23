@@ -43,6 +43,8 @@ export default async function ProfilePage({ searchParams }: AppPageProps) {
   return (
     // NOTE: When making changes to this structure, make sure to also update the structure in the loading.tsx file
     <PageLayout title="Profile">
+      <ProfileKiloClawBanner />
+
       <div className="flex w-full flex-col gap-4 lg:flex-row">
         <Card className="flex-1 rounded-xl shadow-sm">
           <CardContent className="p-6">
@@ -68,8 +70,6 @@ export default async function ProfilePage({ searchParams }: AppPageProps) {
       </div>
 
       {isKiloPassUiEnabled && <ProfileKiloPassSection />}
-
-      <ProfileKiloClawBanner />
 
       <ProfileOrganizationsSection orgs={orgs} />
 
