@@ -45,9 +45,10 @@ lapses, with email notifications at each stage.
 
 ### Standard Plan Introductory Pricing
 
-1. New standard plan subscribers who do not have a prior canceled
+1. New standard plan subscribers who do not have a prior canceled paid
    subscription MUST receive an introductory price for their first
-   billing period. Returning subscribers with a previously canceled
+   billing period. A canceled trial does not count as a prior paid
+   subscription. Returning subscribers with a previously canceled paid
    subscription MUST receive the regular standard price.
 2. The system MUST automatically transition introductory-price
    subscribers to the regular standard price at the end of the
