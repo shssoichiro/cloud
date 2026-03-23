@@ -1,3 +1,4 @@
+import * as Clipboard from 'expo-clipboard';
 import { useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,8 @@ import { View } from '@/tw';
 
 export function LoginScreen() {
   const { signIn } = useAuth();
-  const { status, token, code, error, start, cancel, copyCode } = useDeviceAuth();
+  const { status, token, code, error, verificationUrl, start, cancel, openBrowser } =
+    useDeviceAuth();
 
   useEffect(() => {
     if (status === 'approved' && token) {
@@ -44,18 +46,28 @@ export function LoginScreen() {
           <Text variant="h2" className="border-b-0 pb-0 tracking-widest">
             {code}
           </Text>
-          <Button
-            variant="outline"
-            size="sm"
-            onPress={() => {
-              void copyCode();
-            }}
-          >
-            <Text>Copy Code</Text>
-          </Button>
-          <Text variant="muted" className="text-center text-xs">
-            A browser window has been opened. Sign in there to authorize this device.
-          </Text>
+          <View className="flex-row gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onPress={() => {
+                void openBrowser();
+              }}
+            >
+              <Text>Open ↗</Text>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onPress={() => {
+                if (verificationUrl) {
+                  void Clipboard.setStringAsync(verificationUrl);
+                }
+              }}
+            >
+              <Text>Copy Link</Text>
+            </Button>
+          </View>
           <Button variant="ghost" onPress={cancel}>
             <Text>Cancel</Text>
           </Button>

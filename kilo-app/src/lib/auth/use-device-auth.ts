@@ -1,4 +1,3 @@
-import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -11,12 +10,13 @@ interface DeviceAuthState {
   code: string | undefined;
   token: string | undefined;
   error: string | undefined;
+  verificationUrl: string | undefined;
 }
 
 type DeviceAuthResult = DeviceAuthState & {
   start: () => Promise<void>;
   cancel: () => void;
-  copyCode: () => Promise<void>;
+  openBrowser: () => Promise<void>;
 };
 
 const POLL_INTERVAL_MS = 3000;
@@ -27,6 +27,7 @@ export function useDeviceAuth(): DeviceAuthResult {
     code: undefined,
     token: undefined,
     error: undefined,
+    verificationUrl: undefined,
   });
 
   const intervalReference = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -58,22 +59,35 @@ export function useDeviceAuth(): DeviceAuthResult {
             case 200: {
               const data = (await response.json()) as { token: string };
               cleanup();
-              setState({ status: 'approved', code, token: data.token, error: undefined });
+              setState((previous) => ({
+                status: 'approved',
+                code,
+                token: data.token,
+                error: undefined,
+                verificationUrl: previous.verificationUrl,
+              }));
               break;
             }
             case 403: {
               cleanup();
-              setState({
+              setState((previous) => ({
                 status: 'denied',
                 code,
                 token: undefined,
                 error: 'Access denied by user',
-              });
+                verificationUrl: previous.verificationUrl,
+              }));
               break;
             }
             case 410: {
               cleanup();
-              setState({ status: 'expired', code, token: undefined, error: 'Code expired' });
+              setState((previous) => ({
+                status: 'expired',
+                code,
+                token: undefined,
+                error: 'Code expired',
+                verificationUrl: previous.verificationUrl,
+              }));
               break;
             }
             // No default
@@ -82,12 +96,13 @@ export function useDeviceAuth(): DeviceAuthResult {
         } catch (error: unknown) {
           if (error instanceof DOMException && error.name === 'AbortError') return;
           cleanup();
-          setState({
+          setState((previous) => ({
             status: 'error',
             code,
             token: undefined,
             error: 'Network error. Please try again.',
-          });
+            verificationUrl: previous.verificationUrl,
+          }));
         }
       };
 
@@ -100,7 +115,13 @@ export function useDeviceAuth(): DeviceAuthResult {
 
   const start = useCallback(async () => {
     cleanup();
-    setState({ status: 'pending', code: undefined, token: undefined, error: undefined });
+    setState({
+      status: 'pending',
+      code: undefined,
+      token: undefined,
+      error: undefined,
+      verificationUrl: undefined,
+    });
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/device-auth/codes`, {
@@ -114,6 +135,7 @@ export function useDeviceAuth(): DeviceAuthResult {
           code: undefined,
           token: undefined,
           error: 'Failed to start sign in. Please try again.',
+          verificationUrl: undefined,
         });
         return;
       }
@@ -123,33 +145,46 @@ export function useDeviceAuth(): DeviceAuthResult {
         verificationUrl: string;
       };
 
-      setState({ status: 'pending', code: data.code, token: undefined, error: undefined });
+      setState({
+        status: 'pending',
+        code: data.code,
+        token: undefined,
+        error: undefined,
+        verificationUrl: data.verificationUrl,
+      });
 
       const abort = new AbortController();
       abortReference.current = abort;
       poll(data.code, abort);
 
-      await WebBrowser.openBrowserAsync(data.verificationUrl);
+      await WebBrowser.openAuthSessionAsync(data.verificationUrl);
     } catch {
       setState({
         status: 'error',
         code: undefined,
         token: undefined,
         error: 'Failed to start sign in. Please try again.',
+        verificationUrl: undefined,
       });
     }
   }, [cleanup, poll]);
 
   const cancel = useCallback(() => {
     cleanup();
-    setState({ status: 'idle', code: undefined, token: undefined, error: undefined });
+    setState({
+      status: 'idle',
+      code: undefined,
+      token: undefined,
+      error: undefined,
+      verificationUrl: undefined,
+    });
   }, [cleanup]);
 
-  const copyCode = useCallback(async () => {
-    if (state.code) {
-      await Clipboard.setStringAsync(state.code);
+  const openBrowser = useCallback(async () => {
+    if (state.verificationUrl) {
+      await WebBrowser.openAuthSessionAsync(state.verificationUrl);
     }
-  }, [state.code]);
+  }, [state.verificationUrl]);
 
-  return { ...state, start, cancel, copyCode };
+  return { ...state, start, cancel, openBrowser };
 }
