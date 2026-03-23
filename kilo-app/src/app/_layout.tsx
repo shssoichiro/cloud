@@ -6,8 +6,10 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Toaster } from 'sonner-native';
 
+import logo from '@/../assets/images/logo.png';
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
-import { Text, View } from '@/tw';
+import { View } from '@/tw';
+import { Image } from '@/tw/image';
 
 function RootLayoutNav() {
   const { token, isLoading } = useAuth();
@@ -29,7 +31,7 @@ function RootLayoutNav() {
   if (isLoading) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
-        <Text className="text-4xl font-bold tracking-tight text-foreground">Kilo</Text>
+        <Image source={logo} className="h-16 w-16" />
       </View>
     );
   }

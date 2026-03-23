@@ -2,11 +2,13 @@ import * as Clipboard from 'expo-clipboard';
 import { useEffect } from 'react';
 import { toast } from 'sonner-native';
 
+import logo from '@/../assets/images/logo.png';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useDeviceAuth } from '@/lib/auth/use-device-auth';
 import { View } from '@/tw';
+import { Image } from '@/tw/image';
 
 export function LoginScreen() {
   const { signIn } = useAuth();
@@ -22,7 +24,7 @@ export function LoginScreen() {
   return (
     <View className="flex-1 items-center justify-center gap-8 bg-background px-6">
       <View className="items-center gap-3">
-        <Text variant="h1">Kilo</Text>
+        <Image source={logo} className="h-16 w-16" />
         <Text variant="muted" className="text-lg">
           Sign in to continue
         </Text>
