@@ -1,5 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useEffect } from 'react';
+import { toast } from 'sonner-native';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -62,6 +63,7 @@ export function LoginScreen() {
               onPress={() => {
                 if (verificationUrl) {
                   void Clipboard.setStringAsync(verificationUrl);
+                  toast('Copied to clipboard');
                 }
               }}
             >

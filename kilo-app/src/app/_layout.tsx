@@ -3,6 +3,7 @@ import '../global.css';
 import { PortalHost } from '@rn-primitives/portal';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
+import { Toaster } from 'sonner-native';
 
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
 import { Text, View } from '@/tw';
@@ -39,6 +40,7 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <RootLayoutNav />
+      <Toaster />
       <PortalHost />
     </AuthProvider>
   );
