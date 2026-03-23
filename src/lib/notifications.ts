@@ -239,7 +239,7 @@ async function generateMiniMaxNoLongerFreeNotification(
     const users = await cachedPosthogQuery(
       z.array(z.tuple([z.string()]).transform(([userId]) => userId))
     )(
-      'byok-provider-usage-users',
+      'minimax-no-longer-free-users',
       'select id from notification_mar_23_minimax_no_longer_free limit 5e5'
     );
 
