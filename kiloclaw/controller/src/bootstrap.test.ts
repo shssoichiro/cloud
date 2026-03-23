@@ -667,7 +667,14 @@ describe('bootstrap', () => {
 
     await bootstrap(env, phase => phases.push(phase), harness.deps);
 
-    expect(phases).toEqual(['decrypting', 'directories', 'feature-flags', 'github', 'linear', 'onboard']);
+    expect(phases).toEqual([
+      'decrypting',
+      'directories',
+      'feature-flags',
+      'github',
+      'linear',
+      'onboard',
+    ]);
   });
 
   it('reports doctor phase when config exists', async () => {
