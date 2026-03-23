@@ -123,7 +123,8 @@ function createGitHubAccountInfo(
 
   const githubProfile = profile as { login?: string } | undefined;
   const login = githubProfile?.login;
-  const validLogin = login && /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(login) ? login : null;
+  const validLogin =
+    login && /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(login) ? login : null;
 
   return {
     google_user_email: user.email,

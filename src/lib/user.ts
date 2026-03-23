@@ -709,9 +709,7 @@ export async function getUserAuthProviders(kiloUserId: string): Promise<UserAuth
     .orderBy(user_auth_provider.created_at);
 }
 
-export async function getOAuthDisplayNames(
-  userId: string
-): Promise<Map<AuthProviderId, string>> {
+export async function getOAuthDisplayNames(userId: string): Promise<Map<AuthProviderId, string>> {
   const rows = await db
     .select({
       provider: user_auth_provider.provider,
@@ -719,12 +717,9 @@ export async function getOAuthDisplayNames(
     })
     .from(user_auth_provider)
     .where(
-      and(
-        eq(user_auth_provider.kilo_user_id, userId),
-        isNotNull(user_auth_provider.display_name)
-      )
+      and(eq(user_auth_provider.kilo_user_id, userId), isNotNull(user_auth_provider.display_name))
     );
-  return new Map(rows.map(r => [r.provider, r.display_name!]));
+  return new Map(rows.map(r => [r.provider, r.display_name ?? '']));
 }
 
 export async function findUserIdByAuthProvider(
