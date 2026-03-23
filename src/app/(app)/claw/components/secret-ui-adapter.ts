@@ -1,6 +1,6 @@
 import type React from 'react';
 import type { SecretIconKey } from '@kilocode/kiloclaw-secret-catalog';
-import { Key } from 'lucide-react';
+import { Key, ListChecks } from 'lucide-react';
 import { TelegramIcon } from './icons/TelegramIcon';
 import { DiscordIcon } from './icons/DiscordIcon';
 import { SlackIcon } from './icons/SlackIcon';
@@ -13,6 +13,7 @@ const ICON_MAP: Record<SecretIconKey, React.ComponentType<{ className?: string }
   slack: SlackIcon,
   key: Key,
   github: GitHubIcon,
+  'list-checks': ListChecks,
   'credit-card': AgentCardIcon,
 };
 
@@ -26,6 +27,7 @@ const DESCRIPTION_MAP: Record<string, string> = {
   discord: 'Connect your Discord bot',
   slack: 'Connect your Slack workspace',
   github: 'Connect a GitHub account for code operations',
+  linear: 'Connect Linear for issue tracking',
   agentcard: 'Give your bot virtual debit cards for spending',
 };
 

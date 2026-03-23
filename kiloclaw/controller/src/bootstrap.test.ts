@@ -6,6 +6,7 @@ import {
   applyFeatureFlags,
   generateHooksToken,
   configureGitHub,
+  configureLinear,
   runOnboardOrDoctor,
   buildGatewayArgs,
   bootstrap,
@@ -485,6 +486,46 @@ describe('configureGitHub', () => {
   });
 });
 
+// ---- configureLinear ----
+
+describe('configureLinear', () => {
+  it('logs configured when LINEAR_API_KEY is set', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const env: Record<string, string | undefined> = {
+      LINEAR_API_KEY: 'lin_api_test123',
+    };
+
+    configureLinear(env);
+
+    expect(env.LINEAR_API_KEY).toBe('lin_api_test123');
+    expect(logSpy).toHaveBeenCalledWith('Linear CLI configured via LINEAR_API_KEY');
+    logSpy.mockRestore();
+  });
+
+  it('logs not configured and cleans up when no LINEAR_API_KEY', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const env: Record<string, string | undefined> = {};
+
+    configureLinear(env);
+
+    expect(env.LINEAR_API_KEY).toBeUndefined();
+    expect(logSpy).toHaveBeenCalledWith('Linear: not configured (no API key)');
+    logSpy.mockRestore();
+  });
+
+  it('cleans up empty LINEAR_API_KEY', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const env: Record<string, string | undefined> = {
+      LINEAR_API_KEY: '',
+    };
+
+    configureLinear(env);
+
+    expect(env.LINEAR_API_KEY).toBeUndefined();
+    logSpy.mockRestore();
+  });
+});
+
 // ---- runOnboardOrDoctor ----
 
 describe('runOnboardOrDoctor', () => {
@@ -626,7 +667,7 @@ describe('bootstrap', () => {
 
     await bootstrap(env, phase => phases.push(phase), harness.deps);
 
-    expect(phases).toEqual(['decrypting', 'directories', 'feature-flags', 'github', 'onboard']);
+    expect(phases).toEqual(['decrypting', 'directories', 'feature-flags', 'github', 'linear', 'onboard']);
   });
 
   it('reports doctor phase when config exists', async () => {

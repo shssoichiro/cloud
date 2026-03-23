@@ -57,6 +57,9 @@ RUN npm install -g @steipete/summarize@0.12.0
 # Install Kilo CLI (agentic coding assistant for the terminal)
 RUN npm install -g @kilocode/cli@7.0.46
 
+# Install Linear CLI (issue tracker)
+RUN npm install -g @schpet/linear-cli@1.11.1
+
 
 # Install Go (available at runtime for users to `go install` additional tools)
 ENV GO_VERSION=1.26.0

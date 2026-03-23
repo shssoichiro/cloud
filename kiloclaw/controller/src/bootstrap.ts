@@ -324,7 +324,24 @@ export function configureGitHub(env: EnvLike, deps: BootstrapDeps = defaultDeps)
   }
 }
 
-// ---- Step 6: Onboard / doctor + config patching ----
+// ---- Step 6: Linear config ----
+
+/**
+ * Configure Linear CLI access via the LINEAR_API_KEY env var.
+ * The CLI reads this natively — no interactive login needed.
+ * Best-effort: logs warnings on failure, does not throw.
+ */
+export function configureLinear(env: EnvLike): void {
+  if (env.LINEAR_API_KEY) {
+    console.log('Linear CLI configured via LINEAR_API_KEY');
+  } else {
+    // Clean up env var if explicitly set to empty
+    delete env.LINEAR_API_KEY;
+    console.log('Linear: not configured (no API key)');
+  }
+}
+
+// ---- Step 7: Onboard / doctor + config patching ----
 
 /**
  * Run openclaw onboard (first boot) or openclaw doctor (subsequent boots),
@@ -386,7 +403,7 @@ export function runOnboardOrDoctor(env: EnvLike, deps: BootstrapDeps = defaultDe
   }
 }
 
-// ---- Step 7: TOOLS.md Google Workspace section ----
+// ---- Step 8: TOOLS.md Google Workspace section ----
 
 const GOG_MARKER_BEGIN = '<!-- BEGIN:google-workspace -->';
 const GOG_MARKER_END = '<!-- END:google-workspace -->';
@@ -442,7 +459,7 @@ export function updateToolsMdGoogleSection(env: EnvLike, deps: BootstrapDeps): v
   }
 }
 
-// ---- Step 8: Gateway args ----
+// ---- Step 9: Gateway args ----
 
 /**
  * Build the gateway CLI arguments array.
@@ -489,6 +506,10 @@ export async function bootstrap(
 
   setPhase('github');
   configureGitHub(env, deps);
+  await yieldToEventLoop();
+
+  setPhase('linear');
+  configureLinear(env);
   await yieldToEventLoop();
 
   const configExists = deps.existsSync(CONFIG_PATH);
