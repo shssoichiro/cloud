@@ -12,6 +12,7 @@
     "format:check": "oxfmt --list-different src"
   },
   "dependencies": {
+    "@kilocode/trpc": "workspace:*",
     "@react-navigation/native": "^7.1.33",
     "expo": "~55.0.8",
     "expo-linking": "~55.0.8",

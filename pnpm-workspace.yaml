@@ -3,6 +3,7 @@ packages:
   - packages/worker-utils
   - packages/encryption
   - packages/eslint-config
+  - packages/trpc
   - storybook
   - cloudflare-deploy-infra/builder
   - cloudflare-deploy-infra/dispatcher

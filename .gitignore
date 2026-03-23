@@ -100,3 +100,6 @@ supabase/.temp
 .dev-logs/
 
 .kilo/plans
+
+# @kilocode/trpc declaration output
+packages/trpc/dist/

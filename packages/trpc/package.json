@@ -1,0 +1,28 @@
+{
+  "name": "@kilocode/trpc",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsgo --noEmit --incremental false"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "dependencies": {
+    "@trpc/server": "^11.13.0"
+  },
+  "devDependencies": {
+    "@kilocode/db": "workspace:*",
+    "@kilocode/encryption": "workspace:*",
+    "@sentry/nextjs": "^10.43.0",
+    "@typescript/native-preview": "catalog:",
+    "drizzle-orm": "catalog:",
+    "server-only": "^0.0.1",
+    "typescript": "catalog:",
+    "zod": "catalog:"
+  }
+}
