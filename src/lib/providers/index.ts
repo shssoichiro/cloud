@@ -22,7 +22,6 @@ import {
   isAnthropicModel,
   isHaikuModel,
 } from '@/lib/providers/anthropic';
-import { applyGigaPotatoProviderSettings } from '@/lib/providers/gigapotato';
 import {
   getBYOKforOrganization,
   getBYOKforUser,
@@ -120,7 +119,7 @@ async function checkBYOK(
 
 export async function getProvider(
   requestedModel: string,
-  request: OpenRouterChatCompletionRequest | GatewayResponsesRequest | GatewayMessagesRequest,
+  request: GatewayRequest,
   user: User | AnonymousUserContext,
   organizationId: string | undefined,
   taskId: string | undefined
@@ -252,10 +251,7 @@ function getPreferredProviderOrder(requestedModel: string): string[] {
     return [OpenRouterInferenceProviderIdSchema.enum['xiaomi']];
   }
   if (isZaiModel(requestedModel)) {
-    return [
-      OpenRouterInferenceProviderIdSchema.enum.friendli,
-      OpenRouterInferenceProviderIdSchema.enum['z-ai'],
-    ];
+    return [OpenRouterInferenceProviderIdSchema.enum['z-ai']];
   }
   if (isOpenAiOssModel(requestedModel)) {
     return [
@@ -330,10 +326,6 @@ export function applyProviderSpecificLogic(
 
   if (provider.id === 'alibaba') {
     applyAlibabaProviderSettings(requestToMutate);
-  }
-
-  if (provider.id === 'gigapotato') {
-    applyGigaPotatoProviderSettings(requestedModel, requestToMutate);
   }
 
   if (provider.id === 'corethink') {

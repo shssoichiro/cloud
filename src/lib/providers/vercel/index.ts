@@ -18,11 +18,9 @@ import type {
   GatewayRequest,
   VercelInferenceProviderConfig,
   VercelProviderConfig,
-  OpenRouterChatCompletionRequest,
-  GatewayResponsesRequest,
-  GatewayMessagesRequest,
 } from '@/lib/providers/openrouter/types';
 import { mapModelIdToVercel } from '@/lib/providers/vercel/mapModelIdToVercel';
+import { isZaiModel } from '@/lib/providers/zai';
 import * as crypto from 'crypto';
 
 // EMERGENCY SWITCH
@@ -64,17 +62,24 @@ function isLikelyAvailableOnAllGateways(requestedModel: string) {
 
 export async function shouldRouteToVercel(
   requestedModel: string,
-  request: OpenRouterChatCompletionRequest | GatewayResponsesRequest | GatewayMessagesRequest,
+  request: GatewayRequest,
   randomSeed: string
 ) {
-  if (request.provider?.data_collection === 'deny') {
+  if (request.kind === 'responses' || request.kind === 'messages') {
+    console.debug(
+      `[shouldRouteToVercel] not routing this API to Vercel, cost parsing (OpenRouter-incompatible) is not implemented`
+    );
+    return false;
+  }
+
+  if (request.body.provider?.data_collection === 'deny') {
     console.debug(
       `[shouldRouteToVercel] not routing to Vercel because data_collection=deny is not supported`
     );
     return false;
   }
 
-  if ((request.provider?.ignore?.length ?? 0) > 0) {
+  if ((request.body.provider?.ignore?.length ?? 0) > 0) {
     console.debug(
       `[shouldRouteToVercel] not routing to Vercel because provider.ignore is not supported`
     );
@@ -97,7 +102,8 @@ export async function shouldRouteToVercel(
     !isGeminiModel(requestedModel) &&
     !isMinimaxModel(requestedModel) &&
     !isMoonshotModel(requestedModel) &&
-    !isOpenAiOssModel(requestedModel)
+    !isOpenAiOssModel(requestedModel) &&
+    !isZaiModel(requestedModel)
   ) {
     console.debug(`[shouldRouteToVercel] model family not allowed for randomized Vercel routing`);
     return false;

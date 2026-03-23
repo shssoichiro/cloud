@@ -33,6 +33,7 @@ import {
   RpcConvoyDetailOutput,
   RpcAlarmStatusOutput,
   RpcOrgTownOutput,
+  RpcMergeQueueDataOutput,
 } from './schemas';
 import type { TRPCContext } from './init';
 
@@ -341,7 +342,6 @@ export const gastownRouter = router({
       const ownerStub = ownership.stub;
 
       const townStub = getTownDOStub(ctx.env, input.townId);
-      await townStub.setTownId(input.townId);
 
       // For org towns, use the town owner's identity for credentials;
       // for personal towns the caller is always the owner.
@@ -583,7 +583,6 @@ export const gastownRouter = router({
       }
 
       const townStub = getTownDOStub(ctx.env, rig.town_id);
-      await townStub.setTownId(rig.town_id);
       return townStub.slingBead({
         rigId: rig.id,
         title: input.title,
@@ -609,7 +608,6 @@ export const gastownRouter = router({
       await verifyTownOwnership(ctx.env, ctx.userId, input.townId, ctx.orgMemberships);
 
       const townStub = getTownDOStub(ctx.env, input.townId);
-      await townStub.setTownId(input.townId);
       return townStub.sendMayorMessage(input.message, input.model, input.uiContext);
     }),
 
@@ -619,7 +617,6 @@ export const gastownRouter = router({
     .query(async ({ ctx, input }) => {
       await verifyTownOwnership(ctx.env, ctx.userId, input.townId, ctx.orgMemberships);
       const townStub = getTownDOStub(ctx.env, input.townId);
-      await townStub.setTownId(input.townId);
       return townStub.getMayorStatus();
     }),
 
@@ -629,7 +626,6 @@ export const gastownRouter = router({
     .query(async ({ ctx, input }) => {
       await verifyTownOwnership(ctx.env, ctx.userId, input.townId, ctx.orgMemberships);
       const townStub = getTownDOStub(ctx.env, input.townId);
-      await townStub.setTownId(input.townId);
       return townStub.getAlarmStatus();
     }),
 
@@ -666,7 +662,6 @@ export const gastownRouter = router({
       }
 
       const townStub = getTownDOStub(ctx.env, input.townId);
-      await townStub.setTownId(input.townId);
       return townStub.ensureMayor();
     }),
 
@@ -861,7 +856,6 @@ export const gastownRouter = router({
     .mutation(async ({ ctx, input }) => {
       await verifyTownOwnership(ctx.env, ctx.userId, input.townId, ctx.orgMemberships);
       const townStub = getTownDOStub(ctx.env, input.townId);
-      await townStub.setTownId(input.townId);
       await townStub.forceRefreshContainerToken();
     }),
 
@@ -902,6 +896,26 @@ export const gastownRouter = router({
       return townStub.listBeadEvents({
         since: input.since,
         limit: input.limit,
+      });
+    }),
+
+  getMergeQueueData: gastownProcedure
+    .input(
+      z.object({
+        townId: z.string().uuid(),
+        rigId: z.string().uuid().optional(),
+        limit: z.number().int().positive().max(500).default(50),
+        since: z.string().optional(),
+      })
+    )
+    .output(RpcMergeQueueDataOutput)
+    .query(async ({ ctx, input }) => {
+      await verifyTownOwnership(ctx.env, ctx.userId, input.townId, ctx.orgMemberships);
+      const townStub = getTownDOStub(ctx.env, input.townId);
+      return townStub.getMergeQueueData({
+        rigId: input.rigId,
+        limit: input.limit,
+        since: input.since,
       });
     }),
 
@@ -1068,8 +1082,6 @@ export const gastownRouter = router({
       if (!town) throw new TRPCError({ code: 'NOT_FOUND', message: 'Town not found' });
 
       const townStub = getTownDOStub(ctx.env, input.townId);
-      await townStub.setTownId(input.townId);
-
       // Use the town owner's identity for credentials. Only re-mint the
       // kilocode token if the caller is the owner (they have their pepper
       // in ctx). For non-owner members, keep the existing town token.
@@ -1201,7 +1213,6 @@ export const gastownRouter = router({
     .output(RpcAlarmStatusOutput)
     .query(async ({ ctx, input }) => {
       const townStub = getTownDOStub(ctx.env, input.townId);
-      await townStub.setTownId(input.townId);
       return townStub.getAlarmStatus();
     }),
 
@@ -1230,6 +1241,14 @@ export const gastownRouter = router({
     .query(async ({ ctx, input }) => {
       const townStub = getTownDOStub(ctx.env, input.townId);
       return townStub.getBeadAsync(input.beadId);
+    }),
+
+  // DEBUG: raw agent_metadata dump — remove after debugging
+  debugAgentMetadata: adminProcedure
+    .input(z.object({ townId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const townStub = getTownDOStub(ctx.env, input.townId);
+      return townStub.debugAgentMetadata();
     }),
 });
 

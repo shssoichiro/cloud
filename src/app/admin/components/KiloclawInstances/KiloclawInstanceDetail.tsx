@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AdminPage from '@/app/admin/components/AdminPage';
 import {
   BreadcrumbItem,
@@ -48,18 +48,25 @@ import {
   Play,
   Square,
   RotateCcw,
+  RotateCw,
+  ArrowUpCircle,
   RefreshCw,
   Pin,
   Stethoscope,
   CheckCircle2,
   XCircle,
   ShieldAlert,
+  Activity,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { AdminFileEditor } from './AdminFileEditor';
+import {
+  useKiloclawInstanceEvents,
+  type KiloclawEventRow,
+} from '@/app/admin/api/kiloclaw-analytics/hooks';
 
 function formatRelativeTime(timestamp: string | null): string {
   if (!timestamp) return '—';
@@ -842,6 +849,135 @@ function VolumeReassociationCard({
   );
 }
 
+function DeliveryBadge({ delivery }: { delivery: string }) {
+  switch (delivery) {
+    case 'do':
+      return (
+        <Badge className="bg-blue-600 text-xs" variant="default">
+          do
+        </Badge>
+      );
+    case 'reconcile':
+      return (
+        <Badge className="bg-amber-600 text-xs" variant="default">
+          reconcile
+        </Badge>
+      );
+    default:
+      return <Badge variant="outline">{delivery}</Badge>;
+  }
+}
+
+function formatDuration(ms: number): string {
+  if (ms === 0) return '—';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function InstanceEventsCard({ sandboxId }: { sandboxId: string }) {
+  const { data, isLoading, error } = useKiloclawInstanceEvents(sandboxId);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Activity className="h-5 w-5" />
+          <div>
+            <CardTitle>DO & Reconcile Events</CardTitle>
+            <CardDescription>Recent events from Analytics Engine</CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading && (
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-muted-foreground text-sm">Loading events...</span>
+          </div>
+        )}
+
+        {error && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {error instanceof Error ? error.message : 'Failed to load events'}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {data && data.data.length === 0 && (
+          <p className="text-muted-foreground text-sm">No DO or reconcile events found.</p>
+        )}
+
+        {data && data.data.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-muted-foreground border-b text-left text-xs">
+                  <th className="pr-4 pb-2">Time</th>
+                  <th className="pr-4 pb-2">Event</th>
+                  <th className="pr-4 pb-2">Delivery</th>
+                  <th className="pr-4 pb-2">Status</th>
+                  <th className="pr-4 pb-2">Label</th>
+                  <th className="pr-4 pb-2">Duration</th>
+                  <th className="pb-2">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.data.map((row: KiloclawEventRow, i: number) => (
+                  <tr key={`${row.timestamp}-${i}`} className="border-b last:border-0">
+                    <td className="py-2 pr-4 whitespace-nowrap">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-xs">
+                            {formatDistanceToNow(new Date(row.timestamp), { addSuffix: true })}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>{new Date(row.timestamp).toLocaleString()}</TooltipContent>
+                      </Tooltip>
+                    </td>
+                    <td className="py-2 pr-4">
+                      <code className="text-xs">{row.event}</code>
+                    </td>
+                    <td className="py-2 pr-4">
+                      <DeliveryBadge delivery={row.delivery} />
+                    </td>
+                    <td className="py-2 pr-4">
+                      <span className="text-xs">{row.status || '—'}</span>
+                    </td>
+                    <td className="py-2 pr-4">
+                      <span className="text-xs">{row.label || '—'}</span>
+                    </td>
+                    <td className="py-2 pr-4 whitespace-nowrap">
+                      <span className="text-xs">{formatDuration(row.duration_ms)}</span>
+                    </td>
+                    <td className="py-2">
+                      {row.error ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-destructive block max-w-[200px] truncate text-xs">
+                              {row.error}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-[400px]">
+                            <p className="break-words text-xs">{row.error}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 /** Strip ANSI escape codes so raw terminal output can render in a browser &lt;pre&gt;. */
 function stripAnsi(raw: string): string {
   // eslint-disable-next-line no-control-regex
@@ -854,10 +990,12 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
   const [destroyDialogOpen, setDestroyDialogOpen] = useState(false);
   const [doctorDialogOpen, setDoctorDialogOpen] = useState(false);
   const [restoreConfigDialogOpen, setRestoreConfigDialogOpen] = useState(false);
+  const [awaitingRestartCompletion, setAwaitingRestartCompletion] = useState(false);
 
-  const { data, isLoading, error } = useQuery(
-    trpc.admin.kiloclawInstances.get.queryOptions({ id: instanceId })
-  );
+  const { data, isLoading, error } = useQuery({
+    ...trpc.admin.kiloclawInstances.get.queryOptions({ id: instanceId }),
+    refetchInterval: awaitingRestartCompletion ? 3000 : false,
+  });
 
   const { mutateAsync: destroyInstance, isPending: isDestroying } = useMutation(
     trpc.admin.kiloclawInstances.destroy.mutationOptions({
@@ -923,6 +1061,31 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
     '2026.2.26'
   );
 
+  // After a restart/upgrade, poll the machine status until it returns to "running",
+  // then invalidate controllerVersion so supportsConfigRestore reflects the new build.
+  const prevMachineStatus = useRef(data?.workerStatus?.status);
+  useEffect(() => {
+    const status = data?.workerStatus?.status;
+    const wasRestarting = prevMachineStatus.current !== 'running';
+    prevMachineStatus.current = status;
+
+    if (awaitingRestartCompletion && status === 'running' && wasRestarting) {
+      setAwaitingRestartCompletion(false);
+      if (data?.user_id) {
+        void queryClient.invalidateQueries({
+          queryKey: trpc.admin.kiloclawInstances.controllerVersion.queryKey({
+            userId: data.user_id,
+          }),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: trpc.admin.kiloclawInstances.gatewayStatus.queryKey({
+            userId: data.user_id,
+          }),
+        });
+      }
+    }
+  }, [data?.workerStatus?.status, data?.user_id, awaitingRestartCompletion, queryClient, trpc]);
+
   const invalidateGatewayQueries = () => {
     if (!data?.user_id) return;
     void queryClient.invalidateQueries({
@@ -957,6 +1120,34 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
       },
       onError: err => {
         toast.error(`Failed to stop machine: ${err.message}`);
+      },
+    })
+  );
+
+  const { mutateAsync: machineRedeploy, isPending: isMachineRedeploying } = useMutation(
+    trpc.admin.kiloclawInstances.restartMachine.mutationOptions({
+      onSuccess: () => {
+        toast.success('Redeploy requested');
+        invalidateMachineQueries();
+        invalidateGatewayQueries();
+        setAwaitingRestartCompletion(true);
+      },
+      onError: err => {
+        toast.error(`Failed to redeploy: ${err.message}`);
+      },
+    })
+  );
+
+  const { mutateAsync: machineUpgrade, isPending: isMachineUpgrading } = useMutation(
+    trpc.admin.kiloclawInstances.restartMachine.mutationOptions({
+      onSuccess: () => {
+        toast.success('Upgrade to latest requested');
+        invalidateMachineQueries();
+        invalidateGatewayQueries();
+        setAwaitingRestartCompletion(true);
+      },
+      onError: err => {
+        toast.error(`Failed to upgrade: ${err.message}`);
       },
     })
   );
@@ -1061,7 +1252,14 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
   }
 
   const isActive = data.destroyed_at === null;
-  const machineActionPending = isMachineStarting || isMachineStopping;
+  const machineStatus = data.workerStatus?.status ?? null;
+  const machineRestartBlocked =
+    machineStatus === 'provisioned' ||
+    machineStatus === 'destroying' ||
+    machineStatus === 'starting' ||
+    machineStatus === 'restarting';
+  const machineActionPending =
+    isMachineStarting || isMachineStopping || isMachineRedeploying || isMachineUpgrading;
   const gatewayActionPending =
     isGatewayStarting ||
     isGatewayStopping ||
@@ -1358,6 +1556,9 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
           </CardContent>
         </Card>
 
+        {/* DO & Reconcile Events */}
+        {data.sandbox_id && <InstanceEventsCard sandboxId={data.sandbox_id} />}
+
         {/* Machine Controls */}
         {isActive && machineControlsEnabled && (
           <Card>
@@ -1397,6 +1598,32 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
                     <Square className="mr-1 h-4 w-4" />
                   )}
                   Stop Machine
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={machineActionPending || machineRestartBlocked}
+                  onClick={() => void machineRedeploy({ instanceId: data.id, imageTag: undefined })}
+                >
+                  {isMachineRedeploying ? (
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RotateCw className="mr-1 h-4 w-4" />
+                  )}
+                  Redeploy
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={machineActionPending || machineRestartBlocked}
+                  onClick={() => void machineUpgrade({ instanceId: data.id, imageTag: 'latest' })}
+                >
+                  {isMachineUpgrading ? (
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  ) : (
+                    <ArrowUpCircle className="mr-1 h-4 w-4" />
+                  )}
+                  Upgrade to Latest
                 </Button>
               </div>
             </CardContent>
