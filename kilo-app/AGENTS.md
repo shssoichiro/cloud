@@ -22,6 +22,15 @@ pnpm format:check    # oxfmt --list-different src
 pnpm start           # expo start
 ```
 
+## Installing Dependencies
+
+Always use `npx expo install` to add packages — it resolves versions compatible with the current Expo SDK. Do not use `pnpm add` directly.
+
+```bash
+npx expo install <package-name>
+npx expo install --dev <package-name>   # devDependencies
+```
+
 ## Code Style
 
 - Expo Router requires default exports in `src/app/` — this is the only place default exports are allowed.
