@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "kilo-app",
+    "name": "Kilo",
     "owner": "kilocode",
     "slug": "kilo-app",
     "version": "1.0.0",
@@ -9,7 +9,7 @@
     "scheme": "kiloapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.kilocode.kiloapp",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
