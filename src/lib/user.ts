@@ -329,7 +329,6 @@ export async function createOrUpdateUser(
       email: args.google_user_email,
       display_name: args.display_name ?? null,
       hosted_domain: args.hosted_domain,
-      display_name: args.display_name,
     });
 
     return savedUser;
@@ -385,7 +384,6 @@ export async function linkAccountToExistingUser(
     avatar_url: authProviderData.google_user_image_url,
     display_name: authProviderData.display_name ?? null,
     hosted_domain: authProviderData.hosted_domain,
-    display_name: authProviderData.display_name,
   });
 
   if (!linkResult.success) {
