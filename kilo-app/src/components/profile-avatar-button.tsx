@@ -14,7 +14,7 @@ export function ProfileAvatarButton({ className }: Readonly<ProfileAvatarButtonP
   const router = useRouter();
 
   return (
-    <View className={cn('mr-3', className)}>
+    <View className={cn(className)}>
       <Pressable
         onPress={() => {
           void Haptics.selectionAsync();

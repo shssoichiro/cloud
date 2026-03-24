@@ -11,6 +11,8 @@ export default function AgentsLayout() {
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.foreground,
       }}
-    />
+    >
+      <Stack.Screen name="index" options={{ title: 'Agents' }} />
+    </Stack>
   );
 }
