@@ -57,7 +57,9 @@ function RootLayoutNav() {
     !isLoading &&
     ((!token && !inAuthGroup) ||
       (token !== undefined && !context && !inContextGroup) ||
-      (token !== undefined && context !== undefined && (inAuthGroup || inContextGroup)));
+      (token !== undefined &&
+        context !== undefined &&
+        (inAuthGroup || inContextGroup || !hasInitialized.current)));
 
   if (isLoading || needsRedirect) {
     return;
