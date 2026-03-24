@@ -1,4 +1,4 @@
-import type { ExpoConfig } from 'expo/config';
+import { type ExpoConfig } from 'expo/config';
 
 const config: ExpoConfig = {
   name: 'Kilo',
@@ -57,4 +57,5 @@ const config: ExpoConfig = {
   },
 };
 
+// eslint-disable-next-line import-x/no-default-export
 export default config;
