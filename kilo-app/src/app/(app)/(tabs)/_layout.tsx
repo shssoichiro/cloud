@@ -10,6 +10,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      initialRouteName="(kiloclaw)"
       screenOptions={{
         headerShown: false,
         freezeOnBlur: true,
