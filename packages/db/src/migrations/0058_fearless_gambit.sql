@@ -1,0 +1,1 @@
+ALTER TABLE "user_auth_provider" ADD COLUMN "display_name" text;
