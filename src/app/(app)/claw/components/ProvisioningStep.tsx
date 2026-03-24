@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { useControllerHealth, useGatewayReady } from '@/hooks/useKiloClaw';
+import { useGatewayReady } from '@/hooks/useKiloClaw';
 import {
   type ExecPreset,
   type ClawMutations,
@@ -12,11 +12,6 @@ import {
   channelTokensToConfigPatch,
 } from './claw.types';
 import { OnboardingStepView } from './OnboardingStepView';
-
-// Let the instance boot in peace before advancing to the pairing step.
-// Config mutations fire immediately, but we hold onComplete until this
-// timer elapses so the gateway has time to fully initialize.
-const BOOT_DELAY_MS = 60_000;
 
 /** Play a short chime via the Web Audio API. */
 function playChime() {
@@ -53,7 +48,6 @@ export function ProvisioningStep({
 }) {
   const completedRef = useRef(false);
   const [configReady, setConfigReady] = useState(false);
-  const [bootDelayElapsed, setBootDelayElapsed] = useState(false);
 
   // Keep stable references to callbacks so the effect only re-runs
   // when data values change, not when the parent re-renders or mutation
@@ -68,11 +62,6 @@ export function ProvisioningStep({
   patchExecPresetRef.current = mutations.patchExecPreset.mutate;
   const channelTokensRef = useRef(channelTokens);
   channelTokensRef.current = channelTokens;
-
-  useEffect(() => {
-    const timer = setTimeout(() => setBootDelayElapsed(true), BOOT_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     if (!instanceRunning || completedRef.current) return;
@@ -121,30 +110,17 @@ export function ProvisioningStep({
     );
   }, [instanceRunning, preset]);
 
-  // Poll the controller health endpoint to track bootstrap progress.
-  const { data: controllerHealth } = useControllerHealth(instanceRunning);
+  // Poll the gateway /ready endpoint to know when channels are fully set up.
   const { data: gatewayReady } = useGatewayReady(instanceRunning);
+  const isGatewayReady = gatewayReady?.ready === true;
 
+  // Advance to the next step when both config is applied and gateway reports ready.
   useEffect(() => {
-    if (controllerHealth) {
-      console.log('[ProvisioningStep] controller health:', controllerHealth);
-    }
-  }, [controllerHealth]);
-
-  useEffect(() => {
-    if (gatewayReady) {
-      console.log('[ProvisioningStep] gateway ready:', gatewayReady);
-    }
-  }, [gatewayReady]);
-
-  // Advance to the next step only when both the config is applied
-  // and the boot delay has elapsed, giving the gateway time to start.
-  useEffect(() => {
-    if (configReady && bootDelayElapsed) {
+    if (configReady && isGatewayReady) {
       playChime();
       onCompleteRef.current();
     }
-  }, [configReady, bootDelayElapsed]);
+  }, [configReady, isGatewayReady]);
 
   return <ProvisioningStepView totalSteps={totalSteps} />;
 }
