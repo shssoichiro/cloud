@@ -6,27 +6,15 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { useTRPC } from '@/lib/trpc';
 import { View } from '@/tw';
 
-function getNameFromToken(token: string): string | undefined {
-  try {
-    const payload = token.split('.')[1];
-    if (!payload) return undefined;
-    const decoded = JSON.parse(atob(payload)) as { name?: string };
-    return decoded.name;
-  } catch {
-    return undefined;
-  }
-}
-
 export default function HomeScreen() {
-  const { token, signOut } = useAuth();
-  const name = token ? getNameFromToken(token) : undefined;
+  const { signOut } = useAuth();
 
   const trpc = useTRPC();
   const { data, isLoading, error } = useQuery(trpc.user.getAuthProviders.queryOptions());
 
   return (
     <View className="flex-1 items-center justify-center gap-6 bg-background px-6">
-      <Text variant="h1">{name ? `${name}, welcome to Kilo!` : 'Welcome to Kilo!'}</Text>
+      <Text variant="h1">Welcome to Kilo!</Text>
 
       {isLoading && <Text variant="muted">Loading account info...</Text>}
 
