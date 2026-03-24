@@ -1,22 +1,25 @@
 import { type LucideIcon } from 'lucide-react-native';
+import { type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
 
-interface EmptyStateProps {
+type EmptyStateProps = {
   icon: LucideIcon;
   title: string;
   description: string;
   className?: string;
-}
+  action?: ReactNode;
+};
 
 export function EmptyState({
   icon: Icon,
   title,
   description,
   className,
+  action,
 }: Readonly<EmptyStateProps>) {
   const colors = useThemeColors();
 
@@ -31,6 +34,7 @@ export function EmptyState({
           {description}
         </Text>
       </View>
+      {action}
     </View>
   );
 }
