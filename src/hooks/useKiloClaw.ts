@@ -34,7 +34,7 @@ export function useRefreshPairing() {
     // Fetch with refresh=true to bust KV cache, then write the result
     // into the normal (no-input) query so the component sees it immediately.
     const fresh = await queryClient.fetchQuery(
-      trpc.kiloclaw.listPairingRequests.queryOptions({ refresh: true })
+      trpc.kiloclaw.listPairingRequests.queryOptions({ refresh: true }, { staleTime: 0 })
     );
     queryClient.setQueryData(trpc.kiloclaw.listPairingRequests.queryKey(), fresh);
   };
