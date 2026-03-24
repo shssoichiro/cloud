@@ -5,6 +5,7 @@ import { getMagicLinkUrl, type MagicLinkTokenWithPlaintext } from '@/lib/auth/ma
 import { EMAIL_PROVIDER, NEXTAUTH_URL } from '@/lib/config.server';
 import { sendViaCustomerIo } from '@/lib/email-customerio';
 import { sendViaMailgun } from '@/lib/email-mailgun';
+import { verifyEmail } from '@/lib/email-neverbounce';
 
 export const templates = {
   orgSubscription: '10',
@@ -105,6 +106,8 @@ export function creditsVars(monthlyCreditsUsd: number): TemplateVars {
   };
 }
 
+export type SendResult = { sent: true } | { sent: false; reason: 'neverbounce_rejected' };
+
 type SendParams = {
   to: string;
   templateName: TemplateName;
@@ -112,14 +115,20 @@ type SendParams = {
   subjectOverride?: string;
 };
 
-export async function send(params: SendParams) {
+export async function send(params: SendParams): Promise<SendResult> {
+  const isSafeToSend = await verifyEmail(params.to);
+  if (!isSafeToSend) {
+    return { sent: false, reason: 'neverbounce_rejected' };
+  }
+
   if (EMAIL_PROVIDER === 'mailgun') {
     const subject = params.subjectOverride ?? subjects[params.templateName];
     const html = renderTemplate(params.templateName, {
       ...params.templateVars,
       year: String(new Date().getFullYear()),
     });
-    return sendViaMailgun({ to: params.to, subject, html });
+    await sendViaMailgun({ to: params.to, subject, html });
+    return { sent: true };
   }
   // Customer.io handles its own rendering; pass raw string values.
   // If a subjectOverride is provided, include it as `subject` in message_data
@@ -130,13 +139,14 @@ export async function send(params: SendParams) {
   if (params.subjectOverride) {
     messageData.subject = params.subjectOverride;
   }
-  return sendViaCustomerIo({
+  await sendViaCustomerIo({
     transactional_message_id: templates[params.templateName],
     to: params.to,
     message_data: messageData,
     identifiers: { email: params.to },
     reply_to: 'hi@kilocode.ai',
   });
+  return { sent: true };
 }
 
 type OrganizationInviteEmailData = {

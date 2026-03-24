@@ -1,13 +1,12 @@
 import { TRPCError } from '@trpc/server';
 import { adminProcedure, createTRPCRouter } from '@/lib/trpc/init';
 import { NEXTAUTH_URL } from '@/lib/config.server';
-import { sendViaCustomerIo } from '@/lib/email-customerio';
-import { sendViaMailgun } from '@/lib/email-mailgun';
 import {
   templates,
   subjects,
   creditsVars,
   renderTemplate,
+  send,
   RawHtml,
   type TemplateName,
 } from '@/lib/email';
@@ -198,37 +197,16 @@ export const emailTestingRouter = createTRPCRouter({
     )
     .mutation(async ({ input }) => {
       const vars = fixtureTemplateVars(input.template);
-
-      if (input.provider === 'customerio') {
-        const messageData: Record<string, string> = Object.fromEntries(
-          Object.entries(vars).map(([k, v]) => [k, v instanceof RawHtml ? v.html : v])
-        );
-        const result = await sendViaCustomerIo({
-          transactional_message_id: templates[input.template],
-          to: input.recipient,
-          message_data: messageData,
-          identifiers: { email: input.recipient },
-          reply_to: 'hi@kilocode.ai',
-        });
-        if (!result) {
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'CUSTOMERIO_EMAIL_API_KEY is not configured — email was not sent',
-          });
-        }
-        return { provider: input.provider, recipient: input.recipient };
-      }
-
-      const subject = subjects[input.template];
-      const html = renderTemplate(input.template, {
-        ...vars,
-        year: String(new Date().getFullYear()),
+      const result = await send({
+        to: input.recipient,
+        templateName: input.template,
+        templateVars: vars,
       });
-      const result = await sendViaMailgun({ to: input.recipient, subject, html });
-      if (!result) {
+      if (!result.sent) {
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'MAILGUN_API_KEY/MAILGUN_DOMAIN is not configured — email was not sent',
+          code: 'BAD_REQUEST',
+          message:
+            'Email blocked by NeverBounce verification. This address is invalid or disposable.',
         });
       }
       return { provider: input.provider, recipient: input.recipient };
