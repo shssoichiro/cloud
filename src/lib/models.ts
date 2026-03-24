@@ -16,8 +16,12 @@ import {
 } from '@/lib/providers/anthropic';
 import { corethink_free_model } from '@/lib/providers/corethink';
 import type { KiloFreeModel } from '@/lib/providers/kilo-free-model';
-import { minimax_m21_free_model, minimax_m25_free_model } from '@/lib/providers/minimax';
-import { kimi_k25_free_model } from '@/lib/providers/moonshotai';
+import {
+  MINIMAX_CURRENT_MODEL_ID,
+  minimax_m21_free_model,
+  minimax_m25_free_model,
+} from '@/lib/providers/minimax';
+import { KIMI_CURRENT_MODEL_ID, kimi_k25_free_model } from '@/lib/providers/moonshotai';
 import { morph_warp_grep_free_model } from '@/lib/providers/morph';
 import { qwen35_plus_free_model } from '@/lib/providers/qwen';
 import { grok_code_fast_1_optimized_free_model } from '@/lib/providers/xai';
@@ -37,8 +41,8 @@ export const preferredModels = [
   CLAUDE_SONNET_CURRENT_MODEL_ID,
   'openai/gpt-5.4',
   'google/gemini-3.1-pro-preview',
-  'minimax/minimax-m2.7',
-  'moonshotai/kimi-k2.5',
+  MINIMAX_CURRENT_MODEL_ID,
+  KIMI_CURRENT_MODEL_ID,
   'z-ai/glm-5',
   'x-ai/grok-code-fast-1',
 ].filter(m => m !== null);

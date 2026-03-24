@@ -1,9 +1,16 @@
 import type { FeatureValue } from '@/lib/feature-detection';
 import {
   CLAUDE_OPUS_CURRENT_MODEL_ID,
+  CLAUDE_OPUS_CURRENT_MODEL_NAME,
   CLAUDE_SONNET_CURRENT_MODEL_ID,
+  CLAUDE_SONNET_CURRENT_MODEL_NAME,
 } from '@/lib/providers/anthropic';
-import { minimax_m25_free_model } from '@/lib/providers/minimax';
+import {
+  MINIMAX_CURRENT_MODEL_ID,
+  MINIMAX_CURRENT_MODEL_NAME,
+  minimax_m25_free_model,
+} from '@/lib/providers/minimax';
+import { KIMI_CURRENT_MODEL_ID, KIMI_CURRENT_MODEL_NAME } from '@/lib/providers/moonshotai';
 import type {
   GatewayRequest,
   OpenRouterChatCompletionRequest,
@@ -31,15 +38,11 @@ type ResolvedAutoModel = {
   verbosity?: Verbosity;
 };
 
-const KIMI_K25_MODEL_ID = 'moonshotai/kimi-k2.5';
-
-const MINIMAX_M27_MODEL_ID = 'minimax/minimax-m2.7';
-
 const MODEL_DISPLAY_NAMES: Readonly<Record<string, string>> = {
-  [CLAUDE_OPUS_CURRENT_MODEL_ID]: 'Claude Opus',
-  [CLAUDE_SONNET_CURRENT_MODEL_ID]: 'Claude Sonnet',
-  [KIMI_K25_MODEL_ID]: 'Kimi K2.5',
-  [MINIMAX_M27_MODEL_ID]: 'Minimax M2.7',
+  [CLAUDE_OPUS_CURRENT_MODEL_ID]: CLAUDE_OPUS_CURRENT_MODEL_NAME,
+  [CLAUDE_SONNET_CURRENT_MODEL_ID]: CLAUDE_SONNET_CURRENT_MODEL_NAME,
+  [KIMI_CURRENT_MODEL_ID]: KIMI_CURRENT_MODEL_NAME,
+  [MINIMAX_CURRENT_MODEL_ID]: MINIMAX_CURRENT_MODEL_NAME,
 };
 
 function describeRouting(modeToModel: Map<string, ResolvedAutoModel>): string {
@@ -99,20 +102,20 @@ const FRONTIER_MODE_TO_MODEL = new Map<string, ResolvedAutoModel>([
 ]);
 
 const BALANCED_CODE_MODEL: ResolvedAutoModel = {
-  model: MINIMAX_M27_MODEL_ID,
+  model: MINIMAX_CURRENT_MODEL_ID,
 };
 
 // Mode → model mappings for kilo-auto/balanced routing.
 // Uses Kimi K2.5 where Frontier uses Opus, Minimax M2.7 where Frontier uses Sonnet.
 const BALANCED_MODE_TO_MODEL = new Map<string, ResolvedAutoModel>([
-  ['plan', { model: KIMI_K25_MODEL_ID, reasoning: { enabled: true } }],
-  ['general', { model: KIMI_K25_MODEL_ID, reasoning: { enabled: true } }],
-  ['architect', { model: KIMI_K25_MODEL_ID, reasoning: { enabled: true } }],
-  ['orchestrator', { model: KIMI_K25_MODEL_ID, reasoning: { enabled: true } }],
-  ['ask', { model: KIMI_K25_MODEL_ID, reasoning: { enabled: true } }],
-  ['debug', { model: KIMI_K25_MODEL_ID, reasoning: { enabled: true } }],
-  ['build', { model: MINIMAX_M27_MODEL_ID }],
-  ['explore', { model: MINIMAX_M27_MODEL_ID }],
+  ['plan', { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } }],
+  ['general', { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } }],
+  ['architect', { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } }],
+  ['orchestrator', { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } }],
+  ['ask', { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } }],
+  ['debug', { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } }],
+  ['build', { model: KIMI_CURRENT_MODEL_ID }],
+  ['explore', { model: KIMI_CURRENT_MODEL_ID }],
   ['code', BALANCED_CODE_MODEL],
 ]);
 
