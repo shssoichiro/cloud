@@ -520,6 +520,7 @@ export const user_auth_provider = pgTable(
     avatar_url: text().notNull(),
 
     hosted_domain: text(),
+    display_name: text(),
     created_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   },
   table => [
