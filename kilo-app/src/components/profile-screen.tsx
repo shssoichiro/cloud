@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeftRight, KeyRound, LogOut } from 'lucide-react-native';
+import { ArrowLeftRight, Building2, KeyRound, LogOut, User } from 'lucide-react-native';
 import { Alert, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
@@ -19,9 +19,14 @@ export function ProfileScreen() {
   const { context, clearContext } = useAppContext();
   const trpc = useTRPC();
   const { data, isLoading } = useQuery(trpc.user.getAuthProviders.queryOptions());
+  const { data: orgs } = useQuery(trpc.organizations.list.queryOptions());
   const colors = useThemeColors();
 
-  const contextLabel = context?.type === 'personal' ? 'Personal' : 'Organization';
+  const contextLabel =
+    context?.type === 'personal'
+      ? 'Personal'
+      : (orgs?.find(o => o.organizationId === context?.organizationId)?.organizationName ??
+        'Organization');
 
   const confirmSignOut = () => {
     Alert.alert('Sign out?', 'You will need to sign in again to access your workspace.', [
@@ -44,6 +49,11 @@ export function ProfileScreen() {
           Active Context
         </Text>
         <View className="flex-row items-center gap-3 rounded-lg bg-secondary p-3">
+          {context?.type === 'personal' ? (
+            <User size={18} color={colors.secondaryForeground} />
+          ) : (
+            <Building2 size={18} color={colors.secondaryForeground} />
+          )}
           <Text className="text-sm font-medium">{contextLabel}</Text>
         </View>
       </View>
