@@ -38,21 +38,18 @@ export function ProfileScreen() {
 
   return (
     <View className="flex-1 bg-background px-6 pt-8">
-      {/* User info */}
-      <View className="items-center gap-3">
-        <View className="h-16 w-16 items-center justify-center rounded-full bg-secondary">
-          <Text className="text-2xl font-bold text-secondary-foreground">K</Text>
-        </View>
-        <View className="items-center gap-1">
-          <Text variant="large">{contextLabel}</Text>
-          <Text variant="muted">
-            {context?.type === 'organization' ? 'Organization workspace' : 'Personal workspace'}
-          </Text>
+      {/* Active context */}
+      <View className="gap-3">
+        <Text variant="small" className="uppercase tracking-wide text-muted-foreground">
+          Active Context
+        </Text>
+        <View className="flex-row items-center gap-3 rounded-lg bg-secondary p-3">
+          <Text className="text-sm font-medium">{contextLabel}</Text>
         </View>
       </View>
 
       {/* Linked accounts */}
-      <View className="mt-8 gap-3">
+      <View className="mt-6 gap-3">
         <Text variant="small" className="uppercase tracking-wide text-muted-foreground">
           Linked Accounts
         </Text>
