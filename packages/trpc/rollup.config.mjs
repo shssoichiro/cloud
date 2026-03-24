@@ -6,6 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tscOut = path.resolve(__dirname, 'dist/tsc');
 
 export default {
+  external: ['pg'],
   input: './dist/tsc/packages/trpc/src/index.d.ts',
   output: {
     file: './dist/index.d.ts',
