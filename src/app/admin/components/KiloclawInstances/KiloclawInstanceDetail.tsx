@@ -1409,25 +1409,23 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <CardTitle>Live Worker Status</CardTitle>
-                <CardDescription>
-                  Real-time status from the KiloClaw Durable Object
-                </CardDescription>
+                <CardDescription>Real-time status from the KiloClaw Durable Object</CardDescription>
               </div>
               {canRetryRecovery && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={machineActionPending}
-                    onClick={() => void forceRetryRecovery({ userId: data.user_id })}
-                  >
-                    {isRetryingRecovery ? (
-                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                    ) : (
-                      <RotateCw className="mr-1 h-4 w-4" />
-                    )}
-                    Retry Recovery
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={machineActionPending}
+                  onClick={() => void forceRetryRecovery({ userId: data.user_id })}
+                >
+                  {isRetryingRecovery ? (
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RotateCw className="mr-1 h-4 w-4" />
+                  )}
+                  Retry Recovery
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent>
