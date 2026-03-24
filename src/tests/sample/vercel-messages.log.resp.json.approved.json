@@ -1,9 +1,9 @@
 {
-  "messageId": "msg_01XFDUDYJgAACzvnptvVoYEL",
+  "messageId": "gen_01KMFKWCKRPKGEG2544TR4ZB17",
   "hasError": false,
-  "model": "claude-opus-4-5",
-  "responseContent": "Hello!",
-  "inference_provider": "anthropic",
+  "model": "anthropic/claude-sonnet-4.6",
+  "responseContent": "Hi there! 👋 How are you doing? Is there something I can help you with today?",
+  "inference_provider": "bedrock",
   "upstream_id": null,
   "finish_reason": "end_turn",
   "latency": null,
@@ -11,10 +11,10 @@
   "generation_time": null,
   "streamed": false,
   "cancelled": null,
-  "inputTokens": 25,
-  "outputTokens": 6,
+  "inputTokens": 9,
+  "outputTokens": 25,
   "cacheHitTokens": 0,
   "cacheWriteTokens": 0,
-  "cost_mUsd": 375,
+  "cost_mUsd": 402,
   "is_byok": null
 }
