@@ -1,28 +1,39 @@
 export type RegionDef = {
   code: string;
   label: string;
+  area: string;
   description?: string;
-  score?: number;
 };
 
 export const META_REGIONS: RegionDef[] = [
-  { code: 'eu', label: 'Europe', description: 'Fly meta-region — all EU datacenters' },
-  { code: 'us', label: 'United States', description: 'Fly meta-region — all US datacenters' },
+  { code: 'eu', label: 'Europe', area: 'Meta', description: 'Fly meta-region — all EU datacenters' },
+  { code: 'us', label: 'United States', area: 'Meta', description: 'Fly meta-region — all US datacenters' },
 ];
 
 export const SPECIFIC_REGIONS: RegionDef[] = [
-  { code: 'arn', label: 'Stockholm', score: 15.04 },
-  { code: 'cdg', label: 'Paris', score: 14.63 },
-  { code: 'iad', label: 'Ashburn', score: 13.85 },
-  { code: 'ams', label: 'Amsterdam', score: 13.58 },
-  { code: 'fra', label: 'Frankfurt', score: 13.16 },
-  { code: 'lhr', label: 'London', score: 12.25 },
-  { code: 'lax', label: 'Los Angeles', score: 9.68 },
-  { code: 'ewr', label: 'Newark', score: 9.07 },
-  { code: 'sjc', label: 'San Jose', score: 8.4 },
-  { code: 'ord', label: 'Chicago', score: 8.2 },
-  { code: 'dfw', label: 'Dallas', score: 6.8 },
-  { code: 'yyz', label: 'Toronto', score: 5.17 },
+  // Africa
+  { code: 'jnb', label: 'Johannesburg, South Africa', area: 'Africa' },
+  // Asia Pacific
+  { code: 'bom', label: 'Mumbai, India', area: 'Asia Pacific' },
+  { code: 'sin', label: 'Singapore, Singapore', area: 'Asia Pacific' },
+  { code: 'syd', label: 'Sydney, Australia', area: 'Asia Pacific' },
+  { code: 'nrt', label: 'Tokyo, Japan', area: 'Asia Pacific' },
+  // Europe
+  { code: 'ams', label: 'Amsterdam, Netherlands', area: 'Europe' },
+  { code: 'fra', label: 'Frankfurt, Germany', area: 'Europe' },
+  { code: 'lhr', label: 'London, United Kingdom', area: 'Europe' },
+  { code: 'cdg', label: 'Paris, France', area: 'Europe' },
+  { code: 'arn', label: 'Stockholm, Sweden', area: 'Europe' },
+  // North America
+  { code: 'iad', label: 'Ashburn, Virginia (US)', area: 'North America' },
+  { code: 'ord', label: 'Chicago, Illinois (US)', area: 'North America' },
+  { code: 'dfw', label: 'Dallas, Texas (US)', area: 'North America' },
+  { code: 'lax', label: 'Los Angeles, California (US)', area: 'North America' },
+  { code: 'sjc', label: 'San Jose, California (US)', area: 'North America' },
+  { code: 'ewr', label: 'Secaucus, NJ (US)', area: 'North America' },
+  { code: 'yyz', label: 'Toronto, Canada', area: 'North America' },
+  // South America
+  { code: 'gru', label: 'Sao Paulo, Brazil', area: 'South America' },
 ];
 
 const META_CODES = new Set(META_REGIONS.map(r => r.code));

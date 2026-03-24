@@ -6,9 +6,18 @@ export const FLY_REGIONS_KV_KEY = 'fly-regions';
 /** Fly geographic aliases that expand server-side — these should NOT be shuffled. */
 const FLY_META_REGIONS = new Set(['eu', 'us']);
 
-/** All valid specific Fly regions we deploy to. */
+/** All valid specific Fly regions (from `fly platform regions`). */
 export const FLY_SPECIFIC_REGIONS = [
-  'arn', 'cdg', 'iad', 'ams', 'fra', 'lhr', 'lax', 'ewr', 'sjc', 'ord', 'dfw', 'yyz',
+  // Africa
+  'jnb',
+  // Asia Pacific
+  'bom', 'sin', 'syd', 'nrt',
+  // Europe
+  'ams', 'fra', 'lhr', 'cdg', 'arn',
+  // North America
+  'iad', 'ord', 'dfw', 'lax', 'sjc', 'ewr', 'yyz',
+  // South America
+  'gru',
 ] as const;
 
 /** All valid region codes (meta + specific). */

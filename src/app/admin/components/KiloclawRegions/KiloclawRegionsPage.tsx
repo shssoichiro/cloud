@@ -170,8 +170,8 @@ export function RegionsTab() {
               <TableRow>
                 <TableHead>Code</TableHead>
                 <TableHead>Location</TableHead>
+                <TableHead>Area</TableHead>
                 <TableHead>Type</TableHead>
-                <TableHead className="text-right">Score</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -179,20 +179,20 @@ export function RegionsTab() {
                 <TableRow key={r.code}>
                   <TableCell className="font-mono font-medium">{r.code}</TableCell>
                   <TableCell>{r.label}</TableCell>
+                  <TableCell className="text-muted-foreground">{r.area}</TableCell>
                   <TableCell>
                     <Badge variant="outline">meta</Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-right">—</TableCell>
                 </TableRow>
               ))}
               {SPECIFIC_REGIONS.map(r => (
                 <TableRow key={r.code}>
                   <TableCell className="font-mono font-medium">{r.code}</TableCell>
                   <TableCell>{r.label}</TableCell>
+                  <TableCell className="text-muted-foreground">{r.area}</TableCell>
                   <TableCell>
                     <Badge variant="secondary">specific</Badge>
                   </TableCell>
-                  <TableCell className="text-right">{r.score}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
