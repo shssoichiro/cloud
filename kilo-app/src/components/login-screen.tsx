@@ -46,14 +46,15 @@ export function LoginScreen() {
         <Text variant="muted" className="text-lg">
           Sign in to continue
         </Text>
-        <Text variant="muted" className="text-xs">
-          You will be redirected to your browser
-        </Text>
       </View>
 
-      <Animated.View className="w-full max-w-sm" layout={LinearTransition}>
+      <Animated.View className="w-full max-w-sm gap-3" layout={LinearTransition}>
         {status === 'idle' && (
-          <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
+          <Animated.View
+            className="gap-3"
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(150)}
+          >
             <Button
               size="lg"
               onPress={() => {
@@ -63,6 +64,9 @@ export function LoginScreen() {
             >
               <Text>Sign In</Text>
             </Button>
+            <Text variant="muted" className="text-center text-xs">
+              You will be redirected to your browser
+            </Text>
           </Animated.View>
         )}
 
