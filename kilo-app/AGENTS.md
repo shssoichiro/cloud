@@ -52,6 +52,47 @@ npx expo install --dev <package-name>   # devDependencies
 - Style components with Tailwind utility classes via `className`. No inline styles or `StyleSheet.create`.
 - All lint rules are set to `error`, not `warn`. Fix violations, don't suppress them.
 
+## UX Patterns
+
+### Icons
+
+- Use `lucide-react-native` for all icons. Never use emoji as UI elements.
+- Lucide icons on native do NOT support `className` for color. Always use the `color` prop with resolved color strings from `useThemeColors()`: `<Icon size={18} color={colors.foreground} />`.
+
+### Navigation Headers
+
+- **Tab root screens**: Use the custom `ScreenHeader` component (`src/components/screen-header.tsx`) instead of the native stack header. The native header on iOS 26 wraps `headerRight` content in a `UIBarButtonItem` with an unavoidable circular pill background.
+- **Pushed detail screens / modals**: Native stack headers are fine — back button and modal presentation work correctly. Use `useThemeColors()` for `headerStyle` and `headerTintColor`.
+- Set titles and headerRight declaratively in `Stack.Screen` options within layouts, not via `navigation.setOptions()` in screens.
+
+### Loading States
+
+- Never show bare "Loading..." text. Use the `Skeleton` component (`src/components/ui/skeleton.tsx`) for shimmer placeholders.
+- Use `ActivityIndicator` from `react-native` for inline spinners (e.g., waiting for an API call to initiate).
+
+### Animations
+
+- `react-native-reanimated` is available. Use `FadeIn`/`FadeOut` entering/exiting animations to smooth state transitions (e.g., login states, content loading).
+- Use `LinearTransition` (not the deprecated `Layout`) on container `Animated.View` to animate height changes when children appear/disappear (e.g., skeleton → loaded content).
+- Wrap each dynamically appearing item in `<Animated.View entering={FadeIn.duration(200)}>` to fade in instead of popping.
+
+### Empty States
+
+- Use the `EmptyState` component (`src/components/empty-state.tsx`) for screens with no data. It takes a Lucide icon, title, and description.
+
+### Confirmations
+
+- Use native `Alert.alert()` for destructive confirmations (e.g., sign out). It renders the platform alert dialog — no JS-based modal needed.
+
+### Tabs
+
+- Set `freezeOnBlur: true` on tab `screenOptions` to prevent re-render flicker when switching tabs.
+- Use `expo-haptics` (`Haptics.selectionAsync()`) on tab press and interactive buttons for tactile feedback.
+
+### Images
+
+- When using `expo-image` in headers or small UI elements, set `transition={0}` to disable the default fade-in which causes flicker.
+
 ## Fixing Lint Errors
 
 When resolving lint errors, always try the autofix first before editing manually:
