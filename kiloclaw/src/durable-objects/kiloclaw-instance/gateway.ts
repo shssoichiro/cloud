@@ -9,6 +9,7 @@ import {
   ConfigRestoreResponseSchema,
   ControllerVersionResponseSchema,
   ControllerHealthResponseSchema,
+  GatewayReadyResponseSchema,
   EnvPatchResponseSchema,
   OpenclawConfigResponseSchema,
   GatewayControllerError,
@@ -252,6 +253,26 @@ export async function getControllerHealth(
       '/_kilo/health',
       'GET',
       ControllerHealthResponseSchema
+    );
+  } catch (error) {
+    if (isErrorUnknownRoute(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function getGatewayReady(
+  state: InstanceMutableState,
+  env: KiloClawEnv
+): Promise<Record<string, unknown> | null> {
+  try {
+    return await callGatewayController(
+      state,
+      env,
+      '/_kilo/gateway/ready',
+      'GET',
+      GatewayReadyResponseSchema
     );
   } catch (error) {
     if (isErrorUnknownRoute(error)) {

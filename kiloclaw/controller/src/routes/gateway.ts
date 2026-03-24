@@ -58,6 +58,26 @@ export function registerGatewayRoutes(
     }
   });
 
+  app.get('/_kilo/gateway/ready', async c => {
+    if (supervisor.getState() !== 'running') {
+      return c.json({ ready: false, error: 'Gateway not running' }, 503);
+    }
+    try {
+      const res = await fetch('http://127.0.0.1:3001/ready');
+      const body = await res.text();
+      let json: unknown;
+      try {
+        json = JSON.parse(body);
+      } catch {
+        json = { raw: body };
+      }
+      return c.json(json, res.ok ? 200 : 503);
+    } catch (error) {
+      console.error('[controller] /_kilo/gateway/ready failed:', error);
+      return c.json({ ready: false, error: 'Failed to reach gateway' }, 502);
+    }
+  });
+
   app.post('/_kilo/gateway/restart', async c => {
     try {
       const restarted = await supervisor.restart();

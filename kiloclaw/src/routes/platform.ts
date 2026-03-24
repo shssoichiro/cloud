@@ -620,6 +620,26 @@ platform.get('/gateway/status', async c => {
   }
 });
 
+// GET /api/platform/gateway/ready?userId=...
+platform.get('/gateway/ready', async c => {
+  const userId = setValidatedQueryUserId(c);
+  if (!userId) {
+    return c.json({ error: 'userId query parameter is required' }, 400);
+  }
+
+  try {
+    const result = await withDORetry(
+      instanceStubFactory(c.env, userId),
+      stub => stub.getGatewayReady(),
+      'getGatewayReady'
+    );
+    return c.json(result ?? { ready: false, error: 'controller too old' }, 200);
+  } catch (err) {
+    const { message, status } = sanitizeError(err, 'gateway ready');
+    return jsonError(message, status);
+  }
+});
+
 // GET /api/platform/controller-health?userId=...
 platform.get('/controller-health', async c => {
   const userId = setValidatedQueryUserId(c);

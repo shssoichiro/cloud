@@ -59,6 +59,8 @@ export const ControllerHealthResponseSchema: ZodType<ControllerHealthResponse> =
   error: z.string().optional(),
 });
 
+export const GatewayReadyResponseSchema = z.record(z.string(), z.unknown());
+
 export const EnvPatchResponseSchema = z.object({
   ok: z.boolean(),
   signaled: z.boolean(),
