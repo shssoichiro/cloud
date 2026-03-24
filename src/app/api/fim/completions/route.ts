@@ -157,10 +157,7 @@ export async function POST(request: NextRequest) {
   const { balance, settings, plan } = await getBalanceAndOrgSettings(organizationId, user, readDb);
 
   if (balance <= 0 && !isFreeModel(fimModel_withOpenRouterStyleProviderPrefix) && !userByok) {
-    return NextResponse.json(
-      { error: { message: 'Insufficient credits' } },
-      { status: 402 }
-    );
+    return NextResponse.json({ error: { message: 'Insufficient credits' } }, { status: 402 });
   }
 
   // Use shared helper for organization model restrictions
