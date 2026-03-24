@@ -9,7 +9,7 @@ Kilo App is an Expo (React Native) mobile application using Expo Router for file
 - **Framework**: Expo SDK 55, React Native, React 19
 - **Routing**: Expo Router (file-based, `src/app/`)
 - **Language**: TypeScript (strict mode, `tsgo`)
-- **Styling**: NativeWind v5 (Tailwind CSS v4 + react-native-css)
+- **Styling**: NativeWind v5 (Tailwind CSS v4) — docs: https://www.nativewind.dev/v5/llms-full.txt
 - **UI Components**: [React Native Reusables](https://reactnativereusables.com/) (shadcn/ui for React Native) in `src/components/ui/`
 - **Linting**: ESLint 9 flat config with strict type-checked rules, unicorn, sonarjs, import-x, promise, react-native
 - **Formatting**: oxfmt
@@ -42,8 +42,8 @@ npx expo install --dev <package-name>   # devDependencies
 
 - Expo Router requires default exports in `src/app/` — this is the only place default exports are allowed.
 - Prefer `type` over `interface`.
-- Import `View`, `Text`, `ScrollView`, `Pressable`, `TextInput`, `Link` from `@/tw` — these are CSS-enabled wrappers that support `className`. Do not import them from `react-native` directly.
-- Import `Image` from `@/tw/image`.
+- Import `View`, `Text`, `ScrollView`, `Pressable`, `TextInput` from `react-native` — NativeWind's Metro plugin rewrites these imports to add `className` support automatically.
+- Import `Image` from `@/components/ui/image` (a `styled` wrapper around `expo-image`). Lint enforces this.
 - For UI components (Button, Text with variants, Card, etc.), import from `@/components/ui/<component>`. These are from react-native-reusables (shadcn/ui for RN).
 - Add new UI components with `pnpm dlx @react-native-reusables/cli@latest add <component> --styling-library nativewind -y`. Then fix import ordering and any lint issues in the generated file.
 - The `cn()` helper for merging Tailwind classes is in `@/lib/utils`.
