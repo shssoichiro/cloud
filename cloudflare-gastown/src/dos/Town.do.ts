@@ -30,7 +30,7 @@ import * as scheduling from './town/scheduling';
 import * as events from './town/events';
 import * as reconciler from './town/reconciler';
 import { applyAction } from './town/actions';
-import type { ApplyActionContext } from './town/actions';
+import type { Action, ApplyActionContext } from './town/actions';
 import { buildRefinerySystemPrompt } from '../prompts/refinery-system.prompt';
 import { GitHubPRStatusSchema, GitLabMRStatusSchema } from '../util/platform-pr.util';
 
@@ -46,6 +46,7 @@ import { review_metadata } from '../db/tables/review-metadata.table';
 import { escalation_metadata } from '../db/tables/escalation-metadata.table';
 import { convoy_metadata } from '../db/tables/convoy-metadata.table';
 import { bead_dependencies } from '../db/tables/bead-dependencies.table';
+import { town_events, TownEventRecord } from '../db/tables/town-events.table';
 import {
   agent_nudges,
   AgentNudgeRecord,
@@ -2959,10 +2960,16 @@ export class TownDO extends DurableObject<Env> {
               townId,
               row.bead_id
             );
-            events.upsertContainerStatus(this.sql, row.bead_id, {
-              status: containerInfo.status,
-              exit_reason: containerInfo.exitReason,
-            });
+            // Skip inserting events for 'running' — it's the steady-state and
+            // a no-op in applyEvent, so recording it just bloats the event table
+            // (~720 events/hour/agent). Non-running statuses (stopped, error,
+            // unknown) still get inserted so the reconciler can detect and handle them.
+            if (containerInfo.status !== 'running') {
+              events.upsertContainerStatus(this.sql, row.bead_id, {
+                status: containerInfo.status,
+                exit_reason: containerInfo.exitReason,
+              });
+            }
           } catch (err) {
             console.warn(
               `${TOWN_LOG} alarm: container status check failed for agent=${row.bead_id}`,
@@ -3070,6 +3077,29 @@ export class TownDO extends DurableObject<Env> {
           label: violations.map(v => `[${v.invariant}] ${v.message}`).join('; '),
           value: violations.length,
         });
+
+        for (const violation of violations) {
+          Sentry.captureMessage(
+            `Reconciler invariant #${violation.invariant} violated: ${violation.message}`,
+            {
+              level: 'error',
+              extra: {
+                invariant: violation.invariant,
+                message: violation.message,
+                townId,
+              },
+              tags: {
+                invariant: String(violation.invariant),
+                townId,
+              },
+            }
+          );
+
+          // TODO: auto-recovery for invariant #7 (working agent with no hook).
+          // Transitioning to idle requires unhooking side-effects (container stop,
+          // bead status rollback) that live in agents.ts — needs a dedicated
+          // recovery action in the reconciler rather than a raw SQL update here.
+        }
       }
     } catch (err) {
       console.warn(`${TOWN_LOG} [reconciler:invariants] town=${townId} check failed`, err);
@@ -3078,6 +3108,31 @@ export class TownDO extends DurableObject<Env> {
     metrics.wallClockMs = Date.now() - reconcilerStart;
     metrics.pendingEventCount = events.pendingEventCount(this.sql);
     this._lastReconcilerMetrics = metrics;
+
+    // Emit reconciler metrics to Analytics Engine for Grafana dashboards.
+    // Field mapping:
+    //   double1  = wallClockMs
+    //   double2  = eventsDrained
+    //   double3  = actionsEmitted
+    //   double4  = sideEffectsAttempted
+    //   double5  = sideEffectsSucceeded
+    //   double6  = sideEffectsFailed
+    //   double7  = invariantViolations
+    //   double8  = pendingEventCount
+    //   blob10   = JSON-encoded actionsByType breakdown
+    this.emitEvent({
+      event: 'reconciler_tick',
+      townId,
+      durationMs: metrics.wallClockMs,
+      value: metrics.eventsDrained,
+      double3: metrics.actionsEmitted,
+      double4: metrics.sideEffectsAttempted,
+      double5: metrics.sideEffectsSucceeded,
+      double6: metrics.sideEffectsFailed,
+      double7: metrics.invariantViolations,
+      double8: metrics.pendingEventCount,
+      label: JSON.stringify(metrics.actionsByType),
+    });
 
     // ── Phase 3: Housekeeping (independent, all parallelizable) ────
     await Promise.allSettled([
@@ -3761,6 +3816,155 @@ export class TownDO extends DurableObject<Env> {
       reconciler: this._lastReconcilerMetrics,
       recentEvents,
     };
+  }
+
+  // DEBUG: replay events from a time range, apply them to state, run the
+  // reconciler, and return computed actions. Uses a savepoint + rollback so
+  // no state is permanently modified.
+  //
+  // CAVEAT: events are re-applied on top of current (live) state, not from a
+  // clean snapshot taken before the requested window. Non-idempotent handlers
+  // (e.g. agentDone, completeReviewWithResult) may target different beads than
+  // they originally did, so actions and snapshots are approximate — useful for
+  // debugging event flow, not for faithful historical reconstruction.
+  async debugReplayEvents(
+    from: string,
+    to: string
+  ): Promise<{
+    caveat: string;
+    eventsReplayed: number;
+    actions: Action[];
+    stateSnapshot: {
+      agents: unknown[];
+      nonTerminalBeads: unknown[];
+    };
+  }> {
+    this.sql.exec('SAVEPOINT debug_replay_events');
+    try {
+      // Query ALL events in the time range regardless of processed_at
+      const rangeEvents = TownEventRecord.array().parse([
+        ...query(
+          this.sql,
+          /* sql */ `
+            SELECT ${town_events.event_id}, ${town_events.event_type},
+                   ${town_events.agent_id}, ${town_events.bead_id},
+                   ${town_events.payload}, ${town_events.created_at},
+                   ${town_events.processed_at}
+            FROM ${town_events}
+            WHERE ${town_events.created_at} >= ?
+              AND ${town_events.created_at} <= ?
+            ORDER BY ${town_events.created_at} ASC
+          `,
+          [from, to]
+        ),
+      ]);
+
+      // Apply each event to reconstruct state transitions
+      for (const event of rangeEvents) {
+        reconciler.applyEvent(this.sql, event);
+      }
+
+      // Run reconciler against the resulting state
+      const actions = reconciler.reconcile(this.sql);
+
+      // Capture a state snapshot before rollback
+      const agentSnapshot = [
+        ...query(
+          this.sql,
+          /* sql */ `
+            SELECT ${agent_metadata.bead_id},
+                   ${agent_metadata.role},
+                   ${agent_metadata.status},
+                   ${agent_metadata.current_hook_bead_id},
+                   ${agent_metadata.dispatch_attempts},
+                   ${agent_metadata.last_activity_at}
+            FROM ${agent_metadata}
+          `,
+          []
+        ),
+      ];
+
+      const beadSnapshot = [
+        ...query(
+          this.sql,
+          /* sql */ `
+            SELECT ${beads.bead_id},
+                   ${beads.type},
+                   ${beads.status},
+                   ${beads.title},
+                   ${beads.assignee_agent_bead_id},
+                   ${beads.updated_at}
+            FROM ${beads}
+            WHERE ${beads.status} NOT IN ('closed', 'failed')
+              AND ${beads.type} != 'agent'
+            ORDER BY ${beads.type}, ${beads.status}
+          `,
+          []
+        ),
+      ];
+
+      return {
+        caveat:
+          'Events are re-applied on top of current live state, not from a pre-window snapshot. ' +
+          'Non-idempotent handlers may produce different results than the original processing. ' +
+          'Use for debugging event flow, not faithful historical reconstruction.',
+        eventsReplayed: rangeEvents.length,
+        actions,
+        stateSnapshot: {
+          agents: agentSnapshot,
+          nonTerminalBeads: beadSnapshot,
+        },
+      };
+    } finally {
+      this.sql.exec('ROLLBACK TO SAVEPOINT debug_replay_events');
+      this.sql.exec('RELEASE SAVEPOINT debug_replay_events');
+    }
+  }
+
+  // DEBUG: dry-run the reconciler against current state, returning actions
+  // it would emit without applying them. Drains pending events first (same
+  // as the real alarm loop) inside a savepoint that is rolled back, so the
+  // endpoint remains fully side-effect-free.
+  async debugDryRun(): Promise<{
+    actions: Action[];
+    metrics: Pick<
+      reconciler.ReconcilerMetrics,
+      'actionsEmitted' | 'actionsByType' | 'pendingEventCount' | 'eventsDrained'
+    >;
+  }> {
+    // Use a savepoint so we can drain events (which mutates state)
+    // then roll back without permanent side effects
+    this.sql.exec('SAVEPOINT debug_dry_run');
+    try {
+      // Phase 0: Drain and apply pending events (same as real alarm loop)
+      const pending = events.drainEvents(this.sql);
+      for (const event of pending) {
+        reconciler.applyEvent(this.sql, event);
+        events.markProcessed(this.sql, event.event_id);
+      }
+
+      // Phase 1: Reconcile against now-current state
+      const actions = reconciler.reconcile(this.sql);
+      const pendingEventCount = events.pendingEventCount(this.sql);
+      const actionsByType: Record<string, number> = {};
+      for (const a of actions) {
+        actionsByType[a.type] = (actionsByType[a.type] ?? 0) + 1;
+      }
+
+      return {
+        actions,
+        metrics: {
+          actionsEmitted: actions.length,
+          actionsByType,
+          pendingEventCount,
+          eventsDrained: pending.length,
+        },
+      };
+    } finally {
+      // Roll back all state mutations — this is a dry run
+      this.sql.exec('ROLLBACK TO SAVEPOINT debug_dry_run');
+      this.sql.exec('RELEASE SAVEPOINT debug_dry_run');
+    }
   }
 
   // DEBUG: concise non-terminal bead summary — remove after debugging
