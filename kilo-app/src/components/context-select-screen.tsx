@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Building2, User } from 'lucide-react-native';
 import { View } from 'react-native';
-import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import logo from '@/../assets/images/logo.png';
 import { Button } from '@/components/ui/button';
@@ -47,10 +47,10 @@ export function ContextSelectScreen() {
         </Button>
 
         {isLoading && (
-          <View className="gap-3">
-            <Skeleton className="h-12 w-full rounded-lg" />
-            <Skeleton className="h-12 w-full rounded-lg" />
-          </View>
+          <Animated.View className="gap-3" exiting={FadeOut.duration(150)}>
+            <Skeleton className="h-11 w-full rounded-md" />
+            <Skeleton className="h-11 w-full rounded-md" />
+          </Animated.View>
         )}
 
         {error && (

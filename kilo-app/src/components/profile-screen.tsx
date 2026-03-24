@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeftRight, Building2, KeyRound, LogOut, User } from 'lucide-react-native';
 import { Alert, View } from 'react-native';
-import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -66,10 +66,10 @@ export function ProfileScreen() {
         </Text>
 
         {isLoading && (
-          <View className="gap-3">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-          </View>
+          <Animated.View className="gap-3" exiting={FadeOut.duration(150)}>
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+          </Animated.View>
         )}
 
         {data?.providers.map(p => {
