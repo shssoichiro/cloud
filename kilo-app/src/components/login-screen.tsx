@@ -40,13 +40,13 @@ export function LoginScreen() {
   }, [status, token, signIn]);
 
   return (
-    <View className="flex-1 items-center justify-center gap-8 bg-background px-6">
-      <View className="items-center gap-3">
-        <Image source={logo} className="h-16 w-16" accessibilityLabel="Kilo logo" />
+    <View className="flex-1 items-center justify-center gap-6 bg-background px-6">
+      <View className="items-center gap-2">
+        <Image source={logo} className="mb-1 h-16 w-16" accessibilityLabel="Kilo logo" />
         <Text variant="muted" className="text-lg">
           Sign in to continue
         </Text>
-        <Text variant="muted" className="text-sm">
+        <Text variant="muted" className="text-xs">
           You will be redirected to your browser
         </Text>
       </View>
