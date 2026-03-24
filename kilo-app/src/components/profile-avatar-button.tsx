@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { Pressable } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import logo from '@/../assets/images/logo.png';
 import { Image } from '@/components/ui/image';
@@ -14,16 +14,17 @@ export function ProfileAvatarButton({ className }: Readonly<ProfileAvatarButtonP
   const router = useRouter();
 
   return (
-    <Pressable
-      onPress={() => {
-        void Haptics.selectionAsync();
-        router.push('/(app)/profile');
-      }}
-      className={cn('overflow-hidden rounded-none bg-transparent', className)}
-      accessibilityRole="button"
-      accessibilityLabel="Open profile"
-    >
-      <Image source={logo} className="h-7 w-7" transition={0} />
-    </Pressable>
+    <View className={cn('mr-3', className)}>
+      <Pressable
+        onPress={() => {
+          void Haptics.selectionAsync();
+          router.push('/(app)/profile');
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Open profile"
+      >
+        <Image source={logo} className="h-7 w-7" transition={0} />
+      </Pressable>
+    </View>
   );
 }
