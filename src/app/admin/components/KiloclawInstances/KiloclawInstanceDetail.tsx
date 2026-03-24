@@ -1112,7 +1112,9 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
   const machineControlsEnabled = data?.destroyed_at === null;
   const hasMachine = !!data?.workerStatus?.flyMachineId;
   const canRetryRecovery =
-    !data?.workerStatus?.flyMachineId && data?.workerStatus?.status === 'stopped';
+    data?.destroyed_at === null &&
+    !data?.workerStatus?.flyMachineId &&
+    data?.workerStatus?.status === 'stopped';
 
   const invalidateMachineQueries = () => {
     void queryClient.invalidateQueries({ queryKey: trpc.admin.kiloclawInstances.get.queryKey() });
