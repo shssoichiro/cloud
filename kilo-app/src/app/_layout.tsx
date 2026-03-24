@@ -9,7 +9,7 @@ import { Toaster } from 'sonner-native';
 
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
 
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
   const { token, isLoading } = useAuth();
@@ -27,11 +27,11 @@ function RootLayoutNav() {
       router.replace('/(app)');
     }
 
-    SplashScreen.hideAsync();
+    void SplashScreen.hideAsync();
   }, [token, isLoading, segments, router]);
 
   if (isLoading) {
-    return null;
+    return;
   }
 
   return <Slot />;
