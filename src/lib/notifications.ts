@@ -10,8 +10,6 @@ import * as z from 'zod';
 import { subDays } from 'date-fns';
 import { hasReceivedPromotion } from '@/lib/promotionalCredits';
 
-import { getKiloPassStateForUser } from '@/lib/kilo-pass/state';
-import { db } from '@/lib/drizzle';
 import { fromMicrodollars } from '@/lib/utils';
 
 /** Pre-fetched data shared across notification generators to avoid duplicate DB queries. */
@@ -346,12 +344,6 @@ async function generateKiloPassNotification(
   user: User,
   ctx: NotificationContext
 ): Promise<KiloNotification[]> {
-  // Exclude users who already have a Kilo Pass
-  const kiloPassState = await getKiloPassStateForUser(db, user.id);
-  if (kiloPassState) {
-    return [];
-  }
-
   // Check if user belongs to an organization with balance > $5
   const hasHighBalanceOrg = ctx.userOrganizations.some(org => fromMicrodollars(org.balance) > 5);
   if (hasHighBalanceOrg) {
