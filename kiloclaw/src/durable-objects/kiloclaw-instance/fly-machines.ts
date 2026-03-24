@@ -7,7 +7,7 @@ import {
   STARTUP_TIMEOUT_SECONDS,
   STALE_PROVISION_THRESHOLD_MS,
 } from '../../config';
-import { parseRegions, deprioritizeRegion, prepareRegions, resolveRegions } from '../regions';
+import { parseRegions, deprioritizeRegion, resolveRegions } from '../regions';
 import { guestFromSize, volumeNameFromSandboxId } from '../machine-config';
 import type { InstanceMutableState } from './types';
 import { storageUpdate } from './state';

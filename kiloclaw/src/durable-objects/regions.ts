@@ -6,6 +6,14 @@ export const FLY_REGIONS_KV_KEY = 'fly-regions';
 /** Fly geographic aliases that expand server-side — these should NOT be shuffled. */
 const FLY_META_REGIONS = new Set(['eu', 'us']);
 
+/** All valid specific Fly regions we deploy to. */
+export const FLY_SPECIFIC_REGIONS = [
+  'arn', 'cdg', 'iad', 'ams', 'fra', 'lhr', 'lax', 'ewr', 'sjc', 'ord', 'dfw', 'yyz',
+] as const;
+
+/** All valid region codes (meta + specific). */
+export const ALL_VALID_REGIONS = ['eu', 'us', ...FLY_SPECIFIC_REGIONS] as const;
+
 /** Split a comma-separated region string into an array. */
 export function parseRegions(regionList: string): string[] {
   return regionList
@@ -56,12 +64,19 @@ export function prepareRegions(regions: string[]): string[] {
 /**
  * Resolve the region list from KV (runtime-configurable), falling back to the
  * FLY_REGION env var, then the hardcoded default. Applies conditional shuffling.
+ *
+ * A KV read failure is swallowed so a transient outage doesn't block provisioning.
  */
 export async function resolveRegions(
   kv: KVNamespace,
   envFlyRegion: string | undefined,
 ): Promise<string[]> {
-  const kvValue = await kv.get(FLY_REGIONS_KV_KEY);
+  let kvValue: string | null = null;
+  try {
+    kvValue = await kv.get(FLY_REGIONS_KV_KEY);
+  } catch {
+    // KV read failed — fall back to env/default
+  }
   const raw = kvValue ?? envFlyRegion ?? DEFAULT_FLY_REGION;
   return prepareRegions(parseRegions(raw));
 }

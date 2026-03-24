@@ -2575,6 +2575,13 @@ describe('resolveRegions', () => {
     const result = await resolveRegions(kv, undefined);
     expect(result.sort()).toEqual(['dfw', 'dfw', 'ord']);
   });
+
+  it('falls back to env when KV read throws', async () => {
+    const getMock = vi.fn().mockRejectedValue(new Error('KV unavailable'));
+    const kv = { get: getMock, put: vi.fn(), delete: vi.fn() } as unknown as KVNamespace;
+    const result = await resolveRegions(kv, 'eu,us');
+    expect(result).toEqual(['eu', 'us']);
+  });
 });
 
 // ============================================================================
