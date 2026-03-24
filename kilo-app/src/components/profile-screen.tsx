@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeftRight, Building2, KeyRound, LogOut, User } from 'lucide-react-native';
 import { Alert, View } from 'react-native';
+import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -59,7 +60,7 @@ export function ProfileScreen() {
       </View>
 
       {/* Linked accounts */}
-      <View className="mt-6 gap-3">
+      <Animated.View className="mt-6 gap-3" layout={LinearTransition}>
         <Text variant="small" className="uppercase tracking-wide text-muted-foreground">
           Linked Accounts
         </Text>
@@ -74,9 +75,10 @@ export function ProfileScreen() {
         {data?.providers.map(p => {
           const Icon = providerIcon(p.provider);
           return (
-            <View
+            <Animated.View
               key={`${p.provider}-${p.email}`}
               className="flex-row items-center gap-3 rounded-lg bg-secondary p-3"
+              entering={FadeIn.duration(200)}
             >
               <Icon size={18} color={colors.secondaryForeground} />
               <View className="flex-1">
@@ -85,10 +87,10 @@ export function ProfileScreen() {
                   {p.email}
                 </Text>
               </View>
-            </View>
+            </Animated.View>
           );
         })}
-      </View>
+      </Animated.View>
 
       {/* Actions */}
       <View className="mt-auto gap-3 pb-8">
