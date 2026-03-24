@@ -107,8 +107,8 @@ controller.post('/checkin', async (c: Context<AppEnv>) => {
     // Best-effort: never fail checkin on AE write errors
   }
 
-  // Forward product telemetry to PostHog (~every 24h).
-  if (data.productTelemetry && c.env.NEXT_PUBLIC_POSTHOG_KEY) {
+  // Forward product telemetry to PostHog (~every 24h). Skip in development.
+  if (data.productTelemetry && c.env.NEXT_PUBLIC_POSTHOG_KEY && c.env.WORKER_ENV === 'production') {
     try {
       let distinctId = userId;
       const connectionString = c.env.HYPERDRIVE?.connectionString;

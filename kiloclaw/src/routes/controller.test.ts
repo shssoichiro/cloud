@@ -29,6 +29,7 @@ function makeEnv(options?: {
   writeDataPoint?: (payload: unknown) => void;
   posthogKey?: string;
   hyperdriveConnectionString?: string;
+  workerEnv?: string;
 }) {
   const getConfig = vi.fn().mockResolvedValue({
     kilocodeApiKey: options?.kilocodeApiKey ?? 'kilo-key-1',
@@ -36,6 +37,7 @@ function makeEnv(options?: {
 
   return {
     GATEWAY_TOKEN_SECRET: options?.gatewayTokenSecret ?? 'gateway-secret',
+    WORKER_ENV: options?.workerEnv ?? 'production',
     KILOCLAW_INSTANCE: {
       idFromName: (userId: string) => userId,
       get: () => ({ getConfig }),
@@ -160,6 +162,21 @@ describe('POST /checkin', () => {
     mockCapturePostHogEvent.mockClear();
     const headers = await makeAuthHeaders();
     const env = makeEnv(); // no posthogKey
+
+    const response = await controller.request(
+      '/checkin',
+      { method: 'POST', headers, body: JSON.stringify(makeBody(makeProductTelemetry())) },
+      env
+    );
+
+    expect(response.status).toBe(204);
+    expect(mockCapturePostHogEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not call PostHog in development mode', async () => {
+    mockCapturePostHogEvent.mockClear();
+    const headers = await makeAuthHeaders();
+    const env = makeEnv({ posthogKey: 'phc_test', workerEnv: 'development' });
 
     const response = await controller.request(
       '/checkin',
