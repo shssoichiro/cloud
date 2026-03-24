@@ -6,7 +6,6 @@ import {
   Chat,
   Channel,
   Window,
-  ChannelHeader,
   MessageList,
   MessageInput,
   Thread,
@@ -77,7 +76,6 @@ function StreamChatUI({
       <Chat client={client} theme="str-chat__theme-dark">
         <Channel channel={channel}>
           <Window>
-            <ChannelHeader />
             <MessageList />
             <MessageInput />
           </Window>

@@ -129,15 +129,15 @@ export async function setupDefaultStreamChatChannel(
 
   // Create/upsert both users
   await upsertStreamChatUsers(apiKey, serverToken, [
-    { id: humanUserId, name: 'KiloClaw User' },
-    { id: botUserId, name: 'KiloClaw Assistant', role: 'admin' },
+    { id: humanUserId, name: 'User' },
+    { id: botUserId, name: 'KiloClaw', role: 'admin' },
   ]);
 
   // Create the default channel with both members
   await getOrCreateStreamChatChannel(apiKey, serverToken, 'messaging', channelId, {
     created_by_id: humanUserId,
     members: [humanUserId, botUserId],
-    name: 'KiloClaw Chat',
+    name: 'KiloClaw',
   });
 
   // Generate tokens for both users

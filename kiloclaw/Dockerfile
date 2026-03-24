@@ -51,6 +51,9 @@ RUN npm install -g clawhub
 # Install mcporter (MCP server tooling)
 RUN npm install -g mcporter@0.7.3
 
+# Install QMD
+RUN npm install -g @tobilu/qmd
+
 # Install summarize (web page summarization CLI)
 RUN npm install -g @steipete/summarize@0.12.0
 
@@ -58,7 +61,7 @@ RUN npm install -g @steipete/summarize@0.12.0
 RUN npm install -g @kilocode/cli@7.0.46
 
 # Install Stream Chat channel plugin for OpenClaw (installed from GitHub, not npm)
-RUN npm install -g github:def-initialize/openclaw-channel-streamchat
+RUN npm install -g github:Kilo-Org/openclaw-channel-streamchat
 
 # Install Go (available at runtime for users to `go install` additional tools)
 ENV GO_VERSION=1.26.0

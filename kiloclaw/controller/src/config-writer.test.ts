@@ -452,6 +452,7 @@ describe('generateBaseConfig', () => {
     expect(config.channels.streamchat.apiKey).toBe('sc-api-key');
     expect(config.channels.streamchat.botUserId).toBe('bot-sandbox-abc');
     expect(config.channels.streamchat.botUserToken).toBe('sc-bot-token');
+    expect(config.channels.streamchat.botUserName).toBe('KiloClaw');
     expect(config.channels.streamchat.enabled).toBe(true);
     expect(config.plugins.entries.streamchat.enabled).toBe(true);
     expect(config.plugins.load.paths).toContain(

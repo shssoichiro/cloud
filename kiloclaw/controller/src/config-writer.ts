@@ -285,6 +285,7 @@ export function generateBaseConfig(
     config.channels.streamchat.apiKey = env.STREAM_CHAT_API_KEY;
     config.channels.streamchat.botUserId = env.STREAM_CHAT_BOT_USER_ID;
     config.channels.streamchat.botUserToken = env.STREAM_CHAT_BOT_USER_TOKEN;
+    config.channels.streamchat.botUserName = 'KiloClaw';
     config.channels.streamchat.enabled = true;
 
     config.plugins = config.plugins ?? {};
