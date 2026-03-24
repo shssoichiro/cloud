@@ -41,11 +41,18 @@ export function ChannelPairingStep({
   refreshRef.current = refreshPairing;
 
   useEffect(() => {
-    refreshRef.current().catch(() => {});
-    const id = setInterval(() => {
-      refreshRef.current().catch(() => {});
-    }, 5_000);
-    return () => clearInterval(id);
+    let cancelled = false;
+    async function poll() {
+      while (!cancelled) {
+        await refreshRef.current().catch(() => {});
+        if (cancelled) break;
+        await new Promise(r => setTimeout(r, 1_000));
+      }
+    }
+    poll();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const matchingRequest = pairingData?.requests?.find(
@@ -211,7 +218,6 @@ export function ChannelPairingStepView({
             This page will update as soon as the bot responds
           </p>
         </div>
-
         <button
           type="button"
           className="text-muted-foreground/50 cursor-pointer hover:text-muted-foreground text-sm transition-colors my-6"
