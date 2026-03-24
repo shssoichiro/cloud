@@ -134,6 +134,47 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     });
   }
 
+  private emitStartFailed(label: string, error?: string): void {
+    this.emitEvent({
+      event: 'instance.start_failed',
+      status: 'stopped',
+      label,
+      error,
+    });
+  }
+
+  private emitStartCapacityRecovery(error: string, label: string): void {
+    this.emitEvent({
+      event: 'instance.start_capacity_recovery',
+      status: this.s.status ?? undefined,
+      label,
+      error,
+    });
+  }
+
+  private capacityRecoveryLabel(err: unknown): string {
+    if (!(err instanceof fly.FlyApiError)) {
+      return 'fly_capacity_recovery';
+    }
+
+    const searchText = `${err.message}\n${err.body}`.toLowerCase();
+
+    if (searchText.includes('insufficient memory')) {
+      return `fly_${err.status}_insufficient_memory`;
+    }
+    if (searchText.includes('no capacity')) {
+      return `fly_${err.status}_no_capacity`;
+    }
+    if (searchText.includes('over the allowed quota')) {
+      return `fly_${err.status}_quota_exceeded`;
+    }
+    if (searchText.includes('insufficient resources')) {
+      return `fly_${err.status}_insufficient_resources`;
+    }
+
+    return `fly_${err.status}_capacity_recovery`;
+  }
+
   // ========================================================================
   // Lifecycle methods (called by platform API routes via RPC)
   // ========================================================================
@@ -808,6 +849,8 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       if (!fly.isFlyInsufficientResources(err)) throw err;
 
       const code = err instanceof fly.FlyApiError ? err.status : 0;
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this.emitStartCapacityRecovery(errorMessage, this.capacityRecoveryLabel(err));
       doError(this.s, 'Insufficient resources, replacing stranded volume', {
         statusCode: code,
         region: this.s.flyRegion ?? 'unknown',
@@ -932,6 +975,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
             lastStartErrorMessage: errorMessage,
             lastStartErrorAt: now,
           });
+          this.emitStartFailed('no_machine_created', errorMessage);
         }
         // If storedMachineId exists the machine was created — reconcileStarting
         // will pick up its Fly state via getMachine + syncStatusWithFly. Writing
