@@ -28,7 +28,8 @@ type AutoModel = {
 export const KILO_AUTO_FRONTIER_MODEL: AutoModel = {
   id: 'kilo-auto/frontier',
   name: 'Kilo Auto Frontier',
-  description: 'Highest performance and capability for any task.',
+  description:
+    'Highest performance and capability for any task. Uses Claude Opus for planning and reasoning, Claude Sonnet for implementation and exploration.',
   context_length: 1_000_000,
   max_completion_tokens: 128_000,
   prompt_price: '0.000005',
@@ -60,7 +61,8 @@ export const KILO_AUTO_FREE_MODEL: AutoModel = {
 export const KILO_AUTO_BALANCED_MODEL: AutoModel = {
   id: 'kilo-auto/balanced',
   name: 'Kilo Auto Balanced',
-  description: 'Great balance of price and capability.',
+  description:
+    'Great balance of price and capability. Uses Kimi K2.5 for planning and reasoning, Minimax M2.7 for implementation.',
   context_length: 204800,
   max_completion_tokens: 131072,
   prompt_price: '0.0000006',
