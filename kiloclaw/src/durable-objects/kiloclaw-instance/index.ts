@@ -700,6 +700,14 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     if (this.s.status === 'destroying') {
       throw new Error('Cannot retry recovery: instance is being destroyed');
     }
+    if (!this.s.status) {
+      throw new Error('Cannot retry recovery: instance has no status');
+    }
+
+    doWarn(this.s, 'forceRetryRecovery: admin-initiated cooldown reset', {
+      previousLastRecoveryAt: this.s.lastMetadataRecoveryAt,
+      status: this.s.status,
+    });
 
     this.s.lastMetadataRecoveryAt = null;
     await this.persist({ lastMetadataRecoveryAt: null });
@@ -758,7 +766,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
         this.ctx,
         this.s,
         createReconcileContext(this.s, this.env, 'start_recovery'),
-        true
+        true /* skipCooldown — start() must always attempt recovery */
       );
       if (!recovered && !this.s.flyMachineId) {
         throw new Error(

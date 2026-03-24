@@ -1111,6 +1111,8 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
 
   const machineControlsEnabled = data?.destroyed_at === null;
   const hasMachine = !!data?.workerStatus?.flyMachineId;
+  const canRetryRecovery =
+    !data?.workerStatus?.flyMachineId && data?.workerStatus?.status === 'stopped';
 
   const invalidateMachineQueries = () => {
     void queryClient.invalidateQueries({ queryKey: trpc.admin.kiloclawInstances.get.queryKey() });
@@ -1287,7 +1289,11 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
     machineStatus === 'starting' ||
     machineStatus === 'restarting';
   const machineActionPending =
-    isMachineStarting || isMachineStopping || isMachineRedeploying || isMachineUpgrading;
+    isMachineStarting ||
+    isMachineStopping ||
+    isMachineRedeploying ||
+    isMachineUpgrading ||
+    isRetryingRecovery;
   const gatewayActionPending =
     isGatewayStarting ||
     isGatewayStopping ||
@@ -1405,12 +1411,11 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
                   Real-time status from the KiloClaw Durable Object
                 </CardDescription>
               </div>
-              {!data.workerStatus?.flyMachineId &&
-                data.workerStatus?.status === 'stopped' && (
+              {canRetryRecovery && (
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={isRetryingRecovery}
+                    disabled={machineActionPending}
                     onClick={() => void forceRetryRecovery({ userId: data.user_id })}
                   >
                     {isRetryingRecovery ? (
