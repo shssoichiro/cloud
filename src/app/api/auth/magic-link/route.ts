@@ -59,12 +59,19 @@ export async function POST(request: NextRequest) {
   const result = await sendMagicLinkEmail(magicLink, callbackUrl);
 
   if (!result.sent) {
+    if (result.reason === 'neverbounce_rejected') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unable to deliver email to this address. Please use a different email.',
+        },
+        { status: 400 }
+      );
+    }
+    // provider_not_configured — internal issue, don't blame the user's email
     return NextResponse.json(
-      {
-        success: false,
-        error: 'Unable to deliver email to this address. Please use a different email.',
-      },
-      { status: 400 }
+      { success: false, error: 'An internal error occurred. Please try again later.' },
+      { status: 500 }
     );
   }
 
