@@ -558,6 +558,8 @@ export function countAndStoreFimUsage(
         return;
       }
 
+      usageStats.market_cost = usageStats.cost_mUsd;
+
       if (usageContext.user_byok) {
         usageStats.cost_mUsd = 0;
       }
