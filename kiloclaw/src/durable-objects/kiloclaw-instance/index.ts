@@ -134,9 +134,9 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     });
   }
 
-  private emitStartFailed(label: string, error?: string): void {
+  private emitProvisioningFailed(label: string, error?: string): void {
     this.emitEvent({
-      event: 'instance.start_failed',
+      event: 'instance.provisioning_failed',
       status: 'stopped',
       label,
       error,
@@ -975,7 +975,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
             lastStartErrorMessage: errorMessage,
             lastStartErrorAt: now,
           });
-          this.emitStartFailed('no_machine_created', errorMessage);
+          this.emitProvisioningFailed('no_machine_created', errorMessage);
         }
         // If storedMachineId exists the machine was created — reconcileStarting
         // will pick up its Fly state via getMachine + syncStatusWithFly. Writing

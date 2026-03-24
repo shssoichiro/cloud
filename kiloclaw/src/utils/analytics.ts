@@ -34,7 +34,7 @@ export type KiloClawEventName =
   // DO lifecycle (emitted from index.ts via emitEvent)
   | 'instance.provisioned'
   | 'instance.started'
-  | 'instance.start_failed'
+  | 'instance.provisioning_failed'
   | 'instance.start_capacity_recovery'
   | 'instance.manual_start_succeeded'
   | 'instance.manual_start_failed'

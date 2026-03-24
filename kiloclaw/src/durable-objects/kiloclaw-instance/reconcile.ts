@@ -35,7 +35,7 @@ function emitStartFailedEvent(
   error?: string
 ): void {
   writeEvent(env, {
-    event: 'instance.start_failed',
+    event: 'instance.provisioning_failed',
     delivery: 'do',
     status: 'stopped',
     label,

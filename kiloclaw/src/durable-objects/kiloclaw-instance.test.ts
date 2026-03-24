@@ -3930,7 +3930,7 @@ describe('startAsync: catch handler writes stopped state on pre-machine failure'
     expect(storage._store.get('lastStartErrorMessage')).toBe('Fly API unavailable');
     expect(storage._store.get('lastStartErrorAt')).toBeGreaterThan(0);
 
-    const failedEvents = analyticsEventsByName(env, 'instance.start_failed');
+    const failedEvents = analyticsEventsByName(env, 'instance.provisioning_failed');
     expect(failedEvents).toHaveLength(1);
     expect(failedEvents[0].blobs).toContain('no_machine_created');
     expect(failedEvents[0].blobs).toContain('Fly API unavailable');
@@ -3961,7 +3961,7 @@ describe('startAsync: catch handler writes stopped state on pre-machine failure'
 });
 
 describe('start failure analytics events', () => {
-  it('emits instance.start_failed when reconcile times out with no machine', async () => {
+  it('emits instance.provisioning_failed when reconcile times out with no machine', async () => {
     vi.useFakeTimers();
     const env = createFakeEnv();
     const { instance, storage } = createInstance(undefined, env);
@@ -3973,13 +3973,13 @@ describe('start failure analytics events', () => {
 
     await instance.alarm();
 
-    const failedEvents = analyticsEventsByName(env, 'instance.start_failed');
+    const failedEvents = analyticsEventsByName(env, 'instance.provisioning_failed');
     expect(failedEvents).toHaveLength(1);
     expect(failedEvents[0].blobs).toContain('starting_timeout');
     expect(failedEvents[0].blobs).toContain('timed out bootstrapping');
   });
 
-  it('emits instance.start_failed when Fly reports failed state during reconcile', async () => {
+  it('emits instance.provisioning_failed when Fly reports failed state during reconcile', async () => {
     vi.useFakeTimers();
     const env = createFakeEnv();
     const { instance, storage } = createInstance(undefined, env);
@@ -3992,13 +3992,13 @@ describe('start failure analytics events', () => {
 
     await instance.alarm();
 
-    const failedEvents = analyticsEventsByName(env, 'instance.start_failed');
+    const failedEvents = analyticsEventsByName(env, 'instance.provisioning_failed');
     expect(failedEvents).toHaveLength(1);
     expect(failedEvents[0].blobs).toContain('fly_failed_state');
     expect(failedEvents[0].blobs).toContain('fly machine entered failed state');
   });
 
-  it('does not emit instance.start_failed for a running machine that later fails', async () => {
+  it('does not emit instance.provisioning_failed for a running machine that later fails', async () => {
     vi.useFakeTimers();
     const env = createFakeEnv();
     const { instance, storage } = createInstance(undefined, env);
@@ -4009,7 +4009,7 @@ describe('start failure analytics events', () => {
 
     await instance.alarm();
 
-    const failedEvents = analyticsEventsByName(env, 'instance.start_failed');
+    const failedEvents = analyticsEventsByName(env, 'instance.provisioning_failed');
     expect(failedEvents).toHaveLength(0);
   });
 });
