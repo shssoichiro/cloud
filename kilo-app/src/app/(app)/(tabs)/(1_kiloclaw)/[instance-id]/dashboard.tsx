@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { AlertTriangle, CreditCard, Newspaper } from 'lucide-react-native';
 import { Linking, Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
@@ -9,7 +9,6 @@ import { SettingsList } from '@/components/kiloclaw/settings-list';
 import { StatusCard } from '@/components/kiloclaw/status-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import {
   useKiloClawBillingStatus,
   useKiloClawGatewayStatus,
@@ -17,6 +16,7 @@ import {
   useKiloClawServiceDegraded,
   useKiloClawStatus,
 } from '@/lib/hooks/use-kiloclaw';
+import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -53,10 +53,7 @@ export default function DashboardScreen() {
 
   return (
     <Animated.View layout={LinearTransition} className="flex-1 bg-background">
-      <ScrollView
-        contentContainerClassName="gap-4 px-4 py-4"
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerClassName="gap-4 px-4 py-4" showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeIn.duration(200)} className="gap-4">
           {isServiceDegraded && (
             <Pressable
@@ -75,19 +72,19 @@ export default function DashboardScreen() {
           {billing && <BillingBanner billing={billing} />}
 
           <StatusCard
-            status={status?.status ?? null}
-            sandboxId={status?.sandboxId ?? null}
-            region={status?.flyRegion ?? null}
-            cpus={status?.machineSize?.cpus ?? null}
-            memoryMb={status?.machineSize?.memory_mb ?? null}
-            gatewayState={gateway?.state ?? null}
-            uptime={gateway?.uptime ?? null}
-            restarts={gateway?.restarts ?? null}
-            lastExitCode={gateway?.lastExit?.code ?? null}
-            lastExitSignal={gateway?.lastExit?.signal ?? null}
+            status={status?.status ?? undefined}
+            sandboxId={status?.sandboxId ?? undefined}
+            region={status?.flyRegion ?? undefined}
+            cpus={status?.machineSize?.cpus ?? undefined}
+            memoryMb={status?.machineSize?.memory_mb ?? undefined}
+            gatewayState={gateway?.state ?? undefined}
+            uptime={gateway?.uptime ?? undefined}
+            restarts={gateway?.restarts ?? undefined}
+            lastExitCode={gateway?.lastExit?.code ?? undefined}
+            lastExitSignal={gateway?.lastExit?.signal ?? undefined}
           />
 
-          <InstanceControls status={status?.status ?? null} mutations={mutations} />
+          <InstanceControls status={status?.status ?? undefined} mutations={mutations} />
 
           <SettingsList />
 
@@ -98,9 +95,7 @@ export default function DashboardScreen() {
             <Pressable
               className="flex-row items-center gap-3 px-4 py-3 active:opacity-70"
               onPress={() => {
-                router.push(
-                  `/(app)/(tabs)/(1_kiloclaw)/${instanceId ?? 'default'}/billing` as never
-                );
+                router.push(`/(app)/(tabs)/(1_kiloclaw)/${instanceId}/billing` as Href);
               }}
             >
               <CreditCard size={18} color={colors.foreground} />
@@ -110,9 +105,7 @@ export default function DashboardScreen() {
             <Pressable
               className="flex-row items-center gap-3 px-4 py-3 active:opacity-70"
               onPress={() => {
-                router.push(
-                  `/(app)/(tabs)/(1_kiloclaw)/${instanceId ?? 'default'}/changelog` as never
-                );
+                router.push(`/(app)/(tabs)/(1_kiloclaw)/${instanceId}/changelog` as Href);
               }}
             >
               <Newspaper size={18} color={colors.foreground} />

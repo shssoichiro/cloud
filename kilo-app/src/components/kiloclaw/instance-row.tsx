@@ -3,17 +3,20 @@ import { Pressable, View } from 'react-native';
 
 import { StatusBadge } from '@/components/kiloclaw/status-badge';
 import { Text } from '@/components/ui/text';
+import { type useKiloClawStatus } from '@/lib/hooks/use-kiloclaw';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
-type InstanceRowProps = {
-  sandboxId: string | null;
-  status: 'running' | 'stopped' | 'provisioned' | 'starting' | 'restarting' | 'destroying' | null;
-  region: string | null;
-  cpus: number | null;
-  memoryMb: number | null;
+type InstanceStatus = NonNullable<ReturnType<typeof useKiloClawStatus>['data']>['status'];
+
+interface InstanceRowProps {
+  sandboxId: string | null | undefined;
+  status: InstanceStatus | null | undefined;
+  region: string | null | undefined;
+  cpus: number | null | undefined;
+  memoryMb: number | null | undefined;
   onPress: () => void;
   onSettingsPress: () => void;
-};
+}
 
 export function InstanceRow({
   sandboxId,
@@ -23,12 +26,12 @@ export function InstanceRow({
   memoryMb,
   onPress,
   onSettingsPress,
-}: InstanceRowProps) {
+}: Readonly<InstanceRowProps>) {
   const colors = useThemeColors();
 
   const specsLabel = [
-    cpus ? `${cpus} vCPU` : null,
-    memoryMb ? `${(memoryMb / 1024).toFixed(0)} GB` : null,
+    cpus ? `${String(cpus)} vCPU` : undefined,
+    memoryMb ? `${(memoryMb / 1024).toFixed(0)} GB` : undefined,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -44,7 +47,9 @@ export function InstanceRow({
         <View className="flex-row items-center gap-2">
           <StatusBadge status={status} />
           {region && <Text className="text-xs text-muted-foreground">{region}</Text>}
-          {specsLabel && <Text className="text-xs text-muted-foreground">{specsLabel}</Text>}
+          {Boolean(specsLabel) && (
+            <Text className="text-xs text-muted-foreground">{specsLabel}</Text>
+          )}
         </View>
       </View>
       <Pressable

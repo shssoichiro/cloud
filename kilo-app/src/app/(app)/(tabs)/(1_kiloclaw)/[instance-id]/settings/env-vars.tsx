@@ -5,8 +5,8 @@ import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanim
 import { EmptyState } from '@/components/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import { useKiloClawConfig } from '@/lib/hooks/use-kiloclaw';
+import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
 export default function EnvVarsScreen() {
   const colors = useThemeColors();
@@ -48,10 +48,7 @@ export default function EnvVarsScreen() {
 
   return (
     <Animated.View layout={LinearTransition} className="flex-1 bg-background">
-      <ScrollView
-        contentContainerClassName="px-4 py-4 gap-4"
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerClassName="px-4 py-4 gap-4" showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeIn.duration(200)} className="gap-3">
           <View className="rounded-lg bg-secondary overflow-hidden">
             {envVarKeys.map((key, index) => (

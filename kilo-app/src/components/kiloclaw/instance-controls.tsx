@@ -3,15 +3,15 @@ import { Alert, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { type useKiloClawMutations } from '@/lib/hooks/use-kiloclaw';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
-import type { useKiloClawMutations } from '@/lib/hooks/use-kiloclaw';
 
-type InstanceControlsProps = {
-  status: string | null;
+interface InstanceControlsProps {
+  status: string | null | undefined;
   mutations: ReturnType<typeof useKiloClawMutations>;
-};
+}
 
-export function InstanceControls({ status, mutations }: InstanceControlsProps) {
+export function InstanceControls({ status, mutations }: Readonly<InstanceControlsProps>) {
   const colors = useThemeColors();
 
   const canStart = status === 'stopped' || status === 'provisioned';
@@ -25,7 +25,7 @@ export function InstanceControls({ status, mutations }: InstanceControlsProps) {
       {
         text: 'Start',
         onPress: () => {
-          mutations.start.mutate(undefined);
+          mutations.start.mutate();
         },
       },
     ]);
@@ -38,7 +38,7 @@ export function InstanceControls({ status, mutations }: InstanceControlsProps) {
         text: 'Stop',
         style: 'destructive',
         onPress: () => {
-          mutations.stop.mutate(undefined);
+          mutations.stop.mutate();
         },
       },
     ]);
@@ -50,7 +50,7 @@ export function InstanceControls({ status, mutations }: InstanceControlsProps) {
       {
         text: 'Restart',
         onPress: () => {
-          mutations.restartOpenClaw.mutate(undefined);
+          mutations.restartOpenClaw.mutate();
         },
       },
     ]);
@@ -62,7 +62,7 @@ export function InstanceControls({ status, mutations }: InstanceControlsProps) {
       {
         text: 'Redeploy',
         onPress: () => {
-          mutations.restartMachine.mutate(undefined);
+          mutations.restartMachine.mutate();
         },
       },
     ]);

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { MessageSquare, Server } from 'lucide-react-native';
+import { Server } from 'lucide-react-native';
 import { Linking, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
@@ -24,7 +24,7 @@ export default function KiloClawInstanceList() {
 
   const status = statusQuery.data;
   const billing = billingQuery.data;
-  const lockReason = billing ? deriveLockReason(billing) : null;
+  const lockReason = billing ? deriveLockReason(billing) : undefined;
 
   const isLoading = isPersonal && (statusQuery.isPending || billingQuery.isPending);
 
@@ -49,12 +49,64 @@ export default function KiloClawInstanceList() {
     }
   };
 
+  function renderPersonalContent() {
+    if (isLoading) {
+      return (
+        <Animated.View exiting={FadeOut.duration(150)}>
+          <Skeleton className="h-16 w-full rounded-lg" />
+        </Animated.View>
+      );
+    }
+    if (!status?.sandboxId) {
+      return (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          className="flex-1 items-center justify-center"
+        >
+          <EmptyState
+            icon={Server}
+            title="No KiloClaw instances"
+            description="You don't have any KiloClaw instances yet."
+            action={
+              <Button
+                variant="outline"
+                onPress={() => {
+                  void Linking.openURL('https://kilo.ai/claw');
+                }}
+              >
+                <Text>Create on Web</Text>
+              </Button>
+            }
+          />
+        </Animated.View>
+      );
+    }
+    return (
+      <Animated.View entering={FadeIn.duration(200)}>
+        <InstanceRow
+          sandboxId={status.sandboxId}
+          status={status.status}
+          region={status.flyRegion}
+          cpus={status.machineSize?.cpus}
+          memoryMb={status.machineSize?.memory_mb}
+          onPress={handlePress}
+          onSettingsPress={handleSettingsPress}
+        />
+      </Animated.View>
+    );
+  }
+
   return (
     <View className="flex-1 bg-background">
       <ScreenHeader title="KiloClaw" headerRight={<ProfileAvatarButton />} />
       <Animated.View layout={LinearTransition} className="flex-1 px-4 pt-4">
-        {!isPersonal ? (
-          <Animated.View entering={FadeIn.duration(200)} className="flex-1 items-center justify-center">
+        {isPersonal ? (
+          renderPersonalContent()
+        ) : (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            className="flex-1 items-center justify-center"
+          >
             <EmptyState
               icon={Server}
               title="Not available for organizations"
@@ -69,40 +121,6 @@ export default function KiloClawInstanceList() {
                   <Text>Switch to Personal</Text>
                 </Button>
               }
-            />
-          </Animated.View>
-        ) : isLoading ? (
-          <Animated.View exiting={FadeOut.duration(150)}>
-            <Skeleton className="h-16 w-full rounded-lg" />
-          </Animated.View>
-        ) : status?.status === null || status === undefined ? (
-          <Animated.View entering={FadeIn.duration(200)} className="flex-1 items-center justify-center">
-            <EmptyState
-              icon={Server}
-              title="No KiloClaw instances"
-              description="You don't have any KiloClaw instances yet."
-              action={
-                <Button
-                  variant="outline"
-                  onPress={() => {
-                    void Linking.openURL('https://kilo.ai/claw');
-                  }}
-                >
-                  <Text>Create on Web</Text>
-                </Button>
-              }
-            />
-          </Animated.View>
-        ) : (
-          <Animated.View entering={FadeIn.duration(200)}>
-            <InstanceRow
-              sandboxId={status.sandboxId ?? null}
-              status={status.status}
-              region={status.flyRegion ?? null}
-              cpus={status.machineSize?.cpus ?? null}
-              memoryMb={status.machineSize?.memory_mb ?? null}
-              onPress={handlePress}
-              onSettingsPress={handleSettingsPress}
             />
           </Animated.View>
         )}

@@ -2,11 +2,15 @@ import { MessageSquare } from 'lucide-react-native';
 import { Alert, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
-import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import {
+  useKiloClawStatus,
+  useKiloClawPairing,
+  useKiloClawMutations,
+} from '@/lib/hooks/use-kiloclaw';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
-import { useKiloClawStatus, useKiloClawPairing, useKiloClawMutations } from '@/lib/hooks/use-kiloclaw';
 
 const CHANNEL_LABELS: Record<string, string> = {
   telegram: 'Telegram',
@@ -55,10 +59,7 @@ export default function ChannelsScreen() {
 
   return (
     <Animated.View layout={LinearTransition} className="flex-1 bg-background">
-      <ScrollView
-        contentContainerClassName="px-4 py-4 gap-4"
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerClassName="px-4 py-4 gap-4" showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeIn.duration(200)} className="gap-4">
           <View className="rounded-lg bg-secondary p-4 gap-2">
             <Text className="text-base font-semibold">

@@ -16,9 +16,7 @@ export function useKiloClawStatus(enabled = true) {
 
 export function useKiloClawBillingStatus(enabled = true) {
   const trpc = useTRPC();
-  return useQuery(
-    trpc.kiloclaw.getBillingStatus.queryOptions(undefined, { enabled })
-  );
+  return useQuery(trpc.kiloclaw.getBillingStatus.queryOptions(undefined, { enabled }));
 }
 
 export function useKiloClawConfig() {
@@ -79,10 +77,7 @@ export function useKiloClawDevicePairing(enabled = true) {
 export function useKiloClawAvailableVersions(offset = 0, limit = 25) {
   const trpc = useTRPC();
   return useQuery(
-    trpc.kiloclaw.listAvailableVersions.queryOptions(
-      { offset, limit },
-      { staleTime: 5 * 60_000 }
-    )
+    trpc.kiloclaw.listAvailableVersions.queryOptions({ offset, limit }, { staleTime: 5 * 60_000 })
   );
 }
 
@@ -99,7 +94,7 @@ export function useKiloClawLatestVersion() {
   const trpc = useTRPC();
   return useQuery(
     trpc.kiloclaw.latestVersion.queryOptions(undefined, {
-      staleTime: 60_000,
+      staleTime: 5 * 60_000,
     })
   );
 }
@@ -114,6 +109,15 @@ export function useKiloClawGoogleSetup(enabled: boolean) {
   );
 }
 
+export function useKiloClawChangelog() {
+  const trpc = useTRPC();
+  return useQuery(
+    trpc.kiloclaw.getChangelog.queryOptions(undefined, {
+      staleTime: 5 * 60_000,
+    })
+  );
+}
+
 // ── Mutations ────────────────────────────────────────────────────────
 
 export function useKiloClawMutations() {
@@ -124,13 +128,6 @@ export function useKiloClawMutations() {
     await queryClient.invalidateQueries({ queryKey: trpc.kiloclaw.getStatus.queryKey() });
     await queryClient.invalidateQueries({
       queryKey: trpc.kiloclaw.controllerVersion.queryKey(),
-    });
-  };
-
-  const invalidateStatusAndBilling = async () => {
-    await invalidateStatus();
-    await queryClient.invalidateQueries({
-      queryKey: trpc.kiloclaw.getBillingStatus.queryKey(),
     });
   };
 

@@ -2,10 +2,9 @@ import { Check } from 'lucide-react-native';
 import { Alert, FlatList, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
-import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import {
   useKiloClawMyPin,
   useControllerVersion,
@@ -13,14 +12,15 @@ import {
   useKiloClawAvailableVersions,
   useKiloClawMutations,
 } from '@/lib/hooks/use-kiloclaw';
+import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
-type VersionItem = {
-  openclaw_version: string | null;
-  variant: string | null;
+interface VersionItem {
+  openclaw_version: string | null | undefined;
+  variant: string | null | undefined;
   image_tag: string;
-  description: string | null;
-  published_at: string | null;
-};
+  description: string | null | undefined;
+  published_at: string | null | undefined;
+}
 
 export default function VersionPinScreen() {
   const colors = useThemeColors();
@@ -58,7 +58,7 @@ export default function VersionPinScreen() {
         text: 'Unpin',
         style: 'destructive',
         onPress: () => {
-          mutations.removeMyPin.mutate(undefined);
+          mutations.removeMyPin.mutate();
         },
       },
     ]);
@@ -81,21 +81,19 @@ export default function VersionPinScreen() {
     const isPinned = myPin?.image_tag === item.image_tag;
     const dateStr = item.published_at
       ? new Date(item.published_at).toLocaleDateString()
-      : null;
+      : undefined;
 
     return (
       <View>
         <Animated.View>
           <View className="flex-row items-center gap-3 px-4 py-3">
             <View className="flex-1 gap-0.5">
-              <Text className="text-sm font-medium">
-                {item.openclaw_version ?? item.image_tag}
-              </Text>
-              {(dateStr ?? item.variant) ? (
+              <Text className="text-sm font-medium">{item.openclaw_version ?? item.image_tag}</Text>
+              {Boolean(dateStr ?? item.variant) && (
                 <Text variant="muted" className="text-xs">
                   {[dateStr, item.variant].filter(Boolean).join(' · ')}
                 </Text>
-              ) : null}
+              )}
             </View>
             {isPinned ? (
               <Check size={18} color={colors.foreground} />
@@ -162,7 +160,7 @@ export default function VersionPinScreen() {
 
               {latestVersion && (
                 <Text variant="muted" className="text-xs">
-                  Latest available: {latestVersion.openclawVersion ?? latestVersion.imageTag}
+                  Latest available: {latestVersion.openclawVersion}
                 </Text>
               )}
             </View>
@@ -178,7 +176,7 @@ export default function VersionPinScreen() {
         ListEmptyComponent={
           availableVersionsQuery.isPending ? (
             <Skeleton className="h-12 w-full rounded-lg" />
-          ) : null
+          ) : undefined
         }
         className="rounded-lg bg-secondary"
       />

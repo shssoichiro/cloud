@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ChevronRight,
   Globe,
@@ -15,12 +15,12 @@ import { Pressable, View } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
-type SettingsItem = {
+interface SettingsItem {
   icon: LucideIcon;
   label: string;
   description: string;
   path: string;
-};
+}
 
 const SETTINGS_ITEMS: SettingsItem[] = [
   {
@@ -83,9 +83,7 @@ export function SettingsList() {
             <Pressable
               className="flex-row items-center gap-3 px-4 py-3 active:opacity-70"
               onPress={() => {
-                router.push(
-                  `/(app)/(tabs)/(1_kiloclaw)/${instanceId ?? 'default'}/${item.path}` as never
-                );
+                router.push(`/(app)/(tabs)/(1_kiloclaw)/${instanceId}/${item.path}` as Href);
               }}
               accessibilityLabel={item.label}
             >

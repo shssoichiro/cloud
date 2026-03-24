@@ -3,11 +3,11 @@ import { Alert, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { EmptyState } from '@/components/empty-state';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import { useKiloClawDevicePairing, useKiloClawMutations } from '@/lib/hooks/use-kiloclaw';
+import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
 export default function DevicePairingScreen() {
   const colors = useThemeColors();
@@ -41,9 +41,8 @@ export default function DevicePairingScreen() {
     );
   }
 
-  function handleApprove(requestId: string, platform?: string) {
-    const label = platform ?? 'Unknown device';
-    Alert.alert('Approve Device', `Allow ${label} to connect to your instance?`, [
+  function handleApprove(requestId: string, platform = 'Unknown device') {
+    Alert.alert('Approve Device', `Allow ${platform} to connect to your instance?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Approve',
@@ -56,10 +55,7 @@ export default function DevicePairingScreen() {
 
   return (
     <Animated.View layout={LinearTransition} className="flex-1 bg-background">
-      <ScrollView
-        contentContainerClassName="px-4 py-4 gap-4"
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerClassName="px-4 py-4 gap-4" showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeIn.duration(200)}>
           <View className="rounded-lg bg-secondary overflow-hidden">
             {requests.map((request, index) => (

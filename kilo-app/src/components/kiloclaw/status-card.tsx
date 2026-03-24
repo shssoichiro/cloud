@@ -13,36 +13,40 @@ import { View } from 'react-native';
 
 import { StatusBadge } from '@/components/kiloclaw/status-badge';
 import { Text } from '@/components/ui/text';
+import { type useKiloClawGatewayStatus, type useKiloClawStatus } from '@/lib/hooks/use-kiloclaw';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
-type StatusCardProps = {
-  status: 'running' | 'stopped' | 'provisioned' | 'starting' | 'restarting' | 'destroying' | null;
-  sandboxId: string | null;
-  region: string | null;
-  cpus: number | null;
-  memoryMb: number | null;
-  gatewayState: 'stopped' | 'starting' | 'running' | 'stopping' | 'crashed' | 'shutting_down' | null;
-  uptime: number | null;
-  restarts: number | null;
-  lastExitCode: number | null;
-  lastExitSignal: string | null;
-};
+type InstanceStatus = NonNullable<ReturnType<typeof useKiloClawStatus>['data']>['status'];
+type GatewayState = NonNullable<ReturnType<typeof useKiloClawGatewayStatus>['data']>['state'];
 
-function formatUptime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return `${h}h ${m}m`;
+interface StatusCardProps {
+  status: InstanceStatus | null | undefined;
+  sandboxId: string | null | undefined;
+  region: string | null | undefined;
+  cpus: number | null | undefined;
+  memoryMb: number | null | undefined;
+  gatewayState: GatewayState | null | undefined;
+  uptime: number | null | undefined;
+  restarts: number | null | undefined;
+  lastExitCode: number | null | undefined;
+  lastExitSignal: string | null | undefined;
 }
 
-type DetailRowProps = {
+function formatUptime(seconds: number): string {
+  if (seconds < 60) return `${String(seconds)}s`;
+  if (seconds < 3600) return `${String(Math.floor(seconds / 60))}m`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${String(h)}h ${String(m)}m`;
+}
+
+interface DetailRowProps {
   icon: LucideIcon;
   label: string;
   value: string;
-};
+}
 
-function DetailRow({ icon: Icon, label, value }: DetailRowProps) {
+function DetailRow({ icon: Icon, label, value }: Readonly<DetailRowProps>) {
   const colors = useThemeColors();
   return (
     <View className="flex-row items-center gap-3 py-2">
@@ -51,6 +55,17 @@ function DetailRow({ icon: Icon, label, value }: DetailRowProps) {
       <Text className="text-sm font-medium">{value}</Text>
     </View>
   );
+}
+
+function formatLastExit(
+  exitCode: number | null | undefined,
+  exitSignal: string | null | undefined
+): string | undefined {
+  if (exitCode === null || exitCode === undefined) {
+    return exitSignal ?? undefined;
+  }
+  const signalPart = exitSignal ? ` (${exitSignal})` : '';
+  return `Code ${String(exitCode)}${signalPart}`;
 }
 
 export function StatusCard({
@@ -64,16 +79,10 @@ export function StatusCard({
   restarts,
   lastExitCode,
   lastExitSignal,
-}: StatusCardProps) {
+}: Readonly<StatusCardProps>) {
   const memoryLabel = memoryMb ? `${(memoryMb / 1024).toFixed(0)} GB` : '—';
-  const cpuLabel = cpus ? `${cpus} vCPU` : '—';
-
-  const lastExitLabel =
-    lastExitCode !== null
-      ? `Code ${lastExitCode}${lastExitSignal ? ` (${lastExitSignal})` : ''}`
-      : lastExitSignal
-        ? lastExitSignal
-        : null;
+  const cpuLabel = cpus ? `${String(cpus)} vCPU` : '—';
+  const lastExitLabel = formatLastExit(lastExitCode, lastExitSignal);
 
   return (
     <View className="rounded-lg bg-secondary p-4 gap-1">
@@ -87,19 +96,17 @@ export function StatusCard({
       <DetailRow icon={MemoryStick} label="Memory" value={memoryLabel} />
       <DetailRow icon={HardDrive} label="Storage" value="10 GB SSD" />
 
-      {gatewayState !== null && (
+      {gatewayState !== null && gatewayState !== undefined && (
         <View className="mt-2 border-t border-border pt-2 gap-1">
           <Text className="text-xs font-semibold text-muted-foreground pb-1">Gateway Process</Text>
           <DetailRow icon={Activity} label="State" value={gatewayState} />
-          {uptime !== null && (
+          {uptime !== null && uptime !== undefined && (
             <DetailRow icon={Globe} label="Uptime" value={formatUptime(uptime)} />
           )}
-          {restarts !== null && (
+          {restarts !== null && restarts !== undefined && (
             <DetailRow icon={RotateCcw} label="Restarts" value={String(restarts)} />
           )}
-          {lastExitLabel && (
-            <DetailRow icon={Server} label="Last Exit" value={lastExitLabel} />
-          )}
+          {lastExitLabel && <DetailRow icon={Server} label="Last Exit" value={lastExitLabel} />}
         </View>
       )}
     </View>

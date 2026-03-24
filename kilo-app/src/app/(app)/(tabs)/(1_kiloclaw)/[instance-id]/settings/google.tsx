@@ -4,15 +4,15 @@ import { useState } from 'react';
 import { Alert, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
-import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import {
   useKiloClawStatus,
   useKiloClawGoogleSetup,
   useKiloClawMutations,
 } from '@/lib/hooks/use-kiloclaw';
+import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
 export default function GoogleScreen() {
   const colors = useThemeColors();
@@ -53,14 +53,14 @@ export default function GoogleScreen() {
   function handleDisconnect() {
     Alert.alert(
       'Disconnect Google',
-      'Remove your Google account from this instance? This will disable Gmail notifications.',
+      'Remove your Google account from this instance? This will disable Gmail notifications. Redeploy after disconnecting to apply changes.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Disconnect',
           style: 'destructive',
           onPress: () => {
-            mutations.disconnectGoogle.mutate(undefined);
+            mutations.disconnectGoogle.mutate();
           },
         },
       ]
@@ -69,10 +69,7 @@ export default function GoogleScreen() {
 
   return (
     <Animated.View layout={LinearTransition} className="flex-1 bg-background">
-      <ScrollView
-        contentContainerClassName="px-4 py-4 gap-4"
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerClassName="px-4 py-4 gap-4" showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeIn.duration(200)} className="gap-4">
           {/* Connection status card */}
           <View className="rounded-lg bg-secondary p-4 gap-3">
@@ -97,9 +94,13 @@ export default function GoogleScreen() {
                 Setup Command
               </Text>
               <View className="rounded-lg bg-muted p-3 gap-2">
-                <Text className="font-mono text-xs text-foreground">
-                  {setupQuery.data?.command ?? 'Loading...'}
-                </Text>
+                {setupQuery.isPending ? (
+                  <Skeleton className="h-4 w-full rounded" />
+                ) : (
+                  <Text className="font-mono text-xs text-foreground">
+                    {setupQuery.data?.command}
+                  </Text>
+                )}
               </View>
               <Button
                 variant="outline"

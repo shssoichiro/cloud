@@ -50,6 +50,7 @@ import {
   KILOCLAW_TRIAL_DURATION_DAYS,
 } from '@/lib/kiloclaw/constants';
 import type { ClawBillingStatus } from '@/app/(app)/claw/components/billing/billing-types';
+import { CHANGELOG_ENTRIES } from '@/app/(app)/claw/components/changelog-data';
 
 /**
  * Error codes whose messages may contain raw internal details (e.g. filesystem
@@ -406,6 +407,10 @@ async function ensureProvisionAccess(userId: string): Promise<void> {
 }
 
 export const kiloclawRouter = createTRPCRouter({
+  getChangelog: baseProcedure.query(() => {
+    return CHANGELOG_ENTRIES;
+  }),
+
   serviceDegraded: baseProcedure.query(async () => {
     return fetchKiloClawServiceDegraded();
   }),

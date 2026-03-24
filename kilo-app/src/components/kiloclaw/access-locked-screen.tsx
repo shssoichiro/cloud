@@ -4,8 +4,8 @@ import { Linking, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { type ClawLockReason } from '@/lib/hooks/use-kiloclaw-billing';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
-import type { ClawLockReason } from '@/lib/hooks/use-kiloclaw-billing';
 
 const LOCK_MESSAGES: Record<string, { title: string; description: string }> = {
   trial_expired_instance_alive: {
@@ -14,7 +14,8 @@ const LOCK_MESSAGES: Record<string, { title: string; description: string }> = {
   },
   trial_expired_instance_destroyed: {
     title: 'Trial Expired',
-    description: 'Your free trial has ended and your instance was removed. Subscribe to create a new one.',
+    description:
+      'Your free trial has ended and your instance was removed. Subscribe to create a new one.',
   },
   earlybird_expired: {
     title: 'Earlybird Access Expired',
@@ -26,7 +27,8 @@ const LOCK_MESSAGES: Record<string, { title: string; description: string }> = {
   },
   subscription_expired_instance_destroyed: {
     title: 'Subscription Expired',
-    description: 'Your subscription has ended and your instance was removed. Resubscribe to create a new one.',
+    description:
+      'Your subscription has ended and your instance was removed. Resubscribe to create a new one.',
   },
   past_due_grace_exceeded: {
     title: 'Payment Required',
@@ -38,7 +40,7 @@ const LOCK_MESSAGES: Record<string, { title: string; description: string }> = {
   },
 };
 
-export function AccessLockedScreen({ reason }: { reason: NonNullable<ClawLockReason> }) {
+export function AccessLockedScreen({ reason }: Readonly<{ reason: NonNullable<ClawLockReason> }>) {
   const colors = useThemeColors();
   const router = useRouter();
   const message = LOCK_MESSAGES[reason] ?? LOCK_MESSAGES.no_access;
@@ -64,7 +66,12 @@ export function AccessLockedScreen({ reason }: { reason: NonNullable<ClawLockRea
         >
           <Text className="text-primary-foreground font-medium">Manage Billing on Web</Text>
         </Button>
-        <Button variant="outline" onPress={() => router.back()}>
+        <Button
+          variant="outline"
+          onPress={() => {
+            router.back();
+          }}
+        >
           <Text className="font-medium">Go Back</Text>
         </Button>
       </View>

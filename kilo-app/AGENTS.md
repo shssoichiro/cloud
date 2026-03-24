@@ -39,6 +39,11 @@ npx expo install <package-name>
 npx expo install --dev <package-name>   # devDependencies
 ```
 
+## Data Fetching
+
+- When you need data from the backend, **always add a new tRPC procedure** rather than copying data or inventing client-side alternatives. The app uses tRPC with React Query — adding a procedure is cheap and keeps the source of truth on the server.
+- When a component takes backend data as props, derive the prop types from the tRPC router's return types (e.g., `NonNullable<ReturnType<typeof useMyQuery>['data']>`) instead of manually copying type definitions. This keeps types in sync with the backend automatically.
+
 ## Code Style
 
 - Expo Router requires default exports in `src/app/` — this is the only place default exports are allowed.
@@ -51,6 +56,7 @@ npx expo install --dev <package-name>   # devDependencies
 - Design tokens (colors, radii) are CSS variables in `src/global.css` with `@theme inline` for Tailwind v4. The theme uses shadcn/ui neutral palette with light/dark via `prefers-color-scheme`.
 - Style components with Tailwind utility classes via `className`. No inline styles or `StyleSheet.create`.
 - All lint rules are set to `error`, not `warn`. Fix violations, don't suppress them.
+- `as never` is a code smell — it silences all type checking. For Expo Router dynamic paths, use `as Href` instead (import `Href` from `expo-router`). If you find yourself needing `as never`, the types are wrong and need fixing.
 
 ## UX Patterns
 

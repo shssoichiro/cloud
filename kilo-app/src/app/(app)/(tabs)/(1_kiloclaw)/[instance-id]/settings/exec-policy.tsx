@@ -1,23 +1,23 @@
 import { Shield } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import { useKiloClawConfig, useKiloClawMutations } from '@/lib/hooks/use-kiloclaw';
+import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
 
 type ExecPreset = 'always-ask' | 'never-ask';
 
-type PolicyOption = {
+interface PolicyOption {
   id: ExecPreset;
   label: string;
   description: string;
   security: string;
   ask: string;
-};
+}
 
 const POLICY_OPTIONS: PolicyOption[] = [
   {
@@ -41,12 +41,7 @@ export default function ExecPolicyScreen() {
   const configQuery = useKiloClawConfig();
   const mutations = useKiloClawMutations();
 
-  const [selected, setSelected] = useState<ExecPreset>('always-ask');
-
-  useEffect(() => {
-    // Default to 'always-ask' since config doesn't expose the current preset directly
-    setSelected('always-ask');
-  }, []);
+  const [selected, setSelected] = useState<ExecPreset | undefined>();
 
   if (configQuery.isPending) {
     return (
@@ -68,10 +63,7 @@ export default function ExecPolicyScreen() {
 
   return (
     <Animated.View layout={LinearTransition} className="flex-1 bg-background">
-      <ScrollView
-        contentContainerClassName="px-4 py-4 gap-4"
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerClassName="px-4 py-4 gap-4" showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeIn.duration(200)} className="gap-3">
           {POLICY_OPTIONS.map(option => {
             const isSelected = selected === option.id;
