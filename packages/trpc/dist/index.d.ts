@@ -10507,7 +10507,10 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                     recipient: string;
                 };
                 output: {
-                    provider: "customerio" | "mailgun";
+                    provider: "customerio";
+                    recipient: string;
+                } | {
+                    provider: "mailgun";
                     recipient: string;
                 };
                 meta: object;

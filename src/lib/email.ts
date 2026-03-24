@@ -106,7 +106,9 @@ export function creditsVars(monthlyCreditsUsd: number): TemplateVars {
   };
 }
 
-export type SendResult = { sent: true } | { sent: false; reason: 'neverbounce_rejected' };
+export type SendResult =
+  | { sent: true }
+  | { sent: false; reason: 'neverbounce_rejected' | 'provider_not_configured' };
 
 type SendParams = {
   to: string;
@@ -127,7 +129,8 @@ export async function send(params: SendParams): Promise<SendResult> {
       ...params.templateVars,
       year: String(new Date().getFullYear()),
     });
-    await sendViaMailgun({ to: params.to, subject, html });
+    const result = await sendViaMailgun({ to: params.to, subject, html });
+    if (!result) return { sent: false, reason: 'provider_not_configured' as const };
     return { sent: true };
   }
   // Customer.io handles its own rendering; pass raw string values.
@@ -139,13 +142,14 @@ export async function send(params: SendParams): Promise<SendResult> {
   if (params.subjectOverride) {
     messageData.subject = params.subjectOverride;
   }
-  await sendViaCustomerIo({
+  const result = await sendViaCustomerIo({
     transactional_message_id: templates[params.templateName],
     to: params.to,
     message_data: messageData,
     identifiers: { email: params.to },
     reply_to: 'hi@kilocode.ai',
   });
+  if (!result) return { sent: false, reason: 'provider_not_configured' as const };
   return { sent: true };
 }
 
