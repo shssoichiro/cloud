@@ -1,5 +1,8 @@
 import { useColorScheme } from 'react-native';
 
+// These values must stay in sync with src/global.css design tokens.
+// They exist as raw strings because React Navigation header/tab options
+// require plain color values (not Tailwind classes).
 const lightColors = {
   background: 'hsl(0, 0%, 100%)',
   foreground: 'hsl(0, 0%, 3.9%)',

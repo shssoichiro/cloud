@@ -2,6 +2,7 @@ import { type LucideIcon } from 'lucide-react-native';
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
 
 interface EmptyStateProps {
@@ -17,10 +18,12 @@ export function EmptyState({
   description,
   className,
 }: Readonly<EmptyStateProps>) {
+  const colors = useThemeColors();
+
   return (
     <View className={cn('items-center justify-center gap-4 px-6', className)}>
       <View className="items-center justify-center rounded-full bg-muted p-4">
-        <Icon size={32} className="text-muted-foreground" />
+        <Icon size={32} color={colors.mutedForeground} />
       </View>
       <View className="items-center gap-1">
         <Text variant="large">{title}</Text>
