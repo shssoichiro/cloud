@@ -48,7 +48,7 @@ import {
 
 type SortField = 'created_at' | 'destroyed_at';
 type SortOrder = 'asc' | 'desc';
-type StatusFilter = 'all' | 'active' | 'stopped' | 'destroyed';
+type StatusFilter = 'all' | 'active' | 'suspended' | 'destroyed';
 
 function toSortedSearchParams(obj: Record<string, unknown>): URLSearchParams {
   const params = new URLSearchParams();
@@ -77,7 +77,7 @@ function formatLifespan(minutes: number | null): string {
 type OverviewData = {
   totalInstances: number;
   activeInstances: number;
-  stoppedInstances: number;
+  suspendedInstances: number;
   destroyedInstances: number;
   uniqueUsers: number;
   last24hCreated: number;
@@ -115,10 +115,10 @@ function OverviewStatsCards({ data }: { data: OverviewData }) {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Stopped Instances</CardTitle>
+          <CardTitle className="text-sm font-medium">Suspended Instances</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{data.stoppedInstances.toLocaleString()}</div>
+          <div className="text-2xl font-bold">{data.suspendedInstances.toLocaleString()}</div>
           <p className="text-muted-foreground text-xs">Suspended by billing lifecycle</p>
         </CardContent>
       </Card>
@@ -456,7 +456,7 @@ export function KiloclawInstancesPage() {
           <SelectContent>
             <SelectItem value="all">All Instances</SelectItem>
             <SelectItem value="active">Active Only</SelectItem>
-            <SelectItem value="stopped">Stopped Only</SelectItem>
+            <SelectItem value="suspended">Suspended Only</SelectItem>
             <SelectItem value="destroyed">Destroyed Only</SelectItem>
           </SelectContent>
         </Select>
@@ -542,7 +542,7 @@ export function KiloclawInstancesPage() {
                     {instance.destroyed_at !== null ? (
                       <Badge variant="secondary">Destroyed</Badge>
                     ) : instance.suspended_at !== null ? (
-                      <Badge className="bg-amber-600">Stopped</Badge>
+                      <Badge className="bg-amber-600">Suspended</Badge>
                     ) : (
                       <Badge variant="default" className="bg-green-600">
                         Active

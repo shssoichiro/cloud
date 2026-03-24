@@ -29,7 +29,7 @@ const ListInstancesSchema = z.object({
   sortBy: z.enum(['created_at', 'destroyed_at']).default('created_at'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
   search: z.string().optional(),
-  status: z.enum(['all', 'active', 'stopped', 'destroyed']).default('all'),
+  status: z.enum(['all', 'active', 'suspended', 'destroyed']).default('all'),
 });
 
 const GetInstanceSchema = z.object({
@@ -220,7 +220,7 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
     if (status === 'active') {
       conditions.push(isNull(kiloclaw_instances.destroyed_at));
       conditions.push(isNull(kiloclaw_subscriptions.suspended_at));
-    } else if (status === 'stopped') {
+    } else if (status === 'suspended') {
       conditions.push(isNull(kiloclaw_instances.destroyed_at));
       conditions.push(isNotNull(kiloclaw_subscriptions.suspended_at));
     } else if (status === 'destroyed') {
@@ -286,12 +286,12 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
   stats: adminProcedure.input(StatsSchema).query(async ({ input }) => {
     const { days } = input;
 
-    // Overview counts (join subscriptions to derive stopped state)
+    // Overview counts (join subscriptions to derive suspended state)
     const [overview] = await db
       .select({
         total_instances: sql<number>`COUNT(*)::int`,
         active_instances: sql<number>`COUNT(CASE WHEN ${kiloclaw_instances.destroyed_at} IS NULL AND ${kiloclaw_subscriptions.suspended_at} IS NULL THEN 1 END)::int`,
-        stopped_instances: sql<number>`COUNT(CASE WHEN ${kiloclaw_instances.destroyed_at} IS NULL AND ${kiloclaw_subscriptions.suspended_at} IS NOT NULL THEN 1 END)::int`,
+        suspended_instances: sql<number>`COUNT(CASE WHEN ${kiloclaw_instances.destroyed_at} IS NULL AND ${kiloclaw_subscriptions.suspended_at} IS NOT NULL THEN 1 END)::int`,
         destroyed_instances: sql<number>`COUNT(CASE WHEN ${kiloclaw_instances.destroyed_at} IS NOT NULL THEN 1 END)::int`,
         unique_users: sql<number>`COUNT(DISTINCT ${kiloclaw_instances.user_id})::int`,
       })
@@ -378,7 +378,7 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
       overview: {
         totalInstances: overview?.total_instances ?? 0,
         activeInstances: overview?.active_instances ?? 0,
-        stoppedInstances: overview?.stopped_instances ?? 0,
+        suspendedInstances: overview?.suspended_instances ?? 0,
         destroyedInstances: overview?.destroyed_instances ?? 0,
         uniqueUsers: overview?.unique_users ?? 0,
         last24hCreated: last24h?.count ?? 0,
