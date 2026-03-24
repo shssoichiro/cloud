@@ -18,6 +18,7 @@ describe('buildConfiguredSecrets', () => {
       github: false,
       agentcard: false,
       onepassword: false,
+      'brave-search': false,
     });
   });
 
@@ -112,7 +113,8 @@ describe('buildConfiguredSecrets', () => {
     expect(keys).toContain('discord');
     expect(keys).toContain('slack');
     expect(keys).toContain('onepassword');
-    expect(keys).toHaveLength(6);
+    expect(keys).toContain('brave-search');
+    expect(keys).toHaveLength(7);
   });
 
   it('treats null values as not configured', () => {

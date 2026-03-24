@@ -731,6 +731,27 @@ export function SettingsTab({
         </div>
       </div>
 
+      {/* ── Search ── */}
+      {toolEntries.some(e => e.id === 'brave-search') && (
+        <div>
+          <h2 className="text-foreground mb-3 text-base font-semibold">Search</h2>
+          <div className="space-y-3">
+            {toolEntries
+              .filter(e => e.id === 'brave-search')
+              .map(entry => (
+                <SecretEntrySection
+                  key={entry.id}
+                  entry={entry}
+                  configured={configuredSecrets[entry.id] ?? false}
+                  mutations={mutations}
+                  onSecretsChanged={onSecretsChanged}
+                  isDirty={dirtySecrets.has(entry.id)}
+                />
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Developer Tools ── */}
       {toolEntries.some(e => e.id === 'github') && (
         <div>
