@@ -158,6 +158,7 @@ const SAFE_ERROR_PREFIXES = [
   'Cannot enable Gmail ', // no Google account connected
   'New volume ID is ', // reassociate: same volume
   'Volume ', // reassociate: volume not found / bad state
+  'Cannot retry recovery', // force-retry-recovery guard messages
 ];
 
 function sanitizeError(err: unknown, operation: string): { message: string; status: number } {
@@ -911,15 +912,20 @@ platform.post('/doctor', async c => {
 });
 
 // POST /api/platform/start
+const StartRequestSchema = UserIdRequestSchema.extend({
+  skipCooldown: z.boolean().optional(),
+});
+
 platform.post('/start', async c => {
-  const result = await parseBody(c, UserIdRequestSchema);
+  const result = await parseBody(c, StartRequestSchema);
   if ('error' in result) return result.error;
   const startedAt = performance.now();
 
   try {
+    const options = result.data.skipCooldown ? { skipCooldown: true } : undefined;
     const { started } = await withDORetry(
       instanceStubFactory(c.env, result.data.userId),
-      stub => stub.start(result.data.userId),
+      stub => stub.start(result.data.userId, options),
       'start'
     );
     if (started) {
@@ -938,6 +944,40 @@ platform.post('/start', async c => {
       event: 'instance.manual_start_failed',
       delivery: 'http',
       route: '/api/platform/start',
+      userId: result.data.userId,
+      error: message,
+      durationMs: performance.now() - startedAt,
+    });
+    return jsonError(message, status);
+  }
+});
+
+// POST /api/platform/force-retry-recovery
+platform.post('/force-retry-recovery', async c => {
+  const result = await parseBody(c, UserIdRequestSchema);
+  if ('error' in result) return result.error;
+  const startedAt = performance.now();
+
+  try {
+    const { ok } = await withDORetry(
+      instanceStubFactory(c.env, result.data.userId),
+      stub => stub.forceRetryRecovery(),
+      'forceRetryRecovery'
+    );
+    writeEvent(c.env, {
+      event: 'instance.force_retry_recovery_succeeded',
+      delivery: 'http',
+      route: '/api/platform/force-retry-recovery',
+      userId: result.data.userId,
+      durationMs: performance.now() - startedAt,
+    });
+    return c.json({ ok });
+  } catch (err) {
+    const { message, status } = sanitizeError(err, 'forceRetryRecovery');
+    writeEvent(c.env, {
+      event: 'instance.force_retry_recovery_failed',
+      delivery: 'http',
+      route: '/api/platform/force-retry-recovery',
       userId: result.data.userId,
       error: message,
       durationMs: performance.now() - startedAt,
