@@ -16,6 +16,9 @@
   },
   "dependencies": {
     "@kilocode/trpc": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "@trpc/client": "catalog:",
+    "@trpc/tanstack-react-query": "catalog:",
     "@react-navigation/native": "^7.1.33",
     "@rn-primitives/portal": "^1.3.0",
     "@rn-primitives/slot": "^1.2.0",

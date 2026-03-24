@@ -1,6 +1,7 @@
 import '../global.css';
 
 import { PortalHost } from '@rn-primitives/portal';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
@@ -8,6 +9,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Toaster } from 'sonner-native';
 
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
+import { TRPCProvider, trpcClient } from '@/lib/trpc';
+
+const queryClient = new QueryClient();
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -40,11 +44,15 @@ function RootLayoutNav() {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView className="flex-1">
-      <AuthProvider>
-        <RootLayoutNav />
-        <Toaster />
-        <PortalHost />
-      </AuthProvider>
+      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <RootLayoutNav />
+            <Toaster />
+            <PortalHost />
+          </AuthProvider>
+        </QueryClientProvider>
+      </TRPCProvider>
     </GestureHandlerRootView>
   );
 }
