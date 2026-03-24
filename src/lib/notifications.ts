@@ -240,7 +240,7 @@ async function generateMiniMaxNoLongerFreeNotification(
       z.array(z.tuple([z.string()]).transform(([userId]) => userId))
     )(
       'minimax-no-longer-free-users',
-      'select id from notification_mar_23_minimax_no_longer_free limit 5e5'
+      'select kilo_user_id from notification_mar_23_minimax_no_longer_free limit 5e5'
     );
 
     if (!users.includes(user.id)) {
