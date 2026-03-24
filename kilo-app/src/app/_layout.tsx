@@ -6,6 +6,7 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { Toaster } from 'sonner-native';
 
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
@@ -57,7 +58,11 @@ function RootLayoutNav() {
     return;
   }
 
-  return <Slot />;
+  return (
+    <Animated.View className="flex-1" entering={FadeIn.duration(300)}>
+      <Slot />
+    </Animated.View>
+  );
 }
 
 export default function RootLayout() {

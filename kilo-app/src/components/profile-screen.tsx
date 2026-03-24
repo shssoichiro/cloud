@@ -1,56 +1,110 @@
 import { useQuery } from '@tanstack/react-query';
-import { View } from 'react-native';
+import { ArrowLeftRight, KeyRound, LogOut } from 'lucide-react-native';
+import { Alert, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useAppContext } from '@/lib/context/context-context';
+import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import { useTRPC } from '@/lib/trpc';
+
+function providerIcon(_provider: string) {
+  return KeyRound;
+}
 
 export function ProfileScreen() {
   const { signOut } = useAuth();
   const { context, clearContext } = useAppContext();
   const trpc = useTRPC();
   const { data, isLoading } = useQuery(trpc.user.getAuthProviders.queryOptions());
+  const colors = useThemeColors();
 
   const contextLabel = context?.type === 'personal' ? 'Personal' : 'Organization';
 
+  const confirmSignOut = () => {
+    Alert.alert('Sign out?', 'You will need to sign in again to access your workspace.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: () => {
+          void signOut();
+        },
+      },
+    ]);
+  };
+
   return (
-    <View className="flex-1 gap-8 bg-background px-6 pt-16">
-      <View className="items-center gap-1">
-        <Text variant="muted">Context: {contextLabel}</Text>
+    <View className="flex-1 bg-background px-6 pt-8">
+      {/* User info */}
+      <View className="items-center gap-3">
+        <View className="h-16 w-16 items-center justify-center rounded-full bg-secondary">
+          <Text className="text-2xl font-bold text-secondary-foreground">K</Text>
+        </View>
+        <View className="items-center gap-1">
+          <Text variant="large">{contextLabel}</Text>
+          <Text variant="muted">
+            {context?.type === 'organization' ? 'Organization workspace' : 'Personal workspace'}
+          </Text>
+        </View>
       </View>
 
-      {isLoading && <Text variant="muted">Loading account info...</Text>}
+      {/* Linked accounts */}
+      <View className="mt-8 gap-3">
+        <Text variant="small" className="uppercase tracking-wide text-muted-foreground">
+          Linked Accounts
+        </Text>
 
-      {data?.providers && (
-        <View className="gap-2">
-          <Text variant="large">Linked accounts</Text>
-          {data.providers.map(p => (
-            <Text key={`${p.provider}-${p.email}`} variant="muted">
-              {p.provider}: {p.email}
-            </Text>
-          ))}
-        </View>
-      )}
+        {isLoading && (
+          <View className="gap-3">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </View>
+        )}
 
-      <View className="gap-3">
+        {data?.providers.map(p => {
+          const Icon = providerIcon(p.provider);
+          return (
+            <View
+              key={`${p.provider}-${p.email}`}
+              className="flex-row items-center gap-3 rounded-lg bg-secondary p-3"
+            >
+              <Icon size={18} color={colors.secondaryForeground} />
+              <View className="flex-1">
+                <Text className="text-sm font-medium capitalize">{p.provider}</Text>
+                <Text variant="muted" className="text-xs">
+                  {p.email}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Actions */}
+      <View className="mt-auto gap-3 pb-8">
         <Button
           variant="outline"
+          className="flex-row gap-2"
           onPress={() => {
             void clearContext();
           }}
+          accessibilityLabel="Switch workspace"
         >
+          <ArrowLeftRight size={16} color={colors.foreground} />
           <Text>Switch Context</Text>
         </Button>
 
         <Button
-          variant="destructive"
-          onPress={() => {
-            void signOut();
-          }}
+          variant="ghost"
+          className="flex-row gap-2"
+          onPress={confirmSignOut}
+          accessibilityLabel="Sign out"
         >
-          <Text>Sign Out</Text>
+          <LogOut size={16} color={colors.mutedForeground} />
+          <Text className="text-muted-foreground">Sign Out</Text>
         </Button>
       </View>
     </View>

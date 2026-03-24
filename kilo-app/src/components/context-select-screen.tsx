@@ -1,17 +1,21 @@
 import { useQuery } from '@tanstack/react-query';
+import { Building2, User } from 'lucide-react-native';
 import { View } from 'react-native';
 
 import logo from '@/../assets/images/logo.png';
 import { Button } from '@/components/ui/button';
 import { Image } from '@/components/ui/image';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useAppContext } from '@/lib/context/context-context';
+import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import { useTRPC } from '@/lib/trpc';
 
 export function ContextSelectScreen() {
   const { setContext } = useAppContext();
   const trpc = useTRPC();
   const { data, isLoading, error, refetch } = useQuery(trpc.organizations.list.queryOptions());
+  const colors = useThemeColors();
 
   const handlePersonal = () => {
     void setContext({ type: 'personal' });
@@ -24,17 +28,29 @@ export function ContextSelectScreen() {
   return (
     <View className="flex-1 items-center justify-center gap-8 bg-background px-6">
       <View className="items-center gap-3">
-        <Image source={logo} className="h-16 w-16" />
+        <Image source={logo} className="h-16 w-16" accessibilityLabel="Kilo logo" />
         <Text variant="h2">Choose Context</Text>
         <Text variant="muted">Select which workspace to use</Text>
       </View>
 
       <View className="w-full max-w-sm gap-3">
-        <Button size="lg" variant="outline" onPress={handlePersonal}>
+        <Button
+          size="lg"
+          variant="outline"
+          className="flex-row gap-2"
+          onPress={handlePersonal}
+          accessibilityLabel="Use personal workspace"
+        >
+          <User size={18} color={colors.foreground} />
           <Text>Personal</Text>
         </Button>
 
-        {isLoading && <Text variant="muted">Loading organizations...</Text>}
+        {isLoading && (
+          <View className="gap-3">
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+          </View>
+        )}
 
         {error && (
           <View className="items-center gap-2">
@@ -45,6 +61,7 @@ export function ContextSelectScreen() {
               onPress={() => {
                 void refetch();
               }}
+              accessibilityLabel="Retry loading organizations"
             >
               <Text>Retry</Text>
             </Button>
@@ -56,10 +73,13 @@ export function ContextSelectScreen() {
             key={org.organizationId}
             size="lg"
             variant="outline"
+            className="flex-row gap-2"
             onPress={() => {
               handleOrganization(org.organizationId);
             }}
+            accessibilityLabel={`Use ${org.organizationName} workspace`}
           >
+            <Building2 size={18} color={colors.foreground} />
             <Text>{org.organizationName}</Text>
           </Button>
         ))}
