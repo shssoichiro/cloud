@@ -720,7 +720,10 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     return { ok: true };
   }
 
-  async start(userId?: string, options?: { skipCooldown?: boolean }): Promise<{ started: boolean }> {
+  async start(
+    userId?: string,
+    options?: { skipCooldown?: boolean }
+  ): Promise<{ started: boolean }> {
     // Guard against concurrent start() calls — two overlapping invocations
     // (e.g. startAsync via waitUntil + a direct RPC start) can both see
     // flyMachineId as null and each create a Fly machine, orphaning one.
