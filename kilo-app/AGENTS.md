@@ -27,6 +27,7 @@ pnpm typecheck       # tsgo --noEmit
 pnpm lint            # expo lint (eslint)
 pnpm format          # oxfmt src
 pnpm format:check    # oxfmt --list-different src
+pnpm check:unused    # knip (unused exports/deps)
 ```
 
 ## Installing Dependencies
@@ -63,8 +64,11 @@ Only hand-fix errors that `--fix` cannot resolve.
 
 ## Change Checklist
 
-Before submitting any change:
+Before pushing, run all checks and fix any issues:
 
-1. Run `pnpm typecheck && pnpm lint`
-2. Do not suppress lint rules without justification
-3. Keep route files in `src/app/` thin — extract logic into `src/components/` or `src/hooks/`
+```bash
+pnpm format && pnpm typecheck && pnpm lint && pnpm check:unused
+```
+
+- Do not suppress lint rules without justification.
+- Keep route files in `src/app/` thin — extract logic into `src/components/` or `src/hooks/`.
