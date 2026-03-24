@@ -17,9 +17,9 @@ export function ProfileAvatarButton({ className }: Readonly<ProfileAvatarButtonP
     <Pressable
       onPress={() => {
         void Haptics.selectionAsync();
-        router.push('/(app)/profile' as never);
+        router.push('/(app)/profile');
       }}
-      className={cn('mr-2', className)}
+      className={cn('overflow-hidden rounded-none bg-transparent', className)}
       accessibilityRole="button"
       accessibilityLabel="Open profile"
     >
