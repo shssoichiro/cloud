@@ -48,7 +48,7 @@ async function getVercelRoutingPercentage() {
   }
   if (!isOpenRouterErrorRateHigh && isVercelErrorRateHigh) {
     console.error(`[getVercelRoutingPercentage] Vercel error rate is high: ${errorRate.vercel}`);
-    return 30;
+    return 10;
   }
   return 30;
 }
