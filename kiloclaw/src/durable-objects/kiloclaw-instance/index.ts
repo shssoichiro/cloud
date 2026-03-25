@@ -1455,6 +1455,9 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     if (this.s.status === 'restoring') {
       throw new Error('Cannot restore: instance is already restoring');
     }
+    if (this.s.status === 'starting' || this.s.status === 'restarting') {
+      throw new Error('Cannot restore: instance is busy (' + this.s.status + ')');
+    }
 
     const previousVolumeId = this.s.flyVolumeId;
     const previousStatus = this.s.status ?? 'stopped';
