@@ -77,6 +77,7 @@ export async function readNetStats(): Promise<NetStats> {
 
 export function startCheckin(deps: CheckinDeps): () => void {
   const checkinUrl = deps.getCheckinUrl();
+  console.info(checkinUrl);
   if (!checkinUrl) {
     return () => {};
   }
