@@ -116,7 +116,7 @@ function SecretCard({
             <Button
               variant="outline"
               size="sm"
-              className="flex-1"
+              className="flex-1 dark:bg-background"
               onPress={() => {
                 setExpanded(prev => !prev);
               }}
@@ -143,7 +143,7 @@ function SecretCard({
           <Button
             variant="outline"
             size="sm"
-            className="flex-1"
+            className="flex-1 dark:bg-background"
             onPress={() => {
               setExpanded(prev => !prev);
             }}
