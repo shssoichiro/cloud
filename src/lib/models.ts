@@ -16,10 +16,7 @@ import {
 } from '@/lib/providers/anthropic';
 import { corethink_free_model } from '@/lib/providers/corethink';
 import type { KiloFreeModel } from '@/lib/providers/kilo-free-model';
-import {
-  MINIMAX_CURRENT_MODEL_ID,
-  minimax_m25_free_model,
-} from '@/lib/providers/minimax';
+import { MINIMAX_CURRENT_MODEL_ID, minimax_m25_free_model } from '@/lib/providers/minimax';
 import { KIMI_CURRENT_MODEL_ID } from '@/lib/providers/moonshotai';
 import { morph_warp_grep_free_model } from '@/lib/providers/morph';
 import { gpt_oss_20b_free_model } from '@/lib/providers/openai';
