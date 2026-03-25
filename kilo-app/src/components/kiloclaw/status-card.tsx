@@ -59,7 +59,7 @@ function DetailRow({ icon: Icon, label, value, loading }: Readonly<DetailRowProp
       <Icon size={16} color={colors.mutedForeground} />
       <Text className="flex-1 text-sm text-muted-foreground">{label}</Text>
       {loading ? (
-        <Skeleton className="h-4 w-16 rounded-sm bg-foreground" />
+        <Skeleton className="h-4 w-16 rounded-sm bg-neutral-200 dark:bg-neutral-700" />
       ) : (
         <Text className="text-sm font-medium">{value}</Text>
       )}
@@ -129,9 +129,24 @@ export function StatusCard({
 
       <View className="mt-2 border-t border-border pt-2 gap-1">
         <Text className="text-xs font-semibold text-muted-foreground pb-1">Gateway Process</Text>
-        <DetailRow icon={Activity} label="State" value={gatewayState ?? '—'} loading={gatewayLoading} />
-        <DetailRow icon={Globe} label="Uptime" value={uptime != null ? formatUptime(uptime) : '—'} loading={gatewayLoading} />
-        <DetailRow icon={RotateCcw} label="Restarts" value={restarts != null ? String(restarts) : '—'} loading={gatewayLoading} />
+        <DetailRow
+          icon={Activity}
+          label="State"
+          value={gatewayState ?? '—'}
+          loading={gatewayLoading}
+        />
+        <DetailRow
+          icon={Globe}
+          label="Uptime"
+          value={uptime != null ? formatUptime(uptime) : '—'}
+          loading={gatewayLoading}
+        />
+        <DetailRow
+          icon={RotateCcw}
+          label="Restarts"
+          value={restarts != null ? String(restarts) : '—'}
+          loading={gatewayLoading}
+        />
         {lastExitLabel && <DetailRow icon={Server} label="Last Exit" value={lastExitLabel} />}
       </View>
     </View>

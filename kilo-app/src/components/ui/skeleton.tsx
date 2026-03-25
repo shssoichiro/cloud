@@ -23,7 +23,5 @@ export function Skeleton({ className }: Readonly<SkeletonProps>) {
     opacity: opacity.value,
   }));
 
-  return (
-    <Animated.View className={cn('rounded-md bg-muted', className)} style={animatedStyle} />
-  );
+  return <Animated.View className={cn('rounded-md bg-muted', className)} style={animatedStyle} />;
 }
