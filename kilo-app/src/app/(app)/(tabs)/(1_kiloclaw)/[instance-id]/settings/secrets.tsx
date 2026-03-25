@@ -1,6 +1,6 @@
 import { Check, ChevronDown, ChevronUp, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { Alert, ScrollView, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { ScreenHeader } from '@/components/screen-header';
@@ -181,24 +181,34 @@ export default function SecretsScreen() {
   return (
     <View className="flex-1 bg-background">
       <ScreenHeader title="Secrets" />
-      <Animated.View layout={LinearTransition} className="flex-1">
-        <ScrollView contentContainerClassName="py-4 gap-4" showsVerticalScrollIndicator={false}>
-          {isLoading ? (
-            <Animated.View exiting={FadeOut.duration(150)} className="gap-3 px-4">
-              <Skeleton className="h-24 w-full rounded-lg" />
-              <Skeleton className="h-24 w-full rounded-lg" />
-              <Skeleton className="h-24 w-full rounded-lg" />
-              <Skeleton className="h-24 w-full rounded-lg" />
-            </Animated.View>
-          ) : (
-            <Animated.View entering={FadeIn.duration(200)} className="gap-3">
-              {catalogQuery.data?.map(secret => (
-                <SecretCard key={secret.id} secret={secret} mutations={mutations} />
-              ))}
-            </Animated.View>
-          )}
-        </ScrollView>
-      </Animated.View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        className="flex-1"
+      >
+        <Animated.View layout={LinearTransition} className="flex-1">
+          <ScrollView
+            contentContainerClassName="py-4 gap-4"
+            showsVerticalScrollIndicator={false}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+          >
+            {isLoading ? (
+              <Animated.View exiting={FadeOut.duration(150)} className="gap-3 px-4">
+                <Skeleton className="h-24 w-full rounded-lg" />
+                <Skeleton className="h-24 w-full rounded-lg" />
+                <Skeleton className="h-24 w-full rounded-lg" />
+                <Skeleton className="h-24 w-full rounded-lg" />
+              </Animated.View>
+            ) : (
+              <Animated.View entering={FadeIn.duration(200)} className="gap-3">
+                {catalogQuery.data?.map(secret => (
+                  <SecretCard key={secret.id} secret={secret} mutations={mutations} />
+                ))}
+              </Animated.View>
+            )}
+          </ScrollView>
+        </Animated.View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
