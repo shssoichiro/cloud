@@ -1,6 +1,6 @@
 import { Check, ChevronDown, ChevronUp, Trash2 } from 'lucide-react-native';
-import { useState } from 'react';
-import { Alert, ScrollView, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Keyboard, ScrollView, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { toast } from 'sonner-native';
 
@@ -178,19 +178,33 @@ function SecretCard({
 export default function SecretsScreen() {
   const mutations = useKiloClawMutations();
   const catalogQuery = useKiloClawSecretCatalog();
-
   const isLoading = catalogQuery.isPending;
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardWillShow', e => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener('keyboardWillHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   return (
     <View className="flex-1 bg-background">
       <ScreenHeader title="Secrets" />
       <View className="flex-1">
         <ScrollView
-          contentContainerClassName="pt-4 pb-8 gap-3"
+          contentContainerClassName="pt-4 gap-3"
+          contentInset={{ bottom: keyboardHeight > 0 ? keyboardHeight + 10 : 0 }}
+          scrollIndicatorInsets={{ bottom: keyboardHeight > 0 ? keyboardHeight + 10 : 0 }}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets
         >
           {isLoading ? (
             <Animated.View exiting={FadeOut.duration(150)} className="gap-3 px-4">
