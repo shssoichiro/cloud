@@ -117,7 +117,15 @@ export const PersistedStateSchema = z.object({
   userId: z.string().default(''),
   sandboxId: z.string().default(''),
   status: z
-    .enum(['provisioned', 'starting', 'restarting', 'running', 'stopped', 'destroying'])
+    .enum([
+      'provisioned',
+      'starting',
+      'restarting',
+      'running',
+      'stopped',
+      'destroying',
+      'restoring',
+    ])
     .default('stopped'),
   envVars: z.record(z.string(), z.string()).nullable().default(null),
   encryptedSecrets: z.record(z.string(), EncryptedEnvelopeSchema).nullable().default(null),
@@ -186,6 +194,11 @@ export const PersistedStateSchema = z.object({
   // null = use defaults (security: 'allowlist', ask: 'on-miss').
   execSecurity: z.string().nullable().default(null),
   execAsk: z.string().nullable().default(null),
+  // Snapshot restore: tracks the volume before the most recent restore for admin revert path.
+  previousVolumeId: z.string().nullable().default(null),
+  // Snapshot restore: set by the queue worker when it begins work. Null while queued.
+  // Used by admin UI to distinguish "Queued for restore" vs "Restoring...".
+  restoreStartedAt: z.string().nullable().default(null),
 });
 
 export type PersistedState = z.infer<typeof PersistedStateSchema>;

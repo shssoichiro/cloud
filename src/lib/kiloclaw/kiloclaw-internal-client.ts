@@ -28,6 +28,7 @@ import type {
   GmailNotificationsResponse,
   CandidateVolumesResponse,
   ReassociateVolumeResponse,
+  RestoreVolumeSnapshotResponse,
 } from './types';
 
 /** Keep in sync with: kiloclaw/controller/src/routes/files.ts, kiloclaw/src/.../gateway.ts (Zod) */
@@ -469,6 +470,20 @@ export class KiloClawInternalClient {
       {
         method: 'POST',
         body: JSON.stringify({ userId, newVolumeId, reason }),
+      },
+      { userId }
+    );
+  }
+
+  async restoreVolumeFromSnapshot(
+    userId: string,
+    snapshotId: string
+  ): Promise<RestoreVolumeSnapshotResponse> {
+    return this.request(
+      '/api/platform/restore-volume-snapshot',
+      {
+        method: 'POST',
+        body: JSON.stringify({ userId, snapshotId }),
       },
       { userId }
     );

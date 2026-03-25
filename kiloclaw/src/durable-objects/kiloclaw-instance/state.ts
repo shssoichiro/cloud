@@ -72,6 +72,8 @@ export async function loadState(ctx: DurableObjectState, s: InstanceMutableState
     s.gmailPushOidcEmail = d.gmailPushOidcEmail;
     s.execSecurity = d.execSecurity;
     s.execAsk = d.execAsk;
+    s.previousVolumeId = d.previousVolumeId;
+    s.restoreStartedAt = d.restoreStartedAt;
   } else {
     const hasAnyData = entries.size > 0;
     if (hasAnyData) {
@@ -134,6 +136,8 @@ export function resetMutableState(s: InstanceMutableState): void {
   s.gmailPushOidcEmail = null;
   s.execSecurity = null;
   s.execAsk = null;
+  s.previousVolumeId = null;
+  s.restoreStartedAt = null;
   s.lastLiveCheckAt = null;
   s.restartingAt = null;
   s.loaded = false;
@@ -190,6 +194,8 @@ export function createMutableState(): InstanceMutableState {
     gmailPushOidcEmail: null,
     execSecurity: null,
     execAsk: null,
+    previousVolumeId: null,
+    restoreStartedAt: null,
     lastLiveCheckAt: null,
   };
 }
