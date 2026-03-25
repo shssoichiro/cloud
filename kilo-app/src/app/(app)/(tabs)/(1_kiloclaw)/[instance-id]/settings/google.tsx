@@ -91,7 +91,7 @@ export default function GoogleScreen() {
           </View>
 
           {!isConnected && (
-            <Animated.View entering={FadeIn.duration(200)} className="gap-3">
+            <Animated.View entering={FadeIn.duration(200)} className="gap-4">
               <Text className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 Setup Command
               </Text>
@@ -116,7 +116,7 @@ export default function GoogleScreen() {
           )}
 
           {isConnected && (
-            <Animated.View entering={FadeIn.duration(200)} className="gap-3">
+            <Animated.View entering={FadeIn.duration(200)} className="gap-4">
               <View className="rounded-lg bg-secondary overflow-hidden">
                 <View className="flex-row items-center gap-3 px-4 py-3">
                   <Mail size={18} color="#10b981" />
