@@ -52,7 +52,8 @@ fi
 # Also fall back to full typecheck if pnpm-workspace.yaml changed (catalog bumps can
 # alter the type surface across packages).
 if git diff --name-only "$base" -- pnpm-workspace.yaml | grep -q .; then
-  echo "[typecheck] pnpm-workspace.yaml changed, running full workspace typecheck"
+  echo "[typecheck] pnpm-workspace.yaml changed, rebuilding trpc and running full workspace typecheck"
+  pnpm --filter @kilocode/trpc run build
   pnpm -r --filter '!kilocode-backend' --filter '!@kilocode/trpc' run typecheck
   exit 0
 fi
