@@ -32,10 +32,10 @@ export const WebhookTriggersHeader = memo(function WebhookTriggersHeader({
 }: WebhookTriggersHeaderProps) {
   return (
     <div className="mb-6">
-      <div className="flex items-center justify-between">
-        <SetPageTitle title={title} icon={<Webhook className="h-4 w-4" />}>
-          {badgeLabel && <Badge variant="new">{badgeLabel}</Badge>}
-        </SetPageTitle>
+      <SetPageTitle title={title} icon={<Webhook className="h-4 w-4" />}>
+        {badgeLabel && <Badge variant="new">{badgeLabel}</Badge>}
+      </SetPageTitle>
+      <div className="flex items-center justify-end">
         {!hideCreate && (
           <Button asChild disabled={disabled}>
             <Link href={disabled ? '#' : createUrl}>
