@@ -22,7 +22,17 @@ const kiloclaw = new Hono<AppEnv>();
 // GET /api/kiloclaw/config -- user's current env var keys, secret count, channel status
 kiloclaw.get('/config', async c => {
   const userId = c.get('userId');
-  const stub = c.env.KILOCLAW_INSTANCE.get(c.env.KILOCLAW_INSTANCE.idFromName(userId));
+  const instanceId = c.req.query('instanceId');
+  const doKey = instanceId ?? userId;
+  const stub = c.env.KILOCLAW_INSTANCE.get(c.env.KILOCLAW_INSTANCE.idFromName(doKey));
+
+  // When accessing by instanceId, verify the authenticated user owns this instance.
+  if (instanceId) {
+    const status = await stub.getStatus();
+    if (status.userId !== userId) {
+      return c.json({ error: 'Access denied' }, 403);
+    }
+  }
 
   const config = await stub.getConfig();
 
@@ -41,9 +51,16 @@ kiloclaw.get('/config', async c => {
 // GET /api/kiloclaw/status -- user's instance status from the DO
 kiloclaw.get('/status', async c => {
   const userId = c.get('userId');
-  const stub = c.env.KILOCLAW_INSTANCE.get(c.env.KILOCLAW_INSTANCE.idFromName(userId));
+  const instanceId = c.req.query('instanceId');
+  const doKey = instanceId ?? userId;
+  const stub = c.env.KILOCLAW_INSTANCE.get(c.env.KILOCLAW_INSTANCE.idFromName(doKey));
 
   const status = await stub.getStatus();
+
+  // When accessing by instanceId, verify the authenticated user owns this instance.
+  if (instanceId && status.userId !== userId) {
+    return c.json({ error: 'Access denied' }, 403);
+  }
 
   return c.json(status);
 });

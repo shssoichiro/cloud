@@ -116,20 +116,25 @@ export class KiloClawInternalClient {
     }
   }
 
-  async provision(userId: string, config: ProvisionInput): Promise<{ sandboxId: string }> {
+  async provision(
+    userId: string,
+    config: ProvisionInput,
+    opts?: { instanceId?: string; orgId?: string }
+  ): Promise<{ sandboxId: string }> {
     return this.request(
       '/api/platform/provision',
       {
         method: 'POST',
-        body: JSON.stringify({ userId, ...config }),
+        body: JSON.stringify({ userId, ...config, ...opts }),
       },
       { userId }
     );
   }
 
-  async start(userId: string): Promise<{ ok: true }> {
+  async start(userId: string, instanceId?: string): Promise<{ ok: true }> {
+    const params = instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : '';
     return this.request(
-      '/api/platform/start',
+      `/api/platform/start${params}`,
       {
         method: 'POST',
         body: JSON.stringify({ userId }),
@@ -138,9 +143,10 @@ export class KiloClawInternalClient {
     );
   }
 
-  async stop(userId: string): Promise<{ ok: true }> {
+  async stop(userId: string, instanceId?: string): Promise<{ ok: true }> {
+    const params = instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : '';
     return this.request(
-      '/api/platform/stop',
+      `/api/platform/stop${params}`,
       {
         method: 'POST',
         body: JSON.stringify({ userId }),
@@ -149,9 +155,10 @@ export class KiloClawInternalClient {
     );
   }
 
-  async destroy(userId: string): Promise<{ ok: true }> {
+  async destroy(userId: string, instanceId?: string): Promise<{ ok: true }> {
+    const params = instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : '';
     return this.request(
-      '/api/platform/destroy',
+      `/api/platform/destroy${params}`,
       {
         method: 'POST',
         body: JSON.stringify({ userId }),
@@ -160,15 +167,19 @@ export class KiloClawInternalClient {
     );
   }
 
-  async getStatus(userId: string): Promise<PlatformStatusResponse> {
-    return this.request(`/api/platform/status?userId=${encodeURIComponent(userId)}`, undefined, {
+  async getStatus(userId: string, instanceId?: string): Promise<PlatformStatusResponse> {
+    const params = new URLSearchParams({ userId });
+    if (instanceId) params.set('instanceId', instanceId);
+    return this.request(`/api/platform/status?${params.toString()}`, undefined, {
       userId,
     });
   }
 
-  async getDebugStatus(userId: string): Promise<PlatformDebugStatusResponse> {
+  async getDebugStatus(userId: string, instanceId?: string): Promise<PlatformDebugStatusResponse> {
+    const params = new URLSearchParams({ userId });
+    if (instanceId) params.set('instanceId', instanceId);
     return this.request(
-      `/api/platform/debug-status?userId=${encodeURIComponent(userId)}`,
+      `/api/platform/debug-status?${params.toString()}`,
       undefined,
       { userId }
     );

@@ -90,10 +90,19 @@ export const SecretsPatchSchema = z.object({
   ),
 });
 
-export const ProvisionRequestSchema = z.object({
-  userId: z.string().min(1),
-  ...InstanceConfigSchema.omit({ googleCredentials: true }).shape,
-});
+export const ProvisionRequestSchema = z
+  .object({
+    userId: z.string().min(1),
+    /** Optional 12-char hex instance identity for multi-instance support. */
+    instanceId: z.string().regex(/^[0-9a-f]{12}$/).optional(),
+    /** Optional org ID — null/absent means personal instance. Requires instanceId. */
+    orgId: z.string().uuid().nullable().optional(),
+    ...InstanceConfigSchema.omit({ googleCredentials: true }).shape,
+  })
+  .refine(d => !d.orgId || d.instanceId, {
+    message: 'orgId requires instanceId',
+    path: ['orgId'],
+  });
 
 export type ProvisionRequest = z.infer<typeof ProvisionRequestSchema>;
 
@@ -116,6 +125,8 @@ export const DestroyRequestSchema = z.object({
 export const PersistedStateSchema = z.object({
   userId: z.string().default(''),
   sandboxId: z.string().default(''),
+  /** Organization ID — null for personal instances, set for org instances. */
+  orgId: z.string().nullable().default(null),
   status: z
     .enum(['provisioned', 'starting', 'restarting', 'running', 'stopped', 'destroying'])
     .default('stopped'),

@@ -10,11 +10,37 @@ import { GoogleCredentialsSchema } from '../schemas/instance-config';
 const api = new Hono<AppEnv>();
 
 /**
- * Resolve the user's KiloClawInstance DO stub from the authenticated userId.
+ * Resolve the user's KiloClawInstance DO stub.
+ *
+ * When instanceId is provided, uses it as the DO key (multi-instance).
+ * When absent, uses the authenticated userId (legacy single-instance).
  */
-function resolveStub(c: { get: (key: 'userId') => string; env: AppEnv['Bindings'] }) {
-  const userId = c.get('userId');
-  return c.env.KILOCLAW_INSTANCE.get(c.env.KILOCLAW_INSTANCE.idFromName(userId));
+function resolveStub(
+  c: { get: (key: 'userId') => string; env: AppEnv['Bindings'] },
+  instanceId?: string
+) {
+  const doKey = instanceId ?? c.get('userId');
+  return c.env.KILOCLAW_INSTANCE.get(c.env.KILOCLAW_INSTANCE.idFromName(doKey));
+}
+
+/**
+ * Verify that the authenticated user owns the instance when an instanceId is provided.
+ * Returns null if the check passes, or a 403 Response if it fails.
+ */
+async function verifyInstanceOwnership(
+  c: { get: (key: 'userId') => string; env: AppEnv['Bindings'] },
+  stub: ReturnType<typeof resolveStub>,
+  instanceId?: string
+): Promise<Response | null> {
+  if (!instanceId) return null;
+  const status = await stub.getStatus();
+  if (status.userId !== c.get('userId')) {
+    return new Response(JSON.stringify({ error: 'Access denied' }), {
+      status: 403,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  return null;
 }
 
 /**
@@ -40,7 +66,10 @@ adminApi.post('/storage/sync', async c => {
 
 // POST /api/admin/machine/restart - Restart the Fly Machine via the DO
 adminApi.post('/machine/restart', async c => {
-  const stub = resolveStub(c);
+  const instanceId = c.req.query('instanceId') || undefined;
+  const stub = resolveStub(c, instanceId);
+  const denied = await verifyInstanceOwnership(c, stub, instanceId);
+  if (denied) return denied;
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const rawTag = typeof body.imageTag === 'string' ? body.imageTag : undefined;
 
@@ -66,7 +95,10 @@ adminApi.post('/machine/restart', async c => {
 // TODO: Remove after frontend rollout to /api/admin/machine/restart
 // POST /api/admin/gateway/restart - Backward-compat alias for machine restart
 adminApi.post('/gateway/restart', async c => {
-  const stub = resolveStub(c);
+  const instanceId = c.req.query('instanceId') || undefined;
+  const stub = resolveStub(c, instanceId);
+  const denied = await verifyInstanceOwnership(c, stub, instanceId);
+  if (denied) return denied;
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   const rawTag = typeof body.imageTag === 'string' ? body.imageTag : undefined;
 
@@ -125,9 +157,13 @@ adminApi.get('/public-key', async c => {
 
 // GET /api/admin/google-credentials - Check Google connection status
 adminApi.get('/google-credentials', async c => {
-  const stub = resolveStub(c);
+  const instanceId = c.req.query('instanceId') || undefined;
+  const stub = resolveStub(c, instanceId);
   try {
     const status = await stub.getStatus();
+    if (instanceId && status.userId !== c.get('userId')) {
+      return c.json({ error: 'Access denied' }, 403);
+    }
     return c.json({ googleConnected: status.googleConnected ?? false }, 200);
   } catch (err) {
     console.error('[api] google-credentials status failed:', err);
@@ -137,7 +173,10 @@ adminApi.get('/google-credentials', async c => {
 
 // POST /api/admin/google-credentials - Store encrypted Google credentials
 adminApi.post('/google-credentials', async c => {
-  const stub = resolveStub(c);
+  const instanceId = c.req.query('instanceId') || undefined;
+  const stub = resolveStub(c, instanceId);
+  const denied = await verifyInstanceOwnership(c, stub, instanceId);
+  if (denied) return denied;
   let body: unknown;
   try {
     body = await c.req.json();
@@ -165,7 +204,10 @@ adminApi.post('/google-credentials', async c => {
 
 // DELETE /api/admin/google-credentials - Clear Google credentials
 adminApi.delete('/google-credentials', async c => {
-  const stub = resolveStub(c);
+  const instanceId = c.req.query('instanceId') || undefined;
+  const stub = resolveStub(c, instanceId);
+  const denied = await verifyInstanceOwnership(c, stub, instanceId);
+  if (denied) return denied;
   try {
     const result = await stub.clearGoogleCredentials();
     return c.json(result, 200);

@@ -25,3 +25,37 @@ export function sandboxIdFromUserId(userId: string): string {
   }
   return encoded;
 }
+
+// ─── Instance-scoped identity ───────────────────────────────────────
+
+/**
+ * 12-char lowercase hex string used as the primary instance identity.
+ * Must stay in sync with kiloclaw/src/auth/sandbox-id.ts.
+ */
+export const INSTANCE_ID_LENGTH = 12;
+const INSTANCE_ID_RE = /^[0-9a-f]{12}$/;
+
+export function generateInstanceId(): string {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, INSTANCE_ID_LENGTH);
+}
+
+export function isValidInstanceId(id: string): boolean {
+  return INSTANCE_ID_RE.test(id);
+}
+
+/**
+ * Derive a sandboxId from an instanceId (for new multi-instance instances).
+ * Must stay in sync with kiloclaw/src/auth/sandbox-id.ts.
+ */
+export function sandboxIdFromInstanceId(instanceId: string): string {
+  if (!isValidInstanceId(instanceId)) {
+    throw new Error(`Invalid instanceId: must be ${INSTANCE_ID_LENGTH}-char hex`);
+  }
+  const prefixed = `ki_${instanceId}`;
+  if (prefixed.length > MAX_SANDBOX_ID_LENGTH) {
+    throw new Error(
+      `instanceId too long: prefixed sandboxId would be ${prefixed.length} chars (max ${MAX_SANDBOX_ID_LENGTH})`
+    );
+  }
+  return prefixed;
+}

@@ -49,11 +49,15 @@ const KiloCodeConfigPatchSchema = z.object({
 const platform = new Hono<AppEnv>();
 
 /**
- * Create a fresh KiloClawInstance DO stub for a userId.
+ * Create a fresh KiloClawInstance DO stub.
  * Returns a factory (not the stub itself) so withDORetry can get a fresh stub per attempt.
+ *
+ * When instanceId is provided, uses it as the DO key (multi-instance).
+ * When absent, uses userId as the DO key (legacy single-instance).
  */
-function instanceStubFactory(env: AppEnv['Bindings'], userId: string) {
-  return () => env.KILOCLAW_INSTANCE.get(env.KILOCLAW_INSTANCE.idFromName(userId));
+function instanceStubFactory(env: AppEnv['Bindings'], userId: string, instanceId?: string) {
+  const doKey = instanceId ?? userId;
+  return () => env.KILOCLAW_INSTANCE.get(env.KILOCLAW_INSTANCE.idFromName(doKey));
 }
 
 function statusCodeFromError(err: unknown): number {
@@ -179,6 +183,8 @@ platform.post('/provision', async c => {
 
   const {
     userId,
+    instanceId,
+    orgId,
     envVars,
     encryptedSecrets,
     channels,
@@ -192,19 +198,23 @@ platform.post('/provision', async c => {
 
   try {
     const provision = await withDORetry(
-      instanceStubFactory(c.env, userId),
+      instanceStubFactory(c.env, userId, instanceId),
       stub =>
-        stub.provision(userId, {
-          envVars,
-          encryptedSecrets,
-          channels,
-          kilocodeApiKey,
-          kilocodeApiKeyExpiresAt,
-          kilocodeDefaultModel,
-          machineSize,
-          region,
-          pinnedImageTag,
-        }),
+        stub.provision(
+          userId,
+          {
+            envVars,
+            encryptedSecrets,
+            channels,
+            kilocodeApiKey,
+            kilocodeApiKeyExpiresAt,
+            kilocodeDefaultModel,
+            machineSize,
+            region,
+            pinnedImageTag,
+          },
+          instanceId || orgId ? { instanceId, orgId } : undefined
+        ),
       'provision'
     );
     return c.json(provision, 201);
@@ -836,9 +846,11 @@ platform.post('/start', async c => {
   const result = await parseBody(c, UserIdRequestSchema);
   if ('error' in result) return result.error;
 
+  const instanceId = c.req.query('instanceId');
+
   try {
     await withDORetry(
-      instanceStubFactory(c.env, result.data.userId),
+      instanceStubFactory(c.env, result.data.userId, instanceId || undefined),
       stub => stub.start(result.data.userId),
       'start'
     );
@@ -854,8 +866,10 @@ platform.post('/stop', async c => {
   const result = await parseBody(c, UserIdRequestSchema);
   if ('error' in result) return result.error;
 
+  const instanceId = c.req.query('instanceId');
+
   try {
-    await withDORetry(instanceStubFactory(c.env, result.data.userId), stub => stub.stop(), 'stop');
+    await withDORetry(instanceStubFactory(c.env, result.data.userId, instanceId || undefined), stub => stub.stop(), 'stop');
     return c.json({ ok: true });
   } catch (err) {
     const { message, status } = sanitizeError(err, 'stop');
@@ -868,9 +882,11 @@ platform.post('/destroy', async c => {
   const result = await parseBody(c, DestroyRequestSchema);
   if ('error' in result) return result.error;
 
+  const instanceId = c.req.query('instanceId');
+
   try {
     await withDORetry(
-      instanceStubFactory(c.env, result.data.userId),
+      instanceStubFactory(c.env, result.data.userId, instanceId || undefined),
       stub => stub.destroy(),
       'destroy'
     );
@@ -881,16 +897,17 @@ platform.post('/destroy', async c => {
   }
 });
 
-// GET /api/platform/status?userId=...
+// GET /api/platform/status?userId=...&instanceId=...
 platform.get('/status', async c => {
   const userId = c.req.query('userId');
   if (!userId) {
     return c.json({ error: 'userId query parameter is required' }, 400);
   }
+  const instanceId = c.req.query('instanceId');
 
   try {
     const status = await withDORetry(
-      instanceStubFactory(c.env, userId),
+      instanceStubFactory(c.env, userId, instanceId || undefined),
       stub => stub.getStatus(),
       'getStatus'
     );
@@ -901,17 +918,18 @@ platform.get('/status', async c => {
   }
 });
 
-// GET /api/platform/debug-status?userId=...
+// GET /api/platform/debug-status?userId=...&instanceId=...
 // Internal/admin-only debug status that includes DO destroy internals.
 platform.get('/debug-status', async c => {
   const userId = c.req.query('userId');
   if (!userId) {
     return c.json({ error: 'userId query parameter is required' }, 400);
   }
+  const instanceId = c.req.query('instanceId');
 
   try {
     const status = await withDORetry(
-      instanceStubFactory(c.env, userId),
+      instanceStubFactory(c.env, userId, instanceId || undefined),
       stub => stub.getDebugState(),
       'getDebugState'
     );
@@ -922,7 +940,7 @@ platform.get('/debug-status', async c => {
   }
 });
 
-// GET /api/platform/gateway-token?userId=...
+// GET /api/platform/gateway-token?userId=...&instanceId=...
 // Returns the derived gateway token for a user's sandbox. The Next.js
 // dashboard calls this so it never needs GATEWAY_TOKEN_SECRET directly.
 platform.get('/gateway-token', async c => {
@@ -930,6 +948,7 @@ platform.get('/gateway-token', async c => {
   if (!userId) {
     return c.json({ error: 'userId query parameter is required' }, 400);
   }
+  const instanceId = c.req.query('instanceId');
 
   if (!c.env.GATEWAY_TOKEN_SECRET) {
     return c.json({ error: 'GATEWAY_TOKEN_SECRET is not configured' }, 503);
@@ -937,7 +956,7 @@ platform.get('/gateway-token', async c => {
 
   try {
     const status = await withDORetry(
-      instanceStubFactory(c.env, userId),
+      instanceStubFactory(c.env, userId, instanceId || undefined),
       stub => stub.getStatus(),
       'getStatus'
     );
