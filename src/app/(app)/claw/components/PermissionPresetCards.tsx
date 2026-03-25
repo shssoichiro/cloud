@@ -1,21 +1,21 @@
-"use client"
+'use client';
 
-import { AlertCircle, ShieldAlert, ShieldCheck } from "lucide-react"
-import { cn } from "@/lib/utils"
-import type { ExecPreset } from "./claw.types"
+import { AlertCircle, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { ExecPreset } from './claw.types';
 
 export function PermissionPresetCards({
   selected,
   onSelect,
 }: {
-  selected?: ExecPreset | null
-  onSelect: (preset: ExecPreset) => void
+  selected?: ExecPreset | null;
+  onSelect: (preset: ExecPreset) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <PresetCard
-        onClick={() => onSelect("never-ask")}
-        active={selected === "never-ask"}
+        onClick={() => onSelect('never-ask')}
+        active={selected === 'never-ask'}
         icon={<ShieldAlert className="h-5 w-5 text-amber-400" />}
         iconBg="bg-amber-900/50"
         title="Allow everything"
@@ -23,8 +23,8 @@ export function PermissionPresetCards({
         caution="Use with caution"
       />
       <PresetCard
-        onClick={() => onSelect("always-ask")}
-        active={selected === "always-ask"}
+        onClick={() => onSelect('always-ask')}
+        active={selected === 'always-ask'}
         icon={<ShieldCheck className="h-5 w-5 text-emerald-400" />}
         iconBg="bg-emerald-900/50"
         title="Ask for permission"
@@ -32,7 +32,7 @@ export function PermissionPresetCards({
         badge="Recommended"
       />
     </div>
-  )
+  );
 }
 
 export function PresetCard({
@@ -45,27 +45,31 @@ export function PresetCard({
   badge,
   caution,
 }: {
-  onClick: () => void
-  active?: boolean
-  icon: React.ReactNode
-  iconBg: string
-  title: string
-  description: string
-  badge?: string
-  caution?: string
+  onClick: () => void;
+  active?: boolean;
+  icon: React.ReactNode;
+  iconBg: string;
+  title: string;
+  description: string;
+  badge?: string;
+  caution?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "relative flex cursor-pointer flex-col gap-4 rounded-xl border p-5 text-left transition-colors",
-        active ? "border-blue-500 ring-1 ring-blue-500/40" : "border-border hover:border-muted-foreground/40",
+        'relative flex cursor-pointer flex-col gap-4 rounded-xl border p-5 text-left transition-colors',
+        active
+          ? 'border-blue-500 ring-1 ring-blue-500/40'
+          : 'border-border hover:border-muted-foreground/40'
       )}
     >
       {/* Top row: icon + badge */}
       <div className="flex items-start justify-between">
-        <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg", iconBg)}>{icon}</div>
+        <div className={cn('flex h-10 w-10 items-center justify-center rounded-lg', iconBg)}>
+          {icon}
+        </div>
         {badge ? (
           <span className="rounded-full border border-emerald-700 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-emerald-400 uppercase">
             {badge}
@@ -87,5 +91,5 @@ export function PresetCard({
         </div>
       )}
     </button>
-  )
+  );
 }

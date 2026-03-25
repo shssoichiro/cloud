@@ -1,15 +1,15 @@
-"use client"
+'use client';
 
-import type { ExecPreset } from "./claw.types"
-import { OnboardingStepView } from "./OnboardingStepView"
-import { PermissionPresetCards } from "./PermissionPresetCards"
+import type { ExecPreset } from './claw.types';
+import { OnboardingStepView } from './OnboardingStepView';
+import { PermissionPresetCards } from './PermissionPresetCards';
 
 export function PermissionStep({
   instanceRunning,
   onSelect,
 }: {
-  instanceRunning: boolean
-  onSelect: (preset: ExecPreset) => void
+  instanceRunning: boolean;
+  onSelect: (preset: ExecPreset) => void;
 }) {
   return (
     <OnboardingStepView
@@ -21,5 +21,5 @@ export function PermissionStep({
     >
       <PermissionPresetCards onSelect={onSelect} />
     </OnboardingStepView>
-  )
+  );
 }

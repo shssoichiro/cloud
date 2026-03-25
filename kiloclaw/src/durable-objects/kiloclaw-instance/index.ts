@@ -1105,6 +1105,8 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     trackedImageDigest: string | null;
     googleConnected: boolean;
     gmailNotificationsEnabled: boolean;
+    execSecurity: string | null;
+    execAsk: string | null;
   }> {
     await this.loadState();
 
@@ -1141,6 +1143,8 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       trackedImageDigest: this.s.trackedImageDigest,
       googleConnected: this.s.googleCredentials !== null,
       gmailNotificationsEnabled: this.s.gmailNotificationsEnabled,
+      execSecurity: this.s.execSecurity,
+      execAsk: this.s.execAsk,
     };
   }
 

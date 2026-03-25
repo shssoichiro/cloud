@@ -56,7 +56,7 @@ import { PairingSection } from './PairingSection';
 import { VersionPinCard } from './VersionPinCard';
 import { WorkspaceFileEditor } from './WorkspaceFileEditor';
 import { PermissionPresetCards } from './PermissionPresetCards';
-import { type ExecPreset, execPresetToConfig } from './claw.types';
+import { type ExecPreset, configToExecPreset, execPresetToConfig } from './claw.types';
 
 type ClawMutations = ReturnType<typeof useKiloClawMutations>;
 
@@ -441,15 +441,19 @@ function GoogleAccountCard({
 
 function PermissionPresetSection({
   isRunning,
+  status,
   mutations,
   onRedeploy,
 }: {
   isRunning: boolean;
+  status: KiloClawDashboardStatus;
   mutations: ClawMutations;
   onRedeploy?: () => void;
 }) {
-  const [selected, setSelected] = useState<ExecPreset | null>(null);
+  const currentPreset = configToExecPreset(status.execSecurity, status.execAsk);
+  const [selected, setSelected] = useState<ExecPreset | null>(currentPreset);
   const saving = mutations.patchExecPreset.isPending || mutations.patchOpenclawConfig.isPending;
+  const dirty = selected !== null && selected !== currentPreset;
 
   function handleSave() {
     if (!selected) return;
@@ -501,7 +505,7 @@ function PermissionPresetSection({
         </p>
         <PermissionPresetCards selected={selected} onSelect={setSelected} />
         <div className="mt-4 flex justify-end">
-          <Button size="sm" disabled={!selected || saving} onClick={handleSave}>
+          <Button size="sm" disabled={!dirty || saving} onClick={handleSave}>
             <Save className="h-4 w-4" />
             {saving ? 'Saving...' : 'Save'}
           </Button>
@@ -808,6 +812,7 @@ export function SettingsTab({
       {/* ── Default Permissions ── */}
       <PermissionPresetSection
         isRunning={isRunning}
+        status={status}
         mutations={mutations}
         onRedeploy={onRedeploy}
       />
