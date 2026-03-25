@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react-native';
-import { useState } from 'react';
-import { Alert, FlatList, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, FlatList, Keyboard, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { ScreenHeader } from '@/components/screen-header';
@@ -28,6 +28,21 @@ export default function VersionPinScreen() {
   const mutations = useKiloClawMutations();
   const [pendingReason, setPendingReason] = useState('');
   const [pendingItem, setPendingItem] = useState<VersionItem>();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const flatListRef = useRef<FlatList<VersionItem>>(null);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardWillShow', e => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener('keyboardWillHide', () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const isLoading = myPinQuery.isPending || latestVersionQuery.isPending;
 
@@ -69,6 +84,16 @@ export default function VersionPinScreen() {
   function handlePin(item: VersionItem) {
     setPendingItem(item);
     setPendingReason('');
+  }
+
+  function scrollToPendingItem() {
+    if (!pendingItem) return;
+    const index = versions.findIndex(v => v.image_tag === pendingItem.image_tag);
+    if (index >= 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+      }, 300);
+    }
   }
 
   function confirmPin() {
@@ -142,6 +167,7 @@ export default function VersionPinScreen() {
                 placeholder="Why are you pinning this version?"
                 placeholderTextColor={colors.mutedForeground}
                 value={pendingReason}
+                onFocus={scrollToPendingItem}
                 onChangeText={val => {
                   if (val.length <= 500) setPendingReason(val);
                 }}
@@ -165,14 +191,19 @@ export default function VersionPinScreen() {
     <Animated.View layout={LinearTransition} className="flex-1 bg-background">
       <ScreenHeader title="Version Pinning" />
       <FlatList
+        ref={flatListRef}
         data={versions}
         keyExtractor={item => item.image_tag}
         renderItem={renderVersionItem}
         contentContainerClassName="px-4 py-4 gap-4"
+        contentInset={{ bottom: keyboardHeight > 0 ? keyboardHeight + 10 : 0 }}
+        scrollIndicatorInsets={{ bottom: keyboardHeight > 0 ? keyboardHeight + 10 : 0 }}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <Animated.View entering={FadeIn.duration(200)} className="gap-4 mb-2">
-            <View className="rounded-lg bg-secondary p-4 gap-2">
+            <View className="rounded-lg bg-secondary p-4 min-h-[60px] justify-center gap-2">
               {myPin ? (
                 <>
                   <View className="flex-row items-center justify-between">
