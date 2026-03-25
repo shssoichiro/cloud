@@ -171,7 +171,9 @@ export const adminRouter = createTRPCRouter({
         z
           .object({
             includeDrafts: z.boolean().optional(),
-            repos: z.array(z.enum(['kilocode', 'cloud', 'kilo-marketplace'])).optional(),
+            repos: z
+              .array(z.enum(['kilocode', 'cloud', 'kilo-marketplace', 'kilocode-legacy']))
+              .optional(),
           })
           .optional()
       )
@@ -192,7 +194,9 @@ export const adminRouter = createTRPCRouter({
       .input(
         z
           .object({
-            repos: z.array(z.enum(['kilocode', 'cloud', 'kilo-marketplace'])).optional(),
+            repos: z
+              .array(z.enum(['kilocode', 'cloud', 'kilo-marketplace', 'kilocode-legacy']))
+              .optional(),
           })
           .optional()
       )

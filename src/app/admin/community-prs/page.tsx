@@ -18,13 +18,14 @@ import {
   type ClosedPrSortKey,
 } from '@/app/admin/community-prs/sorting';
 
-const ALL_REPOS = ['kilocode', 'cloud', 'kilo-marketplace'] as const;
+const ALL_REPOS = ['kilocode', 'cloud', 'kilo-marketplace', 'kilocode-legacy'] as const;
 type RepoFilterId = (typeof ALL_REPOS)[number];
 
 const REPO_LABELS: Record<RepoFilterId, string> = {
   kilocode: 'kilocode',
   cloud: 'cloud',
   'kilo-marketplace': 'marketplace',
+  'kilocode-legacy': 'legacy',
 };
 
 const breadcrumbs = (

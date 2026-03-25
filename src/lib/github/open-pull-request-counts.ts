@@ -318,6 +318,7 @@ export const SUPPORTED_REPOS = {
   kilocode: { owner: 'Kilo-Org', name: 'kilocode' },
   cloud: { owner: 'Kilo-Org', name: 'cloud' },
   'kilo-marketplace': { owner: 'Kilo-Org', name: 'kilo-marketplace' },
+  'kilocode-legacy': { owner: 'Kilo-Org', name: 'kilocode-legacy' },
 } as const;
 
 export type RepoId = keyof typeof SUPPORTED_REPOS;

@@ -1071,7 +1071,6 @@ describe('multi-repo aggregation', () => {
     const { getKilocodeRepoOpenPullRequestsSummary } = await importModule();
     await getKilocodeRepoOpenPullRequestsSummary({ ttlMs: 0 });
 
-    // Should have fetched pulls for all 3 repos
     const pullsCalls = fetchMock.mock.calls.filter(([input]) => {
       const url = typeof input === 'string' ? input : input.toString();
       return url.includes('/pulls?');
@@ -1086,6 +1085,7 @@ describe('multi-repo aggregation', () => {
     expect(repos).toContain('kilocode');
     expect(repos).toContain('cloud');
     expect(repos).toContain('kilo-marketplace');
+    expect(repos).toContain('kilocode-legacy');
 
     fetchMock.mockRestore();
   });

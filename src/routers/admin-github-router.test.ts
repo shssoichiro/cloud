@@ -13,7 +13,7 @@ jest.mock('@/lib/github/open-pull-request-counts', () => ({
   getKilocodeRepoOpenPullRequestsSummary: jest.fn(),
   getKilocodeRepoRecentlyClosedExternalPRs: jest.fn(),
   getKilocodeRepoRecentlyMergedExternalPRs: jest.fn(),
-  ALL_REPO_IDS: ['kilocode', 'cloud', 'kilo-marketplace'],
+  ALL_REPO_IDS: ['kilocode', 'cloud', 'kilo-marketplace', 'kilocode-legacy'],
 }));
 
 let regularUser: User;
