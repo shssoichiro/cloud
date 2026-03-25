@@ -175,7 +175,7 @@ export const KILO_AUTO_SMALL_MODEL: AutoModel = {
   max_completion_tokens: 32768,
   prompt_price: '0.00000005',
   completion_price: '0.0000004',
-  supports_images: true,
+  supports_images: false,
   roocode_settings: undefined,
   opencode_settings: undefined,
 };
