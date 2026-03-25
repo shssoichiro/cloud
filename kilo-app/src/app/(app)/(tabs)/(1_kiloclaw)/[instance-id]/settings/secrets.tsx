@@ -1,5 +1,5 @@
 import { Check, ChevronDown, ChevronUp, Trash2 } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Keyboard, ScrollView, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { toast } from 'sonner-native';
@@ -22,26 +22,33 @@ function SecretCard({
 }>) {
   const colors = useThemeColors();
   const [expanded, setExpanded] = useState(false);
-  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [canSave, setCanSave] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const fieldValuesRef = useRef<Record<string, string>>({});
 
-  const isSaving = mutations.patchSecrets.isPending;
+  const isSaving = mutations.patchSecrets.isPending && !isRemoving;
 
-  const filledFields = secret.fields.filter(f => (fieldValues[f.key] ?? '').trim().length > 0);
-  const canSave = secret.allFieldsRequired
-    ? filledFields.length === secret.fields.length
-    : filledFields.length > 0;
+  const updateCanSave = useCallback(() => {
+    const vals = fieldValuesRef.current;
+    const filled = secret.fields.filter(f => (vals[f.key] ?? '').trim().length > 0);
+    const next = secret.allFieldsRequired
+      ? filled.length === secret.fields.length
+      : filled.length > 0;
+    setCanSave(next);
+  }, [secret.fields, secret.allFieldsRequired]);
 
   function handleSave() {
     const secrets: Record<string, string> = {};
     for (const f of secret.fields) {
-      const val = (fieldValues[f.key] ?? '').trim();
+      const val = (fieldValuesRef.current[f.key] ?? '').trim();
       if (val) secrets[f.key] = val;
     }
     mutations.patchSecrets.mutate(
       { secrets },
       {
         onSuccess: () => {
-          setFieldValues({});
+          fieldValuesRef.current = {};
+          setCanSave(false);
           setExpanded(false);
           toast.success(`${secret.label} saved`);
         },
@@ -59,12 +66,20 @@ function SecretCard({
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
+            setIsRemoving(true);
             const secrets: Record<string, null> = {};
             for (const f of secret.fields) {
               // eslint-disable-next-line unicorn/no-null -- tRPC schema requires null for secret removal
               secrets[f.key] = null;
             }
-            mutations.patchSecrets.mutate({ secrets });
+            mutations.patchSecrets.mutate(
+              { secrets },
+              {
+                onSettled: () => {
+                  setIsRemoving(false);
+                },
+              }
+            );
           },
         },
       ]
@@ -113,9 +128,15 @@ function SecretCard({
               )}
               <Text className="text-xs">{expanded ? 'Cancel' : 'Update Token'}</Text>
             </Button>
-            <Button variant="destructive" size="sm" onPress={handleRemove}>
-              <Trash2 size={14} color="white" />
-              <Text className="text-xs text-destructive-foreground">Remove</Text>
+            <Button variant="destructive" size="sm" disabled={isRemoving} onPress={handleRemove}>
+              {isRemoving ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Trash2 size={14} color="white" />
+              )}
+              <Text className="text-xs text-destructive-foreground">
+                {isRemoving ? 'Removing…' : 'Remove'}
+              </Text>
             </Button>
           </>
         ) : (
@@ -153,9 +174,9 @@ function SecretCard({
                   className="rounded-md border border-input bg-background px-3 py-2.5 text-sm leading-5 text-foreground"
                   placeholder={secret.configured ? field.placeholderConfigured : field.placeholder}
                   placeholderTextColor={colors.mutedForeground}
-                  defaultValue={fieldValues[field.key] ?? ''}
                   onChangeText={val => {
-                    setFieldValues(prev => ({ ...prev, [field.key]: val }));
+                    fieldValuesRef.current[field.key] = val;
+                    updateCanSave();
                   }}
                   autoCapitalize="none"
                   autoCorrect={false}

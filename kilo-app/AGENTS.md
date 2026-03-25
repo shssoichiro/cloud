@@ -50,6 +50,12 @@ npx expo install --dev <package-name>   # devDependencies
 - Centralize `onError` in the mutation hook (e.g., `useKiloClawMutations`) rather than in individual components. Components can add their own `onSuccess` callbacks via `mutate(input, { onSuccess })` for UI-specific behavior (e.g., closing a form, clearing fields).
 - For screens with text inputs, use `ScrollView` with `automaticallyAdjustKeyboardInsets` to keep inputs visible above the keyboard. No external keyboard library needed — the native iOS prop works smoothly.
 
+### TextInput on iOS
+
+- **Never use controlled `value` prop for text inputs on iOS.** The `value` + `onChangeText` + `setState` pattern causes a re-render on every keystroke, which creates a race condition with the native input — fast typing results in transposed characters and cursor jumping. Use `onChangeText` with a ref (`useRef`) to store values, and only use state for derived booleans (e.g., `canSave`) that gate UI. Read from the ref when submitting.
+- Use `defaultValue` only if the input needs an initial value. Omit both `value` and `defaultValue` for empty inputs.
+- Set explicit `leading-*` (line height) on TextInput to prevent height jumps when typing begins.
+
 ## Code Style
 
 - Expo Router requires default exports in `src/app/` — this is the only place default exports are allowed.
