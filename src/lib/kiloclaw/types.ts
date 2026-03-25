@@ -119,6 +119,7 @@ export type MachineSize = {
 export type PlatformStatusResponse = {
   userId: string | null;
   sandboxId: string | null;
+  name?: string | null;
   status: 'provisioned' | 'starting' | 'restarting' | 'running' | 'stopped' | 'destroying' | null;
   provisionedAt: number | null;
   lastStartedAt: number | null;
@@ -297,4 +298,5 @@ export type UpdateRegionsResponse = {
 export type KiloClawDashboardStatus = PlatformStatusResponse & {
   /** Worker base URL for constructing the "Open" link. Falls back to claw.kilo.ai. */
   workerUrl: string;
+  name: string | null;
 };
