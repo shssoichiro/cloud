@@ -1838,6 +1838,8 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
                       appName: data.workerStatus.flyAppName,
                       machineId: data.workerStatus.flyMachineId,
                     });
+                  } else {
+                    toast.error('Missing machine ID or app name');
                   }
                 }}
               >
