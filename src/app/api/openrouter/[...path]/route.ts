@@ -167,11 +167,24 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     request.headers.get(FEATURE_HEADER) || (isLegacyOpenRouterPath ? '' : 'direct-gateway')
   );
 
+  const authPromise = getUserFromAuth({ adminOnly: false });
+  const balanceAndSettingsPromise = authPromise.then(res =>
+    res.user
+      ? getBalanceAndOrgSettings(res.organizationId, res.user)
+      : { balance: 0, settings: undefined, plan: undefined }
+  );
+
   const modeHeader = extractHeaderAndLimitLength(request, 'x-kilocode-mode');
   let autoModel: string | null = null;
   if (isKiloAutoModel(requestedModelLowerCased)) {
     autoModel = requestedModelLowerCased;
-    applyResolvedAutoModel(requestedModelLowerCased, requestBodyParsed, modeHeader, feature);
+    await applyResolvedAutoModel(
+      requestedModelLowerCased,
+      requestBodyParsed,
+      modeHeader,
+      feature,
+      balanceAndSettingsPromise.then(res => res.balance)
+    );
   }
 
   const originalModelIdLowerCased = requestBodyParsed.body.model.toLowerCase();
@@ -210,7 +223,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     organizationId: authOrganizationId,
     botId: authBotId,
     tokenSource: authTokenSource,
-  } = await getUserFromAuth({ adminOnly: false });
+  } = await authPromise;
   authSpan.end();
 
   let user: typeof maybeUser | AnonymousUserContext;
@@ -362,7 +375,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   const bypassAccessCheckForCustomLlm =
     !!customLlm && !!organizationId && customLlm.organization_ids.includes(organizationId);
   if (!isAnonymousContext(user) && !bypassAccessCheckForCustomLlm) {
-    const { balance, settings, plan } = await getBalanceAndOrgSettings(organizationId, user);
+    const { balance, settings, plan } = await balanceAndSettingsPromise;
 
     if (
       balance <= 0 &&
