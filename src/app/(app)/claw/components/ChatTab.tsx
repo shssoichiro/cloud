@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { Channel as StreamChannel, Event } from 'stream-chat';
+import { MessageSquare, RotateCw } from 'lucide-react';
 import {
   Chat,
   Channel,
@@ -37,7 +38,22 @@ export function ChatTab({ enabled }: ChatTabProps) {
 
   if (!creds) {
     return (
-      <ChatPlaceholder message="Chat is not available for this instance. It may have been provisioned before chat was enabled." />
+      <div className="flex h-96 flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5">
+          <MessageSquare className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <p className="text-sm font-medium">Chat requires a redeploy</p>
+          <p className="text-muted-foreground max-w-sm text-sm">
+            This instance was provisioned before chat was enabled. Use the{' '}
+            <span className="inline-flex items-center gap-1 font-medium text-amber-400">
+              <RotateCw className="inline h-3 w-3" />
+              Redeploy or Upgrade
+            </span>{' '}
+            button above to activate real-time chat with your KiloClaw bot.
+          </p>
+        </div>
+      </div>
     );
   }
 
