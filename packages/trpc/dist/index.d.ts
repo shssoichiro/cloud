@@ -3538,6 +3538,7 @@ type ExternalOpenPullRequest = {
     number: number;
     title: string;
     url: string;
+    repo: string;
     authorLogin: string;
     createdAt: string;
     ageDays: number;
@@ -3562,6 +3563,7 @@ type ExternalClosedPullRequest = {
     number: number;
     title: string;
     url: string;
+    repo: string;
     authorLogin: string;
     closedAt: string;
     mergedAt: string | null;
@@ -7896,6 +7898,7 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
             getKilocodeOpenPullRequestsSummary: _trpc_server.TRPCQueryProcedure<{
                 input: {
                     includeDrafts?: boolean | undefined;
+                    repos?: ("cloud" | "kilocode" | "kilo-marketplace" | "kilocode-legacy")[] | undefined;
                 } | undefined;
                 output: OpenPullRequestsSummary;
                 meta: object;
@@ -7906,7 +7909,9 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                 meta: object;
             }>;
             getKilocodeRecentlyClosedExternalPRs: _trpc_server.TRPCQueryProcedure<{
-                input: void;
+                input: {
+                    repos?: ("cloud" | "kilocode" | "kilo-marketplace" | "kilocode-legacy")[] | undefined;
+                } | undefined;
                 output: ExternalClosedPullRequestsWithWeekStats;
                 meta: object;
             }>;
@@ -10546,47 +10551,27 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
             getTemplates: _trpc_server.TRPCQueryProcedure<{
                 input: void;
                 output: {
-                    name: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow";
-                    subject: string;
+                    name: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceReady";
+                    subject: "Welcome to Kilo for Teams!" | "Kilo: Your Teams Subscription Renewal" | "Kilo: Your Teams Subscription is Cancelled" | "Kilo: New SSO User Joined Your Organization" | "Kilo: Teams Invitation" | "Sign in to Kilo Code" | "Kilo: Low Balance Alert" | "Kilo: Auto Top-Up Failed" | "Kilo: OSS Sponsorship Offer" | "Kilo: Your Deployment Failed" | "Your KiloClaw Trial Ends in 2 Days" | "Your KiloClaw Trial Expires Tomorrow" | "Your KiloClaw Trial Has Ended" | "Your KiloClaw Subscription Has Ended" | "Action Required: KiloClaw Payment Overdue" | "Your KiloClaw Instance Will Be Deleted in 2 Days" | "Your KiloClaw Instance Has Been Deleted" | "Your KiloClaw Earlybird Access Ends Soon" | "Your KiloClaw Earlybird Access Expires Tomorrow" | "Your KiloClaw Instance Is Ready";
                 }[];
-                meta: object;
-            }>;
-            getProviders: _trpc_server.TRPCQueryProcedure<{
-                input: void;
-                output: ("customerio" | "mailgun")[];
                 meta: object;
             }>;
             getPreview: _trpc_server.TRPCQueryProcedure<{
                 input: {
-                    template: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow";
-                    provider: "customerio" | "mailgun";
+                    template: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceReady";
                 };
                 output: {
-                    type: "mailgun";
-                    subject: string;
+                    subject: "Welcome to Kilo for Teams!" | "Kilo: Your Teams Subscription Renewal" | "Kilo: Your Teams Subscription is Cancelled" | "Kilo: New SSO User Joined Your Organization" | "Kilo: Teams Invitation" | "Sign in to Kilo Code" | "Kilo: Low Balance Alert" | "Kilo: Auto Top-Up Failed" | "Kilo: OSS Sponsorship Offer" | "Kilo: Your Deployment Failed" | "Your KiloClaw Trial Ends in 2 Days" | "Your KiloClaw Trial Expires Tomorrow" | "Your KiloClaw Trial Has Ended" | "Your KiloClaw Subscription Has Ended" | "Action Required: KiloClaw Payment Overdue" | "Your KiloClaw Instance Will Be Deleted in 2 Days" | "Your KiloClaw Instance Has Been Deleted" | "Your KiloClaw Earlybird Access Ends Soon" | "Your KiloClaw Earlybird Access Expires Tomorrow" | "Your KiloClaw Instance Is Ready";
                     html: string;
-                    transactional_message_id?: undefined;
-                    message_data?: undefined;
-                } | {
-                    type: "customerio";
-                    transactional_message_id: "6" | "10" | "11" | "12" | "13" | "14" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" | "25" | "26" | "27" | "28" | "29" | "30";
-                    subject: string;
-                    message_data: Record<string, string>;
-                    html?: undefined;
                 };
                 meta: object;
             }>;
             sendTest: _trpc_server.TRPCMutationProcedure<{
                 input: {
-                    template: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow";
-                    provider: "customerio" | "mailgun";
+                    template: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceReady";
                     recipient: string;
                 };
                 output: {
-                    provider: "customerio";
-                    recipient: string;
-                } | {
-                    provider: "mailgun";
                     recipient: string;
                 };
                 meta: object;

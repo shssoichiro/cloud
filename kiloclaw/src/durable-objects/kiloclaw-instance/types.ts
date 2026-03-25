@@ -88,6 +88,7 @@ export type InstanceMutableState = {
   previousVolumeId: string | null;
   restoreStartedAt: string | null;
   pendingRestoreVolumeId: string | null;
+  instanceReadyEmailSent: boolean;
   /** In-memory only — throttles live Fly checks in getStatus(). */
   lastLiveCheckAt: number | null;
 };

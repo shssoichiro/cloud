@@ -75,6 +75,9 @@ export async function loadState(ctx: DurableObjectState, s: InstanceMutableState
     s.previousVolumeId = d.previousVolumeId;
     s.restoreStartedAt = d.restoreStartedAt;
     s.pendingRestoreVolumeId = d.pendingRestoreVolumeId;
+    // Legacy instances pre-dating this field treat absence as already-sent
+    // to avoid spurious emails after deploy.
+    s.instanceReadyEmailSent = 'instanceReadyEmailSent' in raw ? d.instanceReadyEmailSent : true;
   } else {
     const hasAnyData = entries.size > 0;
     if (hasAnyData) {
@@ -140,6 +143,7 @@ export function resetMutableState(s: InstanceMutableState): void {
   s.previousVolumeId = null;
   s.restoreStartedAt = null;
   s.pendingRestoreVolumeId = null;
+  s.instanceReadyEmailSent = false;
   s.lastLiveCheckAt = null;
   s.restartingAt = null;
   s.loaded = false;
@@ -199,6 +203,7 @@ export function createMutableState(): InstanceMutableState {
     previousVolumeId: null,
     restoreStartedAt: null,
     pendingRestoreVolumeId: null,
+    instanceReadyEmailSent: false,
     lastLiveCheckAt: null,
   };
 }

@@ -201,6 +201,9 @@ export const PersistedStateSchema = z.object({
   // Snapshot restore: volume ID created by the queue worker during restore.
   // Used for idempotency on retry — if set, the worker reuses this volume instead of creating another.
   pendingRestoreVolumeId: z.string().nullable().default(null),
+  // Tracks whether the "instance ready" email has been sent for this provision lifecycle.
+  // Set to true on first low-load checkin; reset on DO wipe (destroy + re-provision).
+  instanceReadyEmailSent: z.boolean().default(false),
 });
 
 export type PersistedState = z.infer<typeof PersistedStateSchema>;
