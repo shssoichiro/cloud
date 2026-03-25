@@ -44,6 +44,9 @@ export type KiloClawEnv = {
   KILOCLAW_CHECKIN_URL?: string;
   REQUIRE_PROXY_TOKEN?: string;
 
+  // PostHog product telemetry
+  NEXT_PUBLIC_POSTHOG_KEY?: string;
+
   // Tuning overrides (wrangler vars)
   /** Override proactive API key refresh threshold (hours). Default: 72 (3 days). */
   PROACTIVE_REFRESH_THRESHOLD_HOURS?: string;
