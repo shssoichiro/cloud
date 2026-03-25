@@ -127,6 +127,7 @@ async function autoResumeIfSuspended(kiloUserId: string): Promise<void> {
     'claw_suspended_payment',
     'claw_destruction_warning',
     'claw_instance_destroyed',
+    'claw_instance_ready',
   ];
   await db
     .delete(kiloclaw_email_log)

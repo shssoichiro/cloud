@@ -5762,3 +5762,46 @@ describe('updateExecPreset', () => {
     expect(result.execAsk).toBe('off');
   });
 });
+
+describe('tryMarkInstanceReady', () => {
+  it('returns shouldNotify: true on first call and persists the flag', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { instanceReadyEmailSent: false });
+
+    const result = await instance.tryMarkInstanceReady();
+
+    expect(result).toEqual({ shouldNotify: true, userId: 'user-1' });
+    expect(storage._store.get('instanceReadyEmailSent')).toBe(true);
+  });
+
+  it('returns shouldNotify: false on subsequent calls', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { instanceReadyEmailSent: false });
+
+    await instance.tryMarkInstanceReady();
+    const result = await instance.tryMarkInstanceReady();
+
+    expect(result).toEqual({ shouldNotify: false, userId: 'user-1' });
+  });
+
+  it('returns shouldNotify: false when flag is already persisted', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { instanceReadyEmailSent: true });
+
+    const putSpy = vi.spyOn(storage, 'put');
+    const result = await instance.tryMarkInstanceReady();
+
+    expect(result).toEqual({ shouldNotify: false, userId: 'user-1' });
+    expect(putSpy).not.toHaveBeenCalled();
+  });
+
+  it('defaults to false for legacy instances without the field', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    const result = await instance.tryMarkInstanceReady();
+
+    expect(result).toEqual({ shouldNotify: true, userId: 'user-1' });
+    expect(storage._store.get('instanceReadyEmailSent')).toBe(true);
+  });
+});

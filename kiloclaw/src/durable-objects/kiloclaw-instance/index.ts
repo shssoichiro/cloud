@@ -1288,6 +1288,21 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     };
   }
 
+  /**
+   * Atomically check-and-set the instance ready flag. Returns shouldNotify: true
+   * on the first call per provision lifecycle, false on all subsequent calls.
+   * Used by the controller checkin handler to trigger a one-time "instance ready" email.
+   */
+  async tryMarkInstanceReady(): Promise<{ shouldNotify: boolean; userId: string | null }> {
+    await this.loadState();
+    if (this.s.instanceReadyEmailSent) {
+      return { shouldNotify: false, userId: this.s.userId };
+    }
+    this.s.instanceReadyEmailSent = true;
+    await this.persist({ instanceReadyEmailSent: true });
+    return { shouldNotify: true, userId: this.s.userId };
+  }
+
   async listVolumeSnapshots(): Promise<FlyVolumeSnapshot[]> {
     await this.loadState();
     if (!this.s.flyVolumeId) return [];
