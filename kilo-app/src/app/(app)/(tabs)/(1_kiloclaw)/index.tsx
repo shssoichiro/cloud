@@ -84,6 +84,7 @@ export default function KiloClawInstanceList() {
     return (
       <Animated.View entering={FadeIn.duration(200)}>
         <InstanceRow
+          name={status.name}
           sandboxId={status.sandboxId}
           status={status.status}
           region={status.flyRegion}

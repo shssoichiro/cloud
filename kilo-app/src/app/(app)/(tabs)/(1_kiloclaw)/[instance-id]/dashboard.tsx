@@ -73,6 +73,7 @@ export default function DashboardScreen() {
 
           <StatusCard
             status={status?.status ?? undefined}
+            name={status?.name ?? undefined}
             sandboxId={status?.sandboxId ?? undefined}
             region={status?.flyRegion ?? undefined}
             cpus={status?.machineSize?.cpus ?? undefined}

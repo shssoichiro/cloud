@@ -9,6 +9,7 @@ import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 type InstanceStatus = NonNullable<ReturnType<typeof useKiloClawStatus>['data']>['status'];
 
 interface InstanceRowProps {
+  name: string | null | undefined;
   sandboxId: string | null | undefined;
   status: InstanceStatus | null | undefined;
   region: string | null | undefined;
@@ -19,6 +20,7 @@ interface InstanceRowProps {
 }
 
 export function InstanceRow({
+  name,
   sandboxId,
   status,
   region,
@@ -43,7 +45,9 @@ export function InstanceRow({
       accessibilityLabel={`Instance ${sandboxId ?? 'unknown'}`}
     >
       <View className="flex-1 gap-1">
-        <Text className="text-sm font-medium">{sandboxId ?? 'Instance'}</Text>
+        <Text className="text-sm font-medium" numberOfLines={1}>
+          {name ?? sandboxId ?? 'Instance'}
+        </Text>
         <View className="flex-row items-center gap-2">
           <StatusBadge status={status} />
           {region && <Text className="text-xs text-muted-foreground">{region}</Text>}

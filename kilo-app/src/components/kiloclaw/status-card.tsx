@@ -21,6 +21,7 @@ type GatewayState = NonNullable<ReturnType<typeof useKiloClawGatewayStatus>['dat
 
 interface StatusCardProps {
   status: InstanceStatus | null | undefined;
+  name: string | null | undefined;
   sandboxId: string | null | undefined;
   region: string | null | undefined;
   cpus: number | null | undefined;
@@ -70,6 +71,7 @@ function formatLastExit(
 
 export function StatusCard({
   status,
+  name,
   sandboxId,
   region,
   cpus,
@@ -87,7 +89,9 @@ export function StatusCard({
   return (
     <View className="rounded-lg bg-secondary p-4 gap-1">
       <View className="flex-row items-center justify-between pb-2">
-        <Text className="text-sm font-semibold">{sandboxId ?? 'Instance'}</Text>
+        <Text className="text-sm font-semibold" numberOfLines={1}>
+          {name ?? sandboxId ?? 'Instance'}
+        </Text>
         <StatusBadge status={status} />
       </View>
 
