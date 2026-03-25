@@ -27,7 +27,7 @@ export default function VersionPinScreen() {
   const latestVersionQuery = useKiloClawLatestVersion();
   const availableVersionsQuery = useKiloClawAvailableVersions();
   const mutations = useKiloClawMutations();
-  const [pendingReason, setPendingReason] = useState('');
+  const pendingReasonRef = useRef('');
   const [pendingItem, setPendingItem] = useState<VersionItem>();
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const flatListRef = useRef<FlatList<VersionItem>>(null);
@@ -102,7 +102,7 @@ export default function VersionPinScreen() {
 
   function handlePin(item: VersionItem) {
     setPendingItem(item);
-    setPendingReason('');
+    pendingReasonRef.current = '';
   }
 
   function scrollToPendingItem() {
@@ -117,13 +117,13 @@ export default function VersionPinScreen() {
 
   function confirmPin() {
     if (!pendingItem) return;
-    const reason = pendingReason.trim() || undefined;
+    const reason = pendingReasonRef.current.trim() || undefined;
     mutations.setMyPin.mutate(
       { imageTag: pendingItem.image_tag, reason },
       {
         onSuccess: () => {
           setPendingItem(undefined);
-          setPendingReason('');
+          pendingReasonRef.current = '';
         },
       }
     );
@@ -131,7 +131,7 @@ export default function VersionPinScreen() {
 
   function cancelPin() {
     setPendingItem(undefined);
-    setPendingReason('');
+    pendingReasonRef.current = '';
   }
 
   function renderVersionItem({ item }: { item: VersionItem }) {
@@ -182,13 +182,12 @@ export default function VersionPinScreen() {
             <View className="px-4 py-3 gap-3">
               <Text className="text-xs font-medium text-muted-foreground">Reason (optional)</Text>
               <TextInput
-                className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm leading-5 text-foreground"
                 placeholder="Why are you pinning this version?"
                 placeholderTextColor={colors.mutedForeground}
-                value={pendingReason}
                 onFocus={scrollToPendingItem}
                 onChangeText={val => {
-                  if (val.length <= 500) setPendingReason(val);
+                  if (val.length <= 500) pendingReasonRef.current = val;
                 }}
                 autoCapitalize="sentences"
                 autoCorrect
