@@ -5,11 +5,12 @@ import {
   HardDrive,
   MapPin,
   MemoryStick,
+  Pencil,
   RotateCcw,
   Server,
 } from 'lucide-react-native';
 import { type LucideIcon } from 'lucide-react-native';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { StatusBadge } from '@/components/kiloclaw/status-badge';
 import { Text } from '@/components/ui/text';
@@ -23,6 +24,7 @@ interface StatusCardProps {
   status: InstanceStatus | null | undefined;
   name: string | null | undefined;
   sandboxId: string | null | undefined;
+  onRename?: () => void;
   region: string | null | undefined;
   cpus: number | null | undefined;
   memoryMb: number | null | undefined;
@@ -73,6 +75,7 @@ export function StatusCard({
   status,
   name,
   sandboxId,
+  onRename,
   region,
   cpus,
   memoryMb,
@@ -82,6 +85,7 @@ export function StatusCard({
   lastExitCode,
   lastExitSignal,
 }: Readonly<StatusCardProps>) {
+  const colors = useThemeColors();
   const memoryLabel = memoryMb ? `${(memoryMb / 1024).toFixed(0)} GB` : '—';
   const cpuLabel = cpus ? `${String(cpus)} vCPU` : '—';
   const lastExitLabel = formatLastExit(lastExitCode, lastExitSignal);
@@ -89,9 +93,16 @@ export function StatusCard({
   return (
     <View className="rounded-lg bg-secondary p-4 gap-1">
       <View className="flex-row items-center justify-between pb-2">
-        <Text className="text-sm font-semibold" numberOfLines={1}>
-          {name ?? sandboxId ?? 'Instance'}
-        </Text>
+        <View className="flex-1 flex-row items-center gap-1.5">
+          <Text className="shrink text-sm font-semibold" numberOfLines={1}>
+            {name ?? sandboxId ?? 'Instance'}
+          </Text>
+          {onRename && (
+            <Pressable onPress={onRename} hitSlop={8} accessibilityLabel="Rename instance">
+              <Pencil size={14} color={colors.mutedForeground} />
+            </Pressable>
+          )}
+        </View>
         <StatusBadge status={status} />
       </View>
 

@@ -1,6 +1,6 @@
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { AlertTriangle, CreditCard, Newspaper } from 'lucide-react-native';
-import { Linking, Pressable, ScrollView, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { BillingBanner } from '@/components/kiloclaw/billing-banner';
@@ -38,6 +38,27 @@ export default function DashboardScreen() {
   const billing = billingQuery.data;
   const isServiceDegraded = serviceDegradedQuery.data === true;
   const isLoading = statusQuery.isPending || billingQuery.isPending;
+
+  const handleRename = () => {
+    Alert.prompt(
+      'Rename Instance',
+      'Enter a new name (max 50 characters)',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Save',
+          onPress: (value?: string) => {
+            const trimmed = value?.trim();
+            if (trimmed) {
+              mutations.renameInstance.mutate({ name: trimmed });
+            }
+          },
+        },
+      ],
+      'plain-text',
+      status?.name ?? ''
+    );
+  };
 
   if (isLoading) {
     return (
@@ -80,6 +101,7 @@ export default function DashboardScreen() {
             status={status?.status ?? undefined}
             name={status?.name ?? undefined}
             sandboxId={status?.sandboxId ?? undefined}
+            onRename={handleRename}
             region={status?.flyRegion ?? undefined}
             cpus={status?.machineSize?.cpus ?? undefined}
             memoryMb={status?.machineSize?.memory_mb ?? undefined}

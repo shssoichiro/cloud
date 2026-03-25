@@ -220,5 +220,8 @@ export function useKiloClawMutations() {
     setGmailNotifications: useMutation(
       trpc.kiloclaw.setGmailNotifications.mutationOptions({ onSuccess: invalidateStatus })
     ),
+    renameInstance: useMutation(
+      trpc.kiloclaw.renameInstance.mutationOptions({ onSuccess: invalidateStatus })
+    ),
   };
 }
