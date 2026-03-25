@@ -175,7 +175,11 @@ describe('POST /checkin', () => {
 
     const response = await controller.request(
       '/checkin',
-      { method: 'POST', headers, body: JSON.stringify(makeBody({ productTelemetry: makeProductTelemetry() })) },
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(makeBody({ productTelemetry: makeProductTelemetry() })),
+      },
       env
     );
 
@@ -190,7 +194,11 @@ describe('POST /checkin', () => {
 
     const response = await controller.request(
       '/checkin',
-      { method: 'POST', headers, body: JSON.stringify(makeBody({ productTelemetry: makeProductTelemetry() })) },
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(makeBody({ productTelemetry: makeProductTelemetry() })),
+      },
       env
     );
 
@@ -208,7 +216,11 @@ describe('POST /checkin', () => {
 
     const response = await controller.request(
       '/checkin',
-      { method: 'POST', headers, body: JSON.stringify(makeBody({ productTelemetry: makeProductTelemetry() })) },
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(makeBody({ productTelemetry: makeProductTelemetry() })),
+      },
       env
     );
 
@@ -234,7 +246,11 @@ describe('POST /checkin', () => {
 
     const response = await controller.request(
       '/checkin',
-      { method: 'POST', headers, body: JSON.stringify(makeBody({ productTelemetry: makeProductTelemetry() })) },
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(makeBody({ productTelemetry: makeProductTelemetry() })),
+      },
       env
     );
 
@@ -254,7 +270,11 @@ describe('POST /checkin', () => {
 
     const response = await controller.request(
       '/checkin',
-      { method: 'POST', headers, body: JSON.stringify(makeBody({ productTelemetry: makeProductTelemetry() })) },
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(makeBody({ productTelemetry: makeProductTelemetry() })),
+      },
       env
     );
 
