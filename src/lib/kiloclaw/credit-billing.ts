@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { addMonths, format } from 'date-fns';
 
 import { db } from '@/lib/drizzle';
@@ -420,6 +420,7 @@ export async function enrollWithCredits(params: {
       })
       .onConflictDoUpdate({
         target: kiloclaw_subscriptions.instance_id,
+        targetWhere: isNotNull(kiloclaw_subscriptions.instance_id),
         set: {
           payment_source: 'credits',
           status: 'active',

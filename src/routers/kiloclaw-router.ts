@@ -30,7 +30,7 @@ import {
   kiloclaw_instances,
   kiloclaw_email_log,
 } from '@kilocode/db/schema';
-import { and, eq, desc, isNull, inArray, sql } from 'drizzle-orm';
+import { and, eq, desc, isNotNull, isNull, inArray, sql } from 'drizzle-orm';
 import { sentryLogger } from '@/lib/utils.server';
 import type { KiloClawDashboardStatus, KiloCodeConfigResponse } from '@/lib/kiloclaw/types';
 import {
@@ -417,7 +417,10 @@ async function ensureProvisionAccess(userId: string, userEmail: string): Promise
         trial_started_at: now.toISOString(),
         trial_ends_at: trialEndsAt.toISOString(),
       })
-      .onConflictDoNothing({ target: kiloclaw_subscriptions.instance_id })
+      .onConflictDoNothing({
+        target: kiloclaw_subscriptions.instance_id,
+        where: isNotNull(kiloclaw_subscriptions.instance_id),
+      })
       .returning({ id: kiloclaw_subscriptions.id });
 
     if (inserted) {

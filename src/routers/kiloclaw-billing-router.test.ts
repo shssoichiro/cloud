@@ -599,9 +599,15 @@ describe('handleKiloClawSubscriptionCreated', () => {
   });
 
   it('upgrades a trial row to a paid subscription', async () => {
-    // User has a trial row (stripe_subscription_id is null)
+    // User has a trial row (stripe_subscription_id is null) — must have an
+    // instance so the upsert ON CONFLICT (instance_id) path can match it.
+    const [instance] = await db
+      .insert(kiloclaw_instances)
+      .values({ user_id: user.id, sandbox_id: sandboxIdFromUserId(user.id) })
+      .returning();
     await db.insert(kiloclaw_subscriptions).values({
       user_id: user.id,
+      instance_id: instance.id,
       plan: 'trial',
       status: 'trialing',
       trial_started_at: new Date().toISOString(),
@@ -1899,12 +1905,13 @@ describe('enrollWithCredits', () => {
   }
 
   it('enrolls with credits for standard plan when balance sufficient', async () => {
-    await createInstance(user.id);
+    const instance = await createInstance(user.id);
     await giveUserCredits(user.id, 50_000_000); // $50
 
     // Create a trialing subscription so enrollment is allowed
     await db.insert(kiloclaw_subscriptions).values({
       user_id: user.id,
+      instance_id: instance.id,
       plan: 'trial',
       status: 'trialing',
       trial_started_at: new Date().toISOString(),
@@ -2038,11 +2045,12 @@ describe('enrollWithCredits', () => {
   });
 
   it('allows enrollment when subscription is trialing', async () => {
-    await createInstance(user.id);
+    const instance = await createInstance(user.id);
     await giveUserCredits(user.id, 50_000_000);
 
     await db.insert(kiloclaw_subscriptions).values({
       user_id: user.id,
+      instance_id: instance.id,
       plan: 'trial',
       status: 'trialing',
       trial_started_at: new Date().toISOString(),

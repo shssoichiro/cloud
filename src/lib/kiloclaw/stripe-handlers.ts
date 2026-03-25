@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type Stripe from 'stripe';
-import { eq, and, isNull, sql } from 'drizzle-orm';
+import { eq, and, isNotNull, isNull, sql } from 'drizzle-orm';
 import { addMonths } from 'date-fns';
 
 import { db } from '@/lib/drizzle';
@@ -490,6 +490,7 @@ export async function handleKiloClawSubscriptionCreated(params: {
         })
         .onConflictDoUpdate({
           target: kiloclaw_subscriptions.instance_id,
+          targetWhere: isNotNull(kiloclaw_subscriptions.instance_id),
           set: {
             // Always update regardless of payment_source
             stripe_subscription_id: subscription.id,
