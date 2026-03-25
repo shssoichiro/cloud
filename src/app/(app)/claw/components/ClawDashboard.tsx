@@ -309,7 +309,7 @@ export function ClawDashboard({
                   <TabsTrigger value="instance" className={tabTriggerClass}>
                     Gateway Process
                   </TabsTrigger>
-                  <TabsTrigger value="chat" className="className={tabTriggerClass}">
+                  <TabsTrigger value="chat" className={tabTriggerClass}>
                     <MessageSquare className="mr-1.5 inline h-3.5 w-3.5" />
                     Chat
                   </TabsTrigger>

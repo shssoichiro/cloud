@@ -15,7 +15,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     description:
       'Added real-time Chat tab — talk to your KiloClaw bot directly from the dashboard.',
     category: 'feature',
-    deployHint: 'redeploy_required',
+    deployHint: 'upgrade_required',
   },
   {
     date: '2026-03-24',

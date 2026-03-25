@@ -43,12 +43,12 @@ export function ChatTab({ enabled }: ChatTabProps) {
           <MessageSquare className="h-5 w-5 text-muted-foreground" />
         </div>
         <div className="flex flex-col gap-1.5">
-          <p className="text-sm font-medium">Chat requires a redeploy</p>
+          <p className="text-sm font-medium">Chat requires an upgrade</p>
           <p className="text-muted-foreground max-w-sm text-sm">
             This instance was provisioned before chat was enabled. Use the{' '}
             <span className="inline-flex items-center gap-1 font-medium text-amber-400">
               <RotateCw className="inline h-3 w-3" />
-              Redeploy or Upgrade
+              Upgrade to Latest
             </span>{' '}
             button above to activate real-time chat with your KiloClaw bot.
           </p>
