@@ -663,31 +663,37 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
       throw error;
     }
 
-    // Clear lifecycle emails so they can fire again if the user re-provisions.
-    const resettableEmailTypes = [
-      'claw_suspended_trial',
-      'claw_suspended_subscription',
-      'claw_suspended_payment',
-      'claw_destruction_warning',
-      'claw_instance_destroyed',
-    ];
-    await db
-      .delete(kiloclaw_email_log)
-      .where(
-        and(
-          eq(kiloclaw_email_log.user_id, instance.user_id),
-          inArray(kiloclaw_email_log.email_type, resettableEmailTypes)
-        )
-      );
-    // Clear per-instance ready emails so a future re-provision triggers the notification.
-    await db
-      .delete(kiloclaw_email_log)
-      .where(
-        and(
-          eq(kiloclaw_email_log.user_id, instance.user_id),
-          sql`${kiloclaw_email_log.email_type} LIKE 'claw_instance_ready:%'`
-        )
-      );
+    // Post-destroy cleanup: best-effort DB tidying that must not report
+    // failure after a successful destroy.
+    try {
+      // Clear lifecycle emails so they can fire again if the user re-provisions.
+      const resettableEmailTypes = [
+        'claw_suspended_trial',
+        'claw_suspended_subscription',
+        'claw_suspended_payment',
+        'claw_destruction_warning',
+        'claw_instance_destroyed',
+      ];
+      await db
+        .delete(kiloclaw_email_log)
+        .where(
+          and(
+            eq(kiloclaw_email_log.user_id, instance.user_id),
+            inArray(kiloclaw_email_log.email_type, resettableEmailTypes)
+          )
+        );
+      // Clear per-instance ready emails so a future re-provision triggers the notification.
+      await db
+        .delete(kiloclaw_email_log)
+        .where(
+          and(
+            eq(kiloclaw_email_log.user_id, instance.user_id),
+            sql`${kiloclaw_email_log.email_type} LIKE 'claw_instance_ready:%'`
+          )
+        );
+    } catch (cleanupError) {
+      console.error('[admin-kiloclaw] Post-destroy cleanup failed:', cleanupError);
+    }
 
     return { success: true };
   }),

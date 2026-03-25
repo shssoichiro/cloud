@@ -479,8 +479,19 @@ export const kiloclawRouter = createTRPCRouter({
   destroy: baseProcedure.mutation(async ({ ctx }) => {
     const destroyedRow = await markActiveInstanceDestroyed(ctx.user.id);
     const client = new KiloClawInternalClient();
+    let result;
     try {
-      const result = await client.destroy(ctx.user.id);
+      result = await client.destroy(ctx.user.id);
+    } catch (error) {
+      if (destroyedRow) {
+        await restoreDestroyedInstance(destroyedRow.id);
+      }
+      throw error;
+    }
+
+    // Post-destroy cleanup: best-effort DB tidying that must not undo a
+    // successful destroy. If any of these fail, log and move on.
+    try {
       // Clear the destruction lifecycle so the billing cron doesn't
       // send warning emails or attempt a redundant destroy.
       // Only clear suspended_at for non-past_due subscriptions — nulling it
@@ -526,14 +537,11 @@ export const kiloclawRouter = createTRPCRouter({
             sql`${kiloclaw_email_log.email_type} LIKE 'claw_instance_ready:%'`
           )
         );
-
-      return result;
-    } catch (error) {
-      if (destroyedRow) {
-        await restoreDestroyedInstance(destroyedRow.id);
-      }
-      throw error;
+    } catch (cleanupError) {
+      console.error('[kiloclaw] Post-destroy cleanup failed:', cleanupError);
     }
+
+    return result;
   }),
 
   // Explicit lifecycle APIs
