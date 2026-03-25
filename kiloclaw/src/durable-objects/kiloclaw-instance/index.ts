@@ -376,6 +376,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       this.s.pendingDestroyMachineId = null;
       this.s.pendingDestroyVolumeId = null;
       this.s.pendingPostgresMarkOnFinalize = false;
+      this.s.instanceReadyEmailSent = false;
     }
     this.s.loaded = true;
 
