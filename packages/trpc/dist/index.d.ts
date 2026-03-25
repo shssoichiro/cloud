@@ -15578,6 +15578,26 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
             output: UserConfigResponse;
             meta: object;
         }>;
+        getChannelCatalog: _trpc_server.TRPCQueryProcedure<{
+            input: void;
+            output: {
+                id: string;
+                label: string;
+                configured: boolean;
+                fields: {
+                    key: string;
+                    label: string;
+                    placeholder: string;
+                    placeholderConfigured: string;
+                    validationPattern: string | undefined;
+                    validationMessage: string | undefined;
+                }[];
+                helpText: string | undefined;
+                helpUrl: string | undefined;
+                allFieldsRequired: boolean;
+            }[];
+            meta: object;
+        }>;
         restartMachine: _trpc_server.TRPCMutationProcedure<{
             input: {
                 imageTag?: string | undefined;

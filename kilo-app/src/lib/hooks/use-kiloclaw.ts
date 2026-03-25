@@ -123,6 +123,15 @@ export function useKiloClawChangelog() {
   );
 }
 
+export function useKiloClawChannelCatalog() {
+  const trpc = useTRPC();
+  return useQuery(
+    trpc.kiloclaw.getChannelCatalog.queryOptions(undefined, {
+      staleTime: 5 * 60_000,
+    })
+  );
+}
+
 // ── Mutations ────────────────────────────────────────────────────────
 
 export function useKiloClawMutations() {
