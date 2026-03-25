@@ -5,7 +5,7 @@ import { ExternalLink, CreditCard, Coins } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTRPC } from '@/lib/trpc/utils';
 import { Button } from '@/components/ui/button';
-import { formatBillingDate } from './billing-types';
+import { formatBillingDate, formatMicrodollars } from './billing-types';
 import type { ClawBillingStatus } from './billing-types';
 
 type SubscriptionCardProps = {
@@ -13,11 +13,11 @@ type SubscriptionCardProps = {
   onCancelClick: () => void;
 };
 
-function formatMicrodollars(microdollars: number): string {
-  return `$${(microdollars / 1_000_000).toFixed(2)}`;
-}
-
-function PaymentSourceBadge({ subscription }: { subscription: NonNullable<ClawBillingStatus['subscription']> }) {
+function PaymentSourceBadge({
+  subscription,
+}: {
+  subscription: NonNullable<ClawBillingStatus['subscription']>;
+}) {
   if (subscription.hasStripeFunding) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-2 py-0.5 text-xs font-medium text-indigo-400">
@@ -81,9 +81,8 @@ function ActiveSubscriptionCard({
 
   // Credit-funded renewal info
   const isCreditFunded = !sub.hasStripeFunding && sub.paymentSource === 'credits';
-  const renewalDate = isCreditFunded && sub.creditRenewalAt
-    ? sub.creditRenewalAt
-    : sub.currentPeriodEnd;
+  const renewalDate =
+    isCreditFunded && sub.creditRenewalAt ? sub.creditRenewalAt : sub.currentPeriodEnd;
 
   return (
     <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">

@@ -191,7 +191,7 @@ async function processCreditRenewalRow(
 
   // Rule 15: Determine effective plan (apply scheduled plan switch at period boundary).
   const effectivePlan =
-    (row.scheduled_plan === 'commit' || row.scheduled_plan === 'standard')
+    row.scheduled_plan === 'commit' || row.scheduled_plan === 'standard'
       ? row.scheduled_plan
       : row.plan;
   if (effectivePlan !== 'commit' && effectivePlan !== 'standard') {

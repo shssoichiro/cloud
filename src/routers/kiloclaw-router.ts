@@ -1337,8 +1337,7 @@ export const kiloclawRouter = createTRPCRouter({
     let showConversionPrompt = false;
     if (hasStripeFunding) {
       const kiloPassState = await getKiloPassStateForUser(db, ctx.user.id);
-      showConversionPrompt =
-        !!kiloPassState && !isStripeSubscriptionEnded(kiloPassState.status);
+      showConversionPrompt = !!kiloPassState && !isStripeSubscriptionEnded(kiloPassState.status);
     }
 
     // Renewal cost for the next billing period.
@@ -1638,8 +1637,7 @@ export const kiloclawRouter = createTRPCRouter({
           });
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
-            message:
-              'Unable to cancel: failed to release pending plan schedule. Please try again.',
+            message: 'Unable to cancel: failed to release pending plan schedule. Please try again.',
           });
         }
       }
@@ -1674,7 +1672,8 @@ export const kiloclawRouter = createTRPCRouter({
     } else {
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
-        message: 'Subscription is in an invalid state: no Stripe subscription and not credit-funded.',
+        message:
+          'Subscription is in an invalid state: no Stripe subscription and not credit-funded.',
       });
     }
 
@@ -1723,7 +1722,8 @@ export const kiloclawRouter = createTRPCRouter({
     } else {
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
-        message: 'Subscription is in an invalid state: no Stripe subscription and not credit-funded.',
+        message:
+          'Subscription is in an invalid state: no Stripe subscription and not credit-funded.',
       });
     }
 

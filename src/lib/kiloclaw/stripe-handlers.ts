@@ -628,8 +628,7 @@ export async function handleKiloClawSubscriptionUpdated(params: {
     )
     .limit(1);
 
-  const isHybrid =
-    preRead?.payment_source === 'credits' && preRead.stripe_subscription_id !== null;
+  const isHybrid = preRead?.payment_source === 'credits' && preRead.stripe_subscription_id !== null;
 
   if (isHybrid) {
     // Hybrid guard: only propagate cancel intent and dunning states.

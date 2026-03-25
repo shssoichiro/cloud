@@ -8,6 +8,17 @@ export function formatBillingDate(iso: string): string {
   });
 }
 
+export function formatMicrodollars(microdollars: number): string {
+  return `$${(microdollars / 1_000_000).toFixed(2)}`;
+}
+
+export type ClawPlan = 'commit' | 'standard';
+
+export const PLAN_COST_MICRODOLLARS: Record<ClawPlan, number> = {
+  standard: 9_000_000,
+  commit: 48_000_000,
+};
+
 // ── Types ────────────────────────────────────────────────────────────
 
 export type ClawBillingStatus = {

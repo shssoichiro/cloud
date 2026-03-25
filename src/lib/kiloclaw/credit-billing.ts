@@ -4,11 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 import { addMonths, format } from 'date-fns';
 
 import { db } from '@/lib/drizzle';
-import {
-  credit_transactions,
-  kilocode_users,
-  kiloclaw_subscriptions,
-} from '@kilocode/db/schema';
+import { credit_transactions, kilocode_users, kiloclaw_subscriptions } from '@kilocode/db/schema';
 import { processTopUp } from '@/lib/credits';
 import { autoResumeIfSuspended } from '@/lib/kiloclaw/stripe-handlers';
 import {
@@ -309,14 +305,8 @@ export async function enrollWithCredits(params: {
     .limit(1);
 
   // Reject if subscription is active, past_due, or unpaid (spec rule 1)
-  if (
-    existingSub &&
-    existingSub.status !== 'trialing' &&
-    existingSub.status !== 'canceled'
-  ) {
-    throw new Error(
-      'Cannot enroll: an active subscription already exists. Cancel it first.'
-    );
+  if (existingSub && existingSub.status !== 'trialing' && existingSub.status !== 'canceled') {
+    throw new Error('Cannot enroll: an active subscription already exists. Cancel it first.');
   }
 
   // Save suspension state for post-transaction auto-resume (spec rule 4)
@@ -376,9 +366,7 @@ export async function enrollWithCredits(params: {
         instanceId,
         deductionCategory,
       });
-      throw new Error(
-        'Enrollment already processed for this billing period.'
-      );
+      throw new Error('Enrollment already processed for this billing period.');
     }
 
     // 5b: Atomically decrement total_microdollars_acquired

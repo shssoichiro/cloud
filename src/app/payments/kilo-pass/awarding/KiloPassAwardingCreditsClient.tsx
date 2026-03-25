@@ -102,11 +102,14 @@ export function KiloPassAwardingCreditsClient() {
 
     // Credits awarded — trigger enrollment
     setActivationStep('hosting');
-    if (!enrollmentTriggered.current && (clawHostingPlan === 'standard' || clawHostingPlan === 'commit')) {
+    if (
+      !enrollmentTriggered.current &&
+      (clawHostingPlan === 'standard' || clawHostingPlan === 'commit')
+    ) {
       enrollmentTriggered.current = true;
       enrollWithCredits.mutate({ plan: clawHostingPlan });
     }
-  }, [isClawAutoActivation, activationStep, clawHostingPlan, enrollWithCredits]);
+  }, [isClawAutoActivation, activationStep, clawHostingPlan, enrollWithCredits.mutate]);
 
   // Standard (non-KiloClaw) flow: redirect to /profile when ready
   useEffect(() => {

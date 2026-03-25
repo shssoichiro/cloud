@@ -10,8 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useTRPC } from '@/lib/trpc/utils';
+import { formatMicrodollars, PLAN_COST_MICRODOLLARS, type ClawPlan } from './billing-types';
 
-type ClawPlan = 'commit' | 'standard';
 type Cadence = 'monthly' | 'yearly';
 type Tier = '19' | '49' | '199';
 
@@ -20,22 +20,16 @@ type PlanSelectionDialogProps = {
   onOpenChange: (open: boolean) => void;
 };
 
-const PLAN_COST_MICRODOLLARS: Record<ClawPlan, number> = {
-  standard: 9_000_000,
-  commit: 48_000_000,
-};
-
-const TIER_DATA: Record<Tier, { name: string; monthlyPrice: number; yearlyPrice: number; monthlyCredits: number }> = {
+const TIER_DATA: Record<
+  Tier,
+  { name: string; monthlyPrice: number; yearlyPrice: number; monthlyCredits: number }
+> = {
   '19': { name: 'Starter', monthlyPrice: 19, yearlyPrice: 228, monthlyCredits: 19 },
   '49': { name: 'Pro', monthlyPrice: 49, yearlyPrice: 588, monthlyCredits: 49 },
   '199': { name: 'Expert', monthlyPrice: 199, yearlyPrice: 2388, monthlyCredits: 199 },
 };
 
 const TIERS: Tier[] = ['19', '49', '199'];
-
-function formatMicrodollars(microdollars: number): string {
-  return `$${(microdollars / 1_000_000).toFixed(2)}`;
-}
 
 function isCommitAvailable(tier: Tier | null, cadence: Cadence): boolean {
   if (!tier) return false;
@@ -44,7 +38,13 @@ function isCommitAvailable(tier: Tier | null, cadence: Cadence): boolean {
   return tier === '49' || tier === '199';
 }
 
-function CadenceToggle({ cadence, onChange }: { cadence: Cadence; onChange: (c: Cadence) => void }) {
+function CadenceToggle({
+  cadence,
+  onChange,
+}: {
+  cadence: Cadence;
+  onChange: (c: Cadence) => void;
+}) {
   return (
     <div className="mb-3 flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2">
       <span className="text-muted-foreground text-xs">Billing cadence</span>
@@ -185,9 +185,7 @@ function HostingRadioGroup({
             hostingPlan === 'commit' ? 'border-blue-500' : 'border-neutral-500'
           )}
         >
-          {hostingPlan === 'commit' && (
-            <span className="h-2 w-2 rounded-full bg-blue-500" />
-          )}
+          {hostingPlan === 'commit' && <span className="h-2 w-2 rounded-full bg-blue-500" />}
         </span>
         <span className="text-[13px] font-medium">Commit Plan</span>
         <span className="text-muted-foreground ml-auto text-xs">$8/mo (6 months)</span>
@@ -209,9 +207,7 @@ function HostingRadioGroup({
             hostingPlan === 'standard' ? 'border-blue-500' : 'border-neutral-500'
           )}
         >
-          {hostingPlan === 'standard' && (
-            <span className="h-2 w-2 rounded-full bg-blue-500" />
-          )}
+          {hostingPlan === 'standard' && <span className="h-2 w-2 rounded-full bg-blue-500" />}
         </span>
         <span className="text-[13px] font-medium">Standard Plan</span>
         <span className="text-muted-foreground ml-auto text-xs">$9/mo (monthly)</span>
@@ -243,9 +239,7 @@ function HostingOnlyPlanCard({
       onClick={onSelect}
       className={cn(
         'relative rounded-lg border-2 p-3.5 text-center transition-all',
-        isSelected
-          ? 'border-blue-500 bg-blue-500/10'
-          : 'border-border hover:border-neutral-500'
+        isSelected ? 'border-blue-500 bg-blue-500/10' : 'border-border hover:border-neutral-500'
       )}
     >
       <div className="text-sm font-semibold">{isCommit ? 'Commit' : 'Standard'}</div>
@@ -286,16 +280,15 @@ function CreditsHowItWorks() {
           <div className="text-muted-foreground flex items-start gap-2 py-0.5 text-xs">
             <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
             <span>
-              Earn free bonus credits after using your paid credits each month. Unused bonus
-              credits expire monthly.
+              Earn free bonus credits after using your paid credits each month. Unused bonus credits
+              expire monthly.
             </span>
           </div>
           <div className="text-muted-foreground flex items-start gap-2 py-0.5 text-xs">
             <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
             <span>
-              First-time subscribers receive{' '}
-              <span className="text-emerald-300">50%</span> free bonus credits for the first
-              two months.
+              First-time subscribers receive <span className="text-emerald-300">50%</span> free
+              bonus credits for the first two months.
             </span>
           </div>
         </div>
@@ -340,9 +333,7 @@ function CreditEnrollmentSection({
           variant="primary"
           className="w-full py-3 font-semibold"
         >
-          {isPending
-            ? 'Activating…'
-            : `Pay ${formatMicrodollars(planCost)} with Credits`}
+          {isPending ? 'Activating…' : `Pay ${formatMicrodollars(planCost)} with Credits`}
         </Button>
       </div>
     );
@@ -394,7 +385,7 @@ export function PlanSelectionDialog({ open, onOpenChange }: PlanSelectionDialogP
   const checkout = useMutation(trpc.kiloclaw.createSubscriptionCheckout.mutationOptions());
   const kiloPassUpsell = useMutation(
     trpc.kiloclaw.createKiloPassUpsellCheckout.mutationOptions({
-      onSuccess: (data) => {
+      onSuccess: data => {
         if (data.url) window.location.href = data.url;
       },
     })
@@ -533,7 +524,7 @@ export function PlanSelectionDialog({ open, onOpenChange }: PlanSelectionDialogP
 
             {/* Tier cards */}
             <div className="mb-3.5 grid grid-cols-3 gap-2.5">
-              {TIERS.map((tier) => (
+              {TIERS.map(tier => (
                 <TierCard
                   key={tier}
                   tier={tier}
@@ -551,9 +542,8 @@ export function PlanSelectionDialog({ open, onOpenChange }: PlanSelectionDialogP
               <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
               <p className="text-xs leading-relaxed text-amber-300">
                 Kilo Pass is a <strong className="font-normal">credits subscription</strong>.
-                Hosting is charged as a credit deduction from your balance.
-                Cancelling Kilo Pass does <strong className="font-normal">not</strong> cancel
-                KiloClaw hosting.
+                Hosting is charged as a credit deduction from your balance. Cancelling Kilo Pass
+                does <strong className="font-normal">not</strong> cancel KiloClaw hosting.
               </p>
             </div>
 
