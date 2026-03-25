@@ -22,6 +22,15 @@ done
 
 base=$(git merge-base origin/main HEAD 2>/dev/null || true)
 
+# If shared inputs changed, treat all workspaces as changed — shared package or
+# lockfile updates can break any downstream workspace.
+shared_changed=false
+if [ -n "$base" ]; then
+  if git diff --name-only "$base" -- pnpm-lock.yaml pnpm-workspace.yaml 'packages/**' | grep -q .; then
+    shared_changed=true
+  fi
+fi
+
 # Read workspace dirs from pnpm-workspace.yaml
 workspace_dirs=$(grep '^ *- ' pnpm-workspace.yaml | sed 's/^ *- //')
 
@@ -44,7 +53,7 @@ for dir in $workspace_dirs; do
   [ -n "$has_test" ] || continue
 
   # Check for file changes (if we have a merge base)
-  if [ -n "$base" ]; then
+  if [ -n "$base" ] && ! $shared_changed; then
     changed_file=$(git diff --name-only "$base" -- "$dir/" | head -1 || true)
     [ -n "$changed_file" ] || continue
   fi

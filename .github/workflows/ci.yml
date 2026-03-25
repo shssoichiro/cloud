@@ -48,7 +48,13 @@ jobs:
               - 'packages/trpc/**'
               - 'packages/worker-utils/**'
               - 'package.json'
+              - 'pnpm-lock.yaml'
               - 'tsconfig.json'
+              - 'tsconfig.*.json'
+              - 'next.config.mjs'
+              - 'jest.config.ts'
+              - 'postcss.config.mjs'
+              - 'sentry.*'
             cloud_agent:
               - 'cloud-agent/**'
             cloud_agent_next:
