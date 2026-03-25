@@ -7,6 +7,7 @@ import { BillingBanner } from '@/components/kiloclaw/billing-banner';
 import { InstanceControls } from '@/components/kiloclaw/instance-controls';
 import { SettingsList } from '@/components/kiloclaw/settings-list';
 import { StatusCard } from '@/components/kiloclaw/status-card';
+import { ScreenHeader } from '@/components/screen-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import {
@@ -40,19 +41,23 @@ export default function DashboardScreen() {
 
   if (isLoading) {
     return (
-      <Animated.View layout={LinearTransition} className="flex-1 bg-background px-4 pt-4 gap-3">
-        <Animated.View exiting={FadeOut.duration(150)}>
-          <Skeleton className="h-40 w-full rounded-lg" />
+      <View className="flex-1 bg-background">
+        <ScreenHeader title="Dashboard" />
+        <Animated.View layout={LinearTransition} className="flex-1 px-4 pt-4 gap-3">
+          <Animated.View exiting={FadeOut.duration(150)}>
+            <Skeleton className="h-40 w-full rounded-lg" />
+          </Animated.View>
+          <Animated.View exiting={FadeOut.duration(150)}>
+            <Skeleton className="h-10 w-full rounded-lg" />
+          </Animated.View>
         </Animated.View>
-        <Animated.View exiting={FadeOut.duration(150)}>
-          <Skeleton className="h-10 w-full rounded-lg" />
-        </Animated.View>
-      </Animated.View>
+      </View>
     );
   }
 
   return (
     <Animated.View layout={LinearTransition} className="flex-1 bg-background">
+      <ScreenHeader title="Dashboard" />
       <ScrollView contentContainerClassName="gap-4 px-4 py-4" showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeIn.duration(200)} className="gap-4">
           {isServiceDegraded && (

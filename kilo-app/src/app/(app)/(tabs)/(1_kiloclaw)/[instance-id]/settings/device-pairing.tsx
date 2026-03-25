@@ -3,6 +3,7 @@ import { Alert, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { EmptyState } from '@/components/empty-state';
+import { ScreenHeader } from '@/components/screen-header';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -16,11 +17,14 @@ export default function DevicePairingScreen() {
 
   if (pairingQuery.isPending) {
     return (
-      <Animated.View layout={LinearTransition} className="flex-1 bg-background px-4 pt-4 gap-3">
-        <Animated.View exiting={FadeOut.duration(150)}>
-          <Skeleton className="h-16 w-full rounded-lg" />
+      <View className="flex-1 bg-background">
+        <ScreenHeader title="Device Pairing" />
+        <Animated.View layout={LinearTransition} className="flex-1 px-4 pt-4 gap-3">
+          <Animated.View exiting={FadeOut.duration(150)}>
+            <Skeleton className="h-16 w-full rounded-lg" />
+          </Animated.View>
         </Animated.View>
-      </Animated.View>
+      </View>
     );
   }
 
@@ -28,16 +32,19 @@ export default function DevicePairingScreen() {
 
   if (requests.length === 0) {
     return (
-      <Animated.View
-        entering={FadeIn.duration(200)}
-        className="flex-1 bg-background items-center justify-center"
-      >
-        <EmptyState
-          icon={Monitor}
-          title="No pairing requests"
-          description="Device pairing requests will appear here."
-        />
-      </Animated.View>
+      <View className="flex-1 bg-background">
+        <ScreenHeader title="Device Pairing" />
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          className="flex-1 items-center justify-center"
+        >
+          <EmptyState
+            icon={Monitor}
+            title="No pairing requests"
+            description="Device pairing requests will appear here."
+          />
+        </Animated.View>
+      </View>
     );
   }
 
@@ -55,6 +62,7 @@ export default function DevicePairingScreen() {
 
   return (
     <Animated.View layout={LinearTransition} className="flex-1 bg-background">
+      <ScreenHeader title="Device Pairing" />
       <ScrollView contentContainerClassName="px-4 py-4 gap-4" showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeIn.duration(200)}>
           <View className="rounded-lg bg-secondary overflow-hidden">

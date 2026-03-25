@@ -67,9 +67,10 @@ npx expo install --dev <package-name>   # devDependencies
 
 ### Navigation Headers
 
-- **Tab root screens**: Use the custom `ScreenHeader` component (`src/components/screen-header.tsx`) instead of the native stack header. The native header on iOS 26 wraps `headerRight` content in a `UIBarButtonItem` with an unavoidable circular pill background.
-- **Pushed detail screens / modals**: Native stack headers are fine — back button and modal presentation work correctly. Use `useThemeColors()` for `headerStyle` and `headerTintColor`.
-- Set titles and headerRight declaratively in `Stack.Screen` options within layouts, not via `navigation.setOptions()` in screens.
+- **Always use `ScreenHeader`** (`src/components/screen-header.tsx`) instead of native stack headers. Set `headerShown: false` on all Stack navigators.
+- `ScreenHeader` auto-detects whether a back button is needed via `router.canGoBack()` — no manual configuration required.
+- Place `ScreenHeader` as the first child inside the screen's root `View`, above any `ScrollView`. The header handles safe area insets and should not scroll with content.
+- Pass optional `headerRight` for action buttons (e.g., profile avatar on tab root screens).
 
 ### Loading States
 

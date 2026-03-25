@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Alert, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
+import { ScreenHeader } from '@/components/screen-header';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -28,11 +29,14 @@ export default function GoogleScreen() {
 
   if (statusQuery.isPending) {
     return (
-      <Animated.View layout={LinearTransition} className="flex-1 bg-background px-4 pt-4 gap-3">
-        <Animated.View exiting={FadeOut.duration(150)}>
-          <Skeleton className="h-16 w-full rounded-lg" />
+      <View className="flex-1 bg-background">
+        <ScreenHeader title="Google Account" />
+        <Animated.View layout={LinearTransition} className="flex-1 px-4 pt-4 gap-3">
+          <Animated.View exiting={FadeOut.duration(150)}>
+            <Skeleton className="h-16 w-full rounded-lg" />
+          </Animated.View>
         </Animated.View>
-      </Animated.View>
+      </View>
     );
   }
 
@@ -69,6 +73,7 @@ export default function GoogleScreen() {
 
   return (
     <Animated.View layout={LinearTransition} className="flex-1 bg-background">
+      <ScreenHeader title="Google Account" />
       <ScrollView contentContainerClassName="px-4 py-4 gap-4" showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeIn.duration(200)} className="gap-4">
           {/* Connection status card */}

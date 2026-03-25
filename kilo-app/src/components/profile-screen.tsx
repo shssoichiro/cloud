@@ -3,6 +3,7 @@ import { ArrowLeftRight, Building2, DollarSign, KeyRound, LogOut, User } from 'l
 import { Alert, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
+import { ScreenHeader } from '@/components/screen-header';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -88,83 +89,86 @@ export function ProfileScreen() {
   };
 
   return (
-    <View className="flex-1 bg-background px-6 pt-8">
-      {/* Active context */}
-      <View className="gap-3">
-        <Text variant="small" className="uppercase tracking-wide text-muted-foreground">
-          Active Context
-        </Text>
-        <View className="flex-row items-center gap-3 rounded-lg bg-secondary p-3">
-          {context?.type === 'personal' ? (
-            <User size={18} color={colors.secondaryForeground} />
-          ) : (
-            <Building2 size={18} color={colors.secondaryForeground} />
-          )}
-          <Text className="text-sm font-medium">{contextLabel}</Text>
+    <View className="flex-1 bg-background">
+      <ScreenHeader title="Profile" />
+      <View className="flex-1 px-6 pt-4">
+        {/* Active context */}
+        <View className="gap-3">
+          <Text variant="small" className="uppercase tracking-wide text-muted-foreground">
+            Active Context
+          </Text>
+          <View className="flex-row items-center gap-3 rounded-lg bg-secondary p-3">
+            {context?.type === 'personal' ? (
+              <User size={18} color={colors.secondaryForeground} />
+            ) : (
+              <Building2 size={18} color={colors.secondaryForeground} />
+            )}
+            <Text className="text-sm font-medium">{contextLabel}</Text>
+          </View>
         </View>
-      </View>
 
-      {/* Credits */}
-      <View className="mt-6">
-        <CreditsCard hasOrgs={(orgs?.length ?? 0) > 0} />
-      </View>
+        {/* Credits */}
+        <View className="mt-6">
+          <CreditsCard hasOrgs={(orgs?.length ?? 0) > 0} />
+        </View>
 
-      {/* Linked accounts */}
-      <Animated.View className="mt-6 gap-3" layout={LinearTransition}>
-        <Text variant="small" className="uppercase tracking-wide text-muted-foreground">
-          Linked Accounts
-        </Text>
+        {/* Linked accounts */}
+        <Animated.View className="mt-6 gap-3" layout={LinearTransition}>
+          <Text variant="small" className="uppercase tracking-wide text-muted-foreground">
+            Linked Accounts
+          </Text>
 
-        {isLoading && (
-          <Animated.View className="gap-3" exiting={FadeOut.duration(150)}>
-            <Skeleton className="h-12 w-full rounded-lg" />
-            <Skeleton className="h-12 w-full rounded-lg" />
-          </Animated.View>
-        )}
-
-        {data?.providers.map(p => {
-          const Icon = providerIcon(p.provider);
-          return (
-            <Animated.View
-              key={`${p.provider}-${p.email}`}
-              className="flex-row items-center gap-3 rounded-lg bg-secondary p-3"
-              entering={FadeIn.duration(200)}
-            >
-              <Icon size={18} color={colors.secondaryForeground} />
-              <View className="flex-1">
-                <Text className="text-sm font-medium capitalize">{p.provider}</Text>
-                <Text variant="muted" className="text-xs">
-                  {p.email}
-                </Text>
-              </View>
+          {isLoading && (
+            <Animated.View className="gap-3" exiting={FadeOut.duration(150)}>
+              <Skeleton className="h-12 w-full rounded-lg" />
+              <Skeleton className="h-12 w-full rounded-lg" />
             </Animated.View>
-          );
-        })}
-      </Animated.View>
+          )}
 
-      {/* Actions */}
-      <View className="mt-auto gap-3 pb-8">
-        <Button
-          variant="outline"
-          className="flex-row gap-2"
-          onPress={() => {
-            void clearContext();
-          }}
-          accessibilityLabel="Switch workspace"
-        >
-          <ArrowLeftRight size={16} color={colors.foreground} />
-          <Text>Switch Context</Text>
-        </Button>
+          {data?.providers.map(p => {
+            const Icon = providerIcon(p.provider);
+            return (
+              <Animated.View
+                key={`${p.provider}-${p.email}`}
+                className="flex-row items-center gap-3 rounded-lg bg-secondary p-3"
+                entering={FadeIn.duration(200)}
+              >
+                <Icon size={18} color={colors.secondaryForeground} />
+                <View className="flex-1">
+                  <Text className="text-sm font-medium capitalize">{p.provider}</Text>
+                  <Text variant="muted" className="text-xs">
+                    {p.email}
+                  </Text>
+                </View>
+              </Animated.View>
+            );
+          })}
+        </Animated.View>
 
-        <Button
-          variant="ghost"
-          className="flex-row gap-2"
-          onPress={confirmSignOut}
-          accessibilityLabel="Sign out"
-        >
-          <LogOut size={16} color={colors.mutedForeground} />
-          <Text className="text-muted-foreground">Sign Out</Text>
-        </Button>
+        {/* Actions */}
+        <View className="mt-auto gap-3 pb-8">
+          <Button
+            variant="outline"
+            className="flex-row gap-2"
+            onPress={() => {
+              void clearContext();
+            }}
+            accessibilityLabel="Switch workspace"
+          >
+            <ArrowLeftRight size={16} color={colors.foreground} />
+            <Text>Switch Context</Text>
+          </Button>
+
+          <Button
+            variant="ghost"
+            className="flex-row gap-2"
+            onPress={confirmSignOut}
+            accessibilityLabel="Sign out"
+          >
+            <LogOut size={16} color={colors.mutedForeground} />
+            <Text className="text-muted-foreground">Sign Out</Text>
+          </Button>
+        </View>
       </View>
     </View>
   );
