@@ -33,6 +33,16 @@ export type ClawBillingStatus = {
     commitEndsAt: string | null;
     scheduledPlan: 'commit' | 'standard' | null;
     scheduledBy: 'auto' | 'user' | null;
+    /** True when a Stripe subscription ID is present (legacy Stripe or hybrid). */
+    hasStripeFunding: boolean;
+    /** Payment source: 'stripe' or 'credits'. */
+    paymentSource: 'stripe' | 'credits' | null;
+    /** When the next credit renewal is due (credit-funded subscriptions). */
+    creditRenewalAt: string | null;
+    /** Cost of the next renewal period in microdollars. */
+    renewalCostMicrodollars: number | null;
+    /** True when user has both Stripe-funded hosting and active Kilo Pass. */
+    showConversionPrompt: boolean;
   } | null;
 
   earlybird: {

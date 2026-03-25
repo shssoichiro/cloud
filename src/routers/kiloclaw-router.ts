@@ -58,7 +58,10 @@ import {
   KILOCLAW_EARLYBIRD_EXPIRY_DATE,
   KILOCLAW_TRIAL_DURATION_DAYS,
 } from '@/lib/kiloclaw/constants';
-import { enrollWithCredits as enrollWithCreditsImpl } from '@/lib/kiloclaw/credit-billing';
+import {
+  enrollWithCredits as enrollWithCreditsImpl,
+  KILOCLAW_PLAN_COST_MICRODOLLARS,
+} from '@/lib/kiloclaw/credit-billing';
 import type { ClawBillingStatus } from '@/app/(app)/claw/components/billing/billing-types';
 import PostHogClient from '@/lib/posthog';
 import { CHANGELOG_ENTRIES } from '@/app/(app)/claw/components/changelog-data';
@@ -1321,21 +1324,47 @@ export const kiloclawRouter = createTRPCRouter({
     // Include subscription data when a paid subscription exists — either Stripe-funded
     // (stripe_subscription_id present) or credit-funded (payment_source = 'credits').
     // See Billing Status Reporting rule 4.
-    const subscriptionData =
+    const hasPaidSubscription =
       sub &&
       sub.plan !== 'trial' &&
       sub.status !== 'trialing' &&
-      (sub.stripe_subscription_id || sub.payment_source === 'credits')
-        ? {
-            plan: sub.plan,
-            status: sub.status,
-            cancelAtPeriodEnd: sub.cancel_at_period_end,
-            currentPeriodEnd: sub.current_period_end ?? '',
-            commitEndsAt: sub.commit_ends_at,
-            scheduledPlan: sub.scheduled_plan,
-            scheduledBy: sub.scheduled_by,
-          }
+      (sub.stripe_subscription_id || sub.payment_source === 'credits');
+
+    // Compute Stripe-funding indicator and conversion prompt.
+    // See Billing Status Reporting rules 6-7.
+    const hasStripeFunding = hasPaidSubscription ? !!sub.stripe_subscription_id : false;
+
+    let showConversionPrompt = false;
+    if (hasStripeFunding) {
+      const kiloPassState = await getKiloPassStateForUser(db, ctx.user.id);
+      showConversionPrompt =
+        !!kiloPassState && !isStripeSubscriptionEnded(kiloPassState.status);
+    }
+
+    // Renewal cost for the next billing period.
+    // For hybrid subscriptions the actual amount is Stripe-determined; report
+    // the plan-based approximation per Billing Status Reporting rule 5.
+    const renewalCostMicrodollars =
+      hasPaidSubscription && (sub.plan === 'standard' || sub.plan === 'commit')
+        ? KILOCLAW_PLAN_COST_MICRODOLLARS[sub.plan]
         : null;
+
+    const subscriptionData = hasPaidSubscription
+      ? {
+          plan: sub.plan as 'commit' | 'standard',
+          status: sub.status as 'active' | 'past_due' | 'canceled' | 'unpaid',
+          cancelAtPeriodEnd: sub.cancel_at_period_end,
+          currentPeriodEnd: sub.current_period_end ?? '',
+          commitEndsAt: sub.commit_ends_at,
+          scheduledPlan: sub.scheduled_plan,
+          scheduledBy: sub.scheduled_by,
+          hasStripeFunding,
+          paymentSource: sub.payment_source ?? null,
+          creditRenewalAt: sub.credit_renewal_at ?? null,
+          renewalCostMicrodollars,
+          showConversionPrompt,
+        }
+      : null;
 
     const earlybirdData = earlybird
       ? {

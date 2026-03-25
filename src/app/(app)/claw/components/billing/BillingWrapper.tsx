@@ -113,6 +113,7 @@ export function BillingWrapper({ children, hideBanners }: BillingWrapperProps) {
       {/* Lock dialog — blocks interaction when access is revoked */}
       <AccessLockedDialog
         reason={lockReason}
+        billing={billing}
         onSubscribeClick={handleSubscribe}
         onUpdatePaymentClick={handleUpdatePayment}
         onDestroyClick={() =>

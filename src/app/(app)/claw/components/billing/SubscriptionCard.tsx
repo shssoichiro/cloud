@@ -1,6 +1,7 @@
 'use client';
 
-import { ExternalLink } from 'lucide-react';
+import Link from 'next/link';
+import { ExternalLink, CreditCard, Coins } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTRPC } from '@/lib/trpc/utils';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,30 @@ type SubscriptionCardProps = {
   billing: ClawBillingStatus;
   onCancelClick: () => void;
 };
+
+function formatMicrodollars(microdollars: number): string {
+  return `$${(microdollars / 1_000_000).toFixed(2)}`;
+}
+
+function PaymentSourceBadge({ subscription }: { subscription: NonNullable<ClawBillingStatus['subscription']> }) {
+  if (subscription.hasStripeFunding) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-2 py-0.5 text-xs font-medium text-indigo-400">
+        <CreditCard className="h-3 w-3" />
+        Stripe
+      </span>
+    );
+  }
+  if (subscription.paymentSource === 'credits') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <Coins className="h-3 w-3" />
+        Credits
+      </span>
+    );
+  }
+  return null;
+}
 
 function ActiveSubscriptionCard({
   billing,
@@ -54,11 +79,20 @@ function ActiveSubscriptionCard({
     });
   }
 
+  // Credit-funded renewal info
+  const isCreditFunded = !sub.hasStripeFunding && sub.paymentSource === 'credits';
+  const renewalDate = isCreditFunded && sub.creditRenewalAt
+    ? sub.creditRenewalAt
+    : sub.currentPeriodEnd;
+
   return (
     <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="text-xl">🦀</span>
-        <span className="text-foreground text-sm font-semibold">KiloClaw Subscription</span>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🦀</span>
+          <span className="text-foreground text-sm font-semibold">KiloClaw Subscription</span>
+        </div>
+        <PaymentSourceBadge subscription={sub} />
       </div>
 
       <div className="text-muted-foreground space-y-1 text-sm">
@@ -79,7 +113,15 @@ function ActiveSubscriptionCard({
         ) : (
           <div>
             <span>Next billing:</span>{' '}
-            <span className="text-foreground">{formatBillingDate(sub.currentPeriodEnd)}</span>
+            <span className="text-foreground">{formatBillingDate(renewalDate)}</span>
+          </div>
+        )}
+        {isCreditFunded && sub.renewalCostMicrodollars != null && (
+          <div>
+            <span>Renewal cost:</span>{' '}
+            <span className="text-foreground">
+              {formatMicrodollars(sub.renewalCostMicrodollars)} from credit balance
+            </span>
           </div>
         )}
         {hasUserRequestedSwitch && (
@@ -113,9 +155,11 @@ function ActiveSubscriptionCard({
         <Button variant="outline" size="sm" onClick={onCancelClick}>
           Cancel
         </Button>
-        <Button variant="ghost" size="sm" onClick={handleManageBilling}>
-          Manage <ExternalLink className="ml-1 h-3 w-3" />
-        </Button>
+        {sub.hasStripeFunding && (
+          <Button variant="ghost" size="sm" onClick={handleManageBilling}>
+            Manage Payment <ExternalLink className="ml-1 h-3 w-3" />
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -135,9 +179,12 @@ function CancelingSubscriptionCard({
 
   return (
     <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="text-xl">🦀</span>
-        <span className="text-foreground text-sm font-semibold">KiloClaw Subscription</span>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🦀</span>
+          <span className="text-foreground text-sm font-semibold">KiloClaw Subscription</span>
+        </div>
+        <PaymentSourceBadge subscription={sub} />
       </div>
 
       <div className="text-muted-foreground space-y-1 text-sm">
@@ -171,11 +218,16 @@ function PastDueSubscriptionCard({
   const sub = billing.subscription;
   if (!sub) return null;
 
+  const isCreditFunded = !sub.hasStripeFunding && sub.paymentSource === 'credits';
+
   return (
     <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="text-xl">🦀</span>
-        <span className="text-foreground text-sm font-semibold">KiloClaw Subscription</span>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🦀</span>
+          <span className="text-foreground text-sm font-semibold">KiloClaw Subscription</span>
+        </div>
+        <PaymentSourceBadge subscription={sub} />
       </div>
 
       <div className="text-muted-foreground space-y-1 text-sm">
@@ -183,14 +235,22 @@ function PastDueSubscriptionCard({
           <span>Status:</span> <span className="text-red-400">Payment Failed</span>
         </div>
         <p className="text-red-400">
-          Your last payment failed. Update your payment method to avoid service interruption.
+          {isCreditFunded
+            ? 'Your credit balance is insufficient for the next renewal. Add credits to avoid service interruption.'
+            : 'Your last payment failed. Update your payment method to avoid service interruption.'}
         </p>
       </div>
 
       <div className="mt-4">
-        <Button variant="destructive" onClick={onUpdatePaymentClick}>
-          Update Payment Method
-        </Button>
+        {isCreditFunded ? (
+          <Button variant="destructive" asChild>
+            <Link href="/credits">Add Credits</Link>
+          </Button>
+        ) : (
+          <Button variant="destructive" onClick={onUpdatePaymentClick}>
+            Update Payment Method
+          </Button>
+        )}
       </div>
     </div>
   );
