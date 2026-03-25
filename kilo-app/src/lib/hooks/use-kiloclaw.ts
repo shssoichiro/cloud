@@ -16,7 +16,12 @@ export function useKiloClawStatus(enabled = true) {
 
 export function useKiloClawBillingStatus(enabled = true) {
   const trpc = useTRPC();
-  return useQuery(trpc.kiloclaw.getBillingStatus.queryOptions(undefined, { enabled }));
+  return useQuery(
+    trpc.kiloclaw.getBillingStatus.queryOptions(undefined, {
+      enabled,
+      refetchInterval: enabled ? 60_000 : false,
+    })
+  );
 }
 
 export function useKiloClawConfig() {
