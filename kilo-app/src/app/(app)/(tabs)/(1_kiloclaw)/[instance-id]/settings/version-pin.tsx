@@ -89,7 +89,7 @@ export default function VersionPinScreen() {
   function scrollToPendingItem() {
     if (!pendingItem) return;
     const index = versions.findIndex(v => v.image_tag === pendingItem.image_tag);
-    if (index >= 0) {
+    if (index !== -1) {
       setTimeout(() => {
         flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
       }, 300);
