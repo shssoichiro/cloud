@@ -35,7 +35,10 @@ export function ChangelogList({ entries }: Readonly<{ entries: ChangelogEntry[] 
         const deployHint = entry.deployHint ? DEPLOY_HINTS[entry.deployHint] : undefined;
 
         return (
-          <View key={`${entry.date}-${entry.description.slice(0, 20)}`} className="rounded-lg bg-secondary p-3 gap-2">
+          <View
+            key={`${entry.date}-${entry.description.slice(0, 20)}`}
+            className="rounded-lg bg-secondary p-3 gap-2"
+          >
             <View className="flex-row items-center gap-2">
               <Icon size={14} color={iconColor} />
               <Text variant="muted" className="text-xs">
