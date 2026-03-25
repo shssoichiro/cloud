@@ -69,7 +69,6 @@ function SecretCard({
             setIsRemoving(true);
             const secrets: Record<string, null> = {};
             for (const f of secret.fields) {
-              // eslint-disable-next-line unicorn/no-null -- tRPC schema requires null for secret removal
               secrets[f.key] = null;
             }
             mutations.patchSecrets.mutate(

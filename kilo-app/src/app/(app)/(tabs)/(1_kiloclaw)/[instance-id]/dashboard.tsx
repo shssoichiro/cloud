@@ -98,22 +98,22 @@ export default function DashboardScreen() {
           {billing && <BillingBanner billing={billing} />}
 
           <StatusCard
-            status={status?.status ?? undefined}
-            name={status?.name ?? undefined}
-            sandboxId={status?.sandboxId ?? undefined}
+            status={status?.status}
+            name={status?.name}
+            sandboxId={status?.sandboxId}
             onRename={handleRename}
-            region={status?.flyRegion ?? undefined}
-            cpus={status?.machineSize?.cpus ?? undefined}
-            memoryMb={status?.machineSize?.memory_mb ?? undefined}
-            gatewayState={gateway?.state ?? undefined}
-            uptime={gateway?.uptime ?? undefined}
-            restarts={gateway?.restarts ?? undefined}
-            lastExitCode={gateway?.lastExit?.code ?? undefined}
-            lastExitSignal={gateway?.lastExit?.signal ?? undefined}
+            region={status?.flyRegion}
+            cpus={status?.machineSize?.cpus}
+            memoryMb={status?.machineSize?.memory_mb}
+            gatewayState={gateway?.state}
+            uptime={gateway?.uptime}
+            restarts={gateway?.restarts}
+            lastExitCode={gateway?.lastExit?.code}
+            lastExitSignal={gateway?.lastExit?.signal}
             gatewayLoading={isRunning && gatewayQuery.isPending}
           />
 
-          <InstanceControls status={status?.status ?? undefined} mutations={mutations} />
+          <InstanceControls status={status?.status} mutations={mutations} />
 
           <SettingsList />
 

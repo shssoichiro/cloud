@@ -17,7 +17,7 @@ import { deriveLockReason } from '@/lib/hooks/use-kiloclaw-billing';
 export default function KiloClawInstanceList() {
   const router = useRouter();
   const { context, clearContext } = useAppContext();
-  const isPersonal = context?.type === 'personal' || context === undefined;
+  const isPersonal = context?.type === 'personal' || context == null;
 
   const statusQuery = useKiloClawStatus(isPersonal);
   const billingQuery = useKiloClawBillingStatus(isPersonal);

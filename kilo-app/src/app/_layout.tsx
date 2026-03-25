@@ -51,8 +51,8 @@ function RootLayoutNav() {
   const needsRedirect =
     !isLoading &&
     ((!token && !inAuthGroup) ||
-      (token !== undefined && !context && !inContextGroup) ||
-      (token !== undefined && context !== undefined && (inAuthGroup || inContextGroup)));
+      (token != null && !context && !inContextGroup) ||
+      (token != null && context != null && (inAuthGroup || inContextGroup)));
 
   if (isLoading || needsRedirect) {
     return;

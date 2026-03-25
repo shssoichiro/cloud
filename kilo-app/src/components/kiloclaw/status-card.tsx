@@ -70,9 +70,9 @@ function DetailRow({ icon: Icon, label, value, loading }: Readonly<DetailRowProp
 function formatLastExit(
   exitCode: number | null | undefined,
   exitSignal: string | null | undefined
-): string | undefined {
-  if (exitCode === null || exitCode === undefined) {
-    return exitSignal ?? undefined;
+): string | null | undefined {
+  if (exitCode == null) {
+    return exitSignal;
   }
   const signalPart = exitSignal ? ` (${exitSignal})` : '';
   return `Code ${String(exitCode)}${signalPart}`;

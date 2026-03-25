@@ -67,6 +67,8 @@ module.exports = defineConfig([
   {
     rules: {
       'unicorn/prevent-abbreviations': 'off',
+      'unicorn/no-null': 'off',
+      'unicorn/no-negated-condition': 'off',
       'unicorn/no-keyword-prefix': ['error', { disallowedPrefixes: ['new', 'for'] }],
     },
   },

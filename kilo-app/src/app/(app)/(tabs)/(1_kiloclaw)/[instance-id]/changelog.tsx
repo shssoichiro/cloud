@@ -17,7 +17,7 @@ export default function ChangelogScreen() {
           <Text className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
             Recent Updates
           </Text>
-          {isPending || entries === undefined ? (
+          {isPending || !entries ? (
             <View className="gap-3">
               <Skeleton className="h-16 rounded-lg" />
               <Skeleton className="h-16 rounded-lg" />

@@ -70,7 +70,6 @@ function ChannelCard({
           onPress: () => {
             const secrets: Record<string, null> = {};
             for (const f of channel.fields) {
-              // eslint-disable-next-line unicorn/no-null -- tRPC schema requires null for secret removal
               secrets[f.key] = null;
             }
             mutations.patchSecrets.mutate({ secrets });
