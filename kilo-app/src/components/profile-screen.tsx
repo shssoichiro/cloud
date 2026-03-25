@@ -49,7 +49,7 @@ function CreditsCard({ hasOrgs }: Readonly<{ hasOrgs: boolean }>) {
           {expiringTotal > 0 && Boolean(earliestExpiry) && (
             <Text className="mt-1 text-xs text-muted-foreground">
               ${expiringTotal.toFixed(2)} in bonus credits expiring{' '}
-              {new Date(earliestExpiry).toLocaleDateString('en-US', {
+              {new Date(earliestExpiry).toLocaleDateString(undefined, {
                 month: 'short',
                 day: 'numeric',
               })}

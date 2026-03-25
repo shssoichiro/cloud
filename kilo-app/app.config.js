@@ -49,6 +49,7 @@ const config = {
   },
   extra: {
     apiBaseUrl: process.env.API_BASE_URL,
+    webBaseUrl: process.env.WEB_BASE_URL,
     router: {},
     eas: {
       projectId: '2cf05e39-90b5-48a5-a8a5-e0b3423cf3f4',

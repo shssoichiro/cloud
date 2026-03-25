@@ -6,9 +6,26 @@ import { ScreenHeader } from '@/components/screen-header';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { WEB_BASE_URL } from '@/lib/config';
 import { useKiloClawBillingStatus } from '@/lib/hooks/use-kiloclaw';
 import { formatBillingDate } from '@/lib/hooks/use-kiloclaw-billing';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
+import { cn } from '@/lib/utils';
+
+function DetailRow({
+  label,
+  value,
+  valueClassName,
+}: Readonly<{ label: string; value: string; valueClassName?: string }>) {
+  return (
+    <View className="flex-row items-center justify-between py-2">
+      <Text variant="muted" className="text-sm">
+        {label}
+      </Text>
+      <Text className={cn('text-sm font-medium', valueClassName)}>{value}</Text>
+    </View>
+  );
+}
 
 function PlanDetails({
   billing,
@@ -16,57 +33,59 @@ function PlanDetails({
   billing: NonNullable<ReturnType<typeof useKiloClawBillingStatus>['data']>;
 }>) {
   if (billing.subscription) {
+    const planName =
+      billing.subscription.plan.charAt(0).toUpperCase() + billing.subscription.plan.slice(1);
     return (
-      <View className="gap-1">
-        <Text className="text-base font-semibold">
-          {billing.subscription.plan.charAt(0).toUpperCase() + billing.subscription.plan.slice(1)}
-        </Text>
-        <Text variant="muted" className="text-sm">
-          Status:{' '}
-          {billing.subscription.status.charAt(0).toUpperCase() +
-            billing.subscription.status.slice(1)}
-        </Text>
-        <Text variant="muted" className="text-sm">
-          Current period ends: {formatBillingDate(billing.subscription.currentPeriodEnd)}
-        </Text>
+      <View>
+        <DetailRow label="Plan" value={planName} />
+        <View className="h-px bg-border" />
+        <DetailRow
+          label="Renews"
+          value={formatBillingDate(billing.subscription.currentPeriodEnd)}
+        />
         {billing.subscription.cancelAtPeriodEnd && (
-          <Text className="text-sm text-destructive">Cancels at end of billing period</Text>
+          <>
+            <View className="h-px bg-border" />
+            <DetailRow
+              label="Status"
+              value="Cancels at period end"
+              valueClassName="text-destructive"
+            />
+          </>
         )}
       </View>
     );
   }
   if (billing.trial && !billing.trial.expired) {
+    const daysText = `${String(billing.trial.daysRemaining)} day${billing.trial.daysRemaining === 1 ? '' : 's'} left`;
     return (
-      <View className="gap-1">
-        <Text className="text-base font-semibold">Free Trial</Text>
-        <Text variant="muted" className="text-sm">
-          {billing.trial.daysRemaining} day
-          {billing.trial.daysRemaining === 1 ? '' : 's'} remaining
-        </Text>
-        <Text variant="muted" className="text-sm">
-          Ends: {formatBillingDate(billing.trial.endsAt)}
-        </Text>
+      <View>
+        <DetailRow label="Plan" value="Free Trial" />
+        <View className="h-px bg-border" />
+        <DetailRow label="Remaining" value={daysText} />
+        <View className="h-px bg-border" />
+        <DetailRow label="Ends" value={formatBillingDate(billing.trial.endsAt)} />
       </View>
     );
   }
   if (billing.earlybird) {
+    const daysText = `${String(billing.earlybird.daysRemaining)} day${billing.earlybird.daysRemaining === 1 ? '' : 's'} left`;
     return (
-      <View className="gap-1">
-        <Text className="text-base font-semibold">Earlybird</Text>
-        <Text variant="muted" className="text-sm">
-          {billing.earlybird.daysRemaining} day
-          {billing.earlybird.daysRemaining === 1 ? '' : 's'} remaining
-        </Text>
-        <Text variant="muted" className="text-sm">
-          Expires: {formatBillingDate(billing.earlybird.expiresAt)}
-        </Text>
+      <View>
+        <DetailRow label="Plan" value="Earlybird" />
+        <View className="h-px bg-border" />
+        <DetailRow label="Remaining" value={daysText} />
+        <View className="h-px bg-border" />
+        <DetailRow label="Expires" value={formatBillingDate(billing.earlybird.expiresAt)} />
       </View>
     );
   }
   return (
-    <Text variant="muted" className="text-sm">
-      No active plan
-    </Text>
+    <View className="py-2">
+      <Text variant="muted" className="text-sm">
+        No active plan
+      </Text>
+    </View>
   );
 }
 
@@ -97,35 +116,16 @@ export default function BillingScreen() {
       <ScreenHeader title="Billing" />
       <ScrollView contentContainerClassName="gap-4 px-4 py-4" showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeIn.duration(200)} className="gap-4">
-          {/* Current Plan card */}
-          <View className="bg-secondary p-4 rounded-lg gap-2">
-            <Text className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Current Plan
-            </Text>
+          {/* Plan details */}
+          <View className="bg-secondary rounded-lg px-4">
             <PlanDetails billing={billing} />
-          </View>
-
-          {/* Access card */}
-          <View className="bg-secondary p-4 rounded-lg gap-2">
-            <Text className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Access
-            </Text>
-            <View className="gap-1">
-              <Text className="text-sm">{billing.hasAccess ? 'Access granted' : 'No access'}</Text>
-              {billing.accessReason && (
-                <Text variant="muted" className="text-sm">
-                  Reason:{' '}
-                  {billing.accessReason.charAt(0).toUpperCase() + billing.accessReason.slice(1)}
-                </Text>
-              )}
-            </View>
           </View>
 
           {/* Manage billing button */}
           <Button
             variant="outline"
             onPress={() => {
-              void Linking.openURL('https://kilo.ai/claw');
+              void Linking.openURL(`${WEB_BASE_URL}/claw`);
             }}
             className="flex-row gap-2"
           >

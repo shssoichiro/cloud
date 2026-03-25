@@ -1,3 +1,5 @@
+import { parseTimestamp } from '@/lib/utils';
+
 import { type useKiloClawBillingStatus } from './use-kiloclaw';
 
 type ClawBillingStatus = NonNullable<ReturnType<typeof useKiloClawBillingStatus>['data']>;
@@ -105,7 +107,7 @@ export function deriveLockReason(billing: ClawBillingStatus): ClawLockReason {
 }
 
 export function formatBillingDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
+  return parseTimestamp(iso).toLocaleDateString(undefined, {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
