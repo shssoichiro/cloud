@@ -1465,7 +1465,12 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     const now = new Date().toISOString();
     this.s.status = 'restoring';
     this.s.restoreStartedAt = now;
-    await this.persist({ status: 'restoring', restoreStartedAt: now });
+    this.s.preRestoreStatus = previousStatus;
+    await this.persist({
+      status: 'restoring',
+      restoreStartedAt: now,
+      preRestoreStatus: previousStatus,
+    });
     await this.scheduleAlarm();
 
     // Enqueue the restore job for async processing.
@@ -1474,7 +1479,12 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     if (!this.env.SNAPSHOT_RESTORE_QUEUE) {
       this.s.status = previousStatus;
       this.s.restoreStartedAt = null;
-      await this.persist({ status: previousStatus, restoreStartedAt: null });
+      this.s.preRestoreStatus = null;
+      await this.persist({
+        status: previousStatus,
+        restoreStartedAt: null,
+        preRestoreStatus: null,
+      });
       throw new Error('Cannot restore: SNAPSHOT_RESTORE_QUEUE binding not configured');
     }
     try {
@@ -1487,7 +1497,12 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     } catch (err) {
       this.s.status = previousStatus;
       this.s.restoreStartedAt = null;
-      await this.persist({ status: previousStatus, restoreStartedAt: null });
+      this.s.preRestoreStatus = null;
+      await this.persist({
+        status: previousStatus,
+        restoreStartedAt: null,
+        preRestoreStatus: null,
+      });
       throw err;
     }
 
@@ -1549,6 +1564,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     this.s.flyRegion = newRegion;
     this.s.status = 'stopped';
     this.s.restoreStartedAt = null;
+    this.s.preRestoreStatus = null;
     this.s.pendingRestoreVolumeId = null;
     await this.persist({
       previousVolumeId,
@@ -1556,6 +1572,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       flyRegion: newRegion,
       status: 'stopped',
       restoreStartedAt: null,
+      preRestoreStatus: null,
       pendingRestoreVolumeId: null,
     });
 
@@ -1565,20 +1582,34 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   }
 
   /**
-   * Called by the queue worker if the restore fails after all retries.
-   * Resets status to 'stopped' so the instance isn't stuck in 'restoring'.
+   * Called by the queue worker if the restore fails after all retries,
+   * or by the alarm if the restore is stuck for >30 min.
+   * Restores the pre-restore status so the instance reflects its actual state
+   * (e.g., still 'running' if the queue worker never stopped the machine).
    */
   async failSnapshotRestore(): Promise<void> {
     await this.loadState();
     if (this.s.status !== 'restoring') return;
 
-    this.s.status = 'stopped';
+    const restoredStatus = this.s.preRestoreStatus ?? 'stopped';
+    if (this.s.pendingRestoreVolumeId) {
+      console.warn(
+        `[DO] Orphaned restore volume: ${this.s.pendingRestoreVolumeId} (manual cleanup may be needed)`
+      );
+    }
+    this.s.status = restoredStatus;
     this.s.restoreStartedAt = null;
+    this.s.preRestoreStatus = null;
     this.s.pendingRestoreVolumeId = null;
-    await this.persist({ status: 'stopped', restoreStartedAt: null, pendingRestoreVolumeId: null });
+    await this.persist({
+      status: restoredStatus,
+      restoreStartedAt: null,
+      preRestoreStatus: null,
+      pendingRestoreVolumeId: null,
+    });
     await this.scheduleAlarm();
 
-    console.log('[DO] Snapshot restore failed, status reset to stopped');
+    console.log(`[DO] Snapshot restore failed, status restored to ${restoredStatus}`);
   }
 
   // ── Gateway controller ─────────────────────────────────────────────

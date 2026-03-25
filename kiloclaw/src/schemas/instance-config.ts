@@ -198,6 +198,20 @@ export const PersistedStateSchema = z.object({
   previousVolumeId: z.string().nullable().default(null),
   // Snapshot restore: timestamp when restore was enqueued. Used by alarm for stuck-restore detection.
   restoreStartedAt: z.string().nullable().default(null),
+  // Snapshot restore: status before entering 'restoring'. Used by failSnapshotRestore() to
+  // restore the correct status if the restore fails without the queue worker ever running.
+  preRestoreStatus: z
+    .enum([
+      'provisioned',
+      'starting',
+      'restarting',
+      'running',
+      'stopped',
+      'destroying',
+      'restoring',
+    ])
+    .nullable()
+    .default(null),
   // Snapshot restore: volume ID created by the queue worker during restore.
   // Used for idempotency on retry — if set, the worker reuses this volume instead of creating another.
   pendingRestoreVolumeId: z.string().nullable().default(null),
