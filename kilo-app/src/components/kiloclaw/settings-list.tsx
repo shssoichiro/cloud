@@ -2,7 +2,6 @@ import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ChevronRight,
   Globe,
-  Key,
   Lock,
   MessageSquare,
   Monitor,
@@ -23,12 +22,6 @@ interface SettingsItem {
 }
 
 const SETTINGS_ITEMS: SettingsItem[] = [
-  {
-    icon: Key,
-    label: 'Environment Variables',
-    description: 'Configure env vars',
-    path: 'settings/env-vars',
-  },
   {
     icon: Lock,
     label: 'Secrets',

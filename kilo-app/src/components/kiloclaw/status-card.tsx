@@ -92,7 +92,7 @@ export function StatusCard({
 
   return (
     <View className="rounded-lg bg-secondary p-4 gap-1">
-      <View className="flex-row items-center justify-between pb-2">
+      <View className="flex-row items-center justify-between gap-3 pb-2">
         <View className="flex-1 flex-row items-center gap-3">
           {onRename ? (
             <Pressable
