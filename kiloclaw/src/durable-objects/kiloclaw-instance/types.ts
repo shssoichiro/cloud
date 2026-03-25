@@ -87,6 +87,7 @@ export type InstanceMutableState = {
   // Snapshot restore tracking
   previousVolumeId: string | null;
   restoreStartedAt: string | null;
+  pendingRestoreVolumeId: string | null;
   /** In-memory only — throttles live Fly checks in getStatus(). */
   lastLiveCheckAt: number | null;
 };

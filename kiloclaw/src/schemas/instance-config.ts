@@ -196,9 +196,11 @@ export const PersistedStateSchema = z.object({
   execAsk: z.string().nullable().default(null),
   // Snapshot restore: tracks the volume before the most recent restore for admin revert path.
   previousVolumeId: z.string().nullable().default(null),
-  // Snapshot restore: set by the queue worker when it begins work. Null while queued.
-  // Used by admin UI to distinguish "Queued for restore" vs "Restoring...".
+  // Snapshot restore: timestamp when restore was enqueued. Used by alarm for stuck-restore detection.
   restoreStartedAt: z.string().nullable().default(null),
+  // Snapshot restore: volume ID created by the queue worker during restore.
+  // Used for idempotency on retry — if set, the worker reuses this volume instead of creating another.
+  pendingRestoreVolumeId: z.string().nullable().default(null),
 });
 
 export type PersistedState = z.infer<typeof PersistedStateSchema>;

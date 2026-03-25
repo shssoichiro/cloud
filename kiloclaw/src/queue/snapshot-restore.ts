@@ -21,6 +21,26 @@ import type { SnapshotRestoreMessage } from '../schemas/snapshot-restore';
 import { SnapshotRestoreMessageSchema } from '../schemas/snapshot-restore';
 import * as fly from '../fly/client';
 
+async function createRestoreVolume(
+  flyConfig: { apiToken: string; appName: string },
+  previousVolumeId: string,
+  snapshotId: string,
+  region: string
+) {
+  const existingVolume = await fly.getVolume(flyConfig, previousVolumeId);
+  const newVolume = await fly.createVolume(flyConfig, {
+    name: existingVolume.name,
+    region,
+    snapshot_id: snapshotId,
+    size_gb: existingVolume.size_gb,
+    snapshot_retention: 5,
+  });
+  console.log(
+    `[queue] New volume created: id=${newVolume.id} region=${newVolume.region} from snapshot=${snapshotId}`
+  );
+  return newVolume;
+}
+
 export async function handleSnapshotRestoreQueue(
   batch: MessageBatch<SnapshotRestoreMessage>,
   env: KiloClawEnv
@@ -62,47 +82,36 @@ export async function handleSnapshotRestoreQueue(
       // start() will create a fresh machine with the new volume mount.
       await stub.destroyMachineForRestore();
 
-      // Step 3: Create new volume from snapshot via Fly API
+      // Step 3: Create new volume from snapshot via Fly API (or reuse from a prior failed attempt)
       const flyAppName = status.flyAppName ?? env.FLY_APP_NAME;
       if (!flyAppName || !env.FLY_API_TOKEN) {
         throw new Error('Missing Fly app name or API token');
       }
 
       const flyConfig = { apiToken: env.FLY_API_TOKEN, appName: flyAppName };
-      const existingVolume = await fly.getVolume(flyConfig, previousVolumeId);
-      const volumeName = existingVolume.name;
 
-      // Guard against volume leak on retry: if a prior attempt created a volume but
-      // completeSnapshotRestore() failed, there's an orphaned volume in the app.
-      // Check for a recently created volume with the same name in the same region
-      // that isn't the previous volume — if found, reuse it instead of creating another.
+      // Check if a prior attempt already created a volume (persisted in DO state).
+      // If so, reuse it to avoid orphaned billable volumes on retry.
+      const debugState = await stub.getDebugState();
       let newVolume: Awaited<ReturnType<typeof fly.createVolume>>;
-      const allVolumes = await fly.listVolumes(flyConfig);
-      const candidateFromPriorAttempt = allVolumes.find(
-        v =>
-          v.id !== previousVolumeId &&
-          v.name === volumeName &&
-          v.region === region &&
-          v.state !== 'destroyed' &&
-          v.state !== 'destroying' &&
-          !v.attached_machine_id
-      );
 
-      if (candidateFromPriorAttempt) {
-        console.log(`[queue] Reusing volume from prior attempt: ${candidateFromPriorAttempt.id}`);
-        newVolume = candidateFromPriorAttempt;
+      if (debugState.pendingRestoreVolumeId) {
+        try {
+          newVolume = await fly.getVolume(flyConfig, debugState.pendingRestoreVolumeId);
+          console.log(`[queue] Reusing volume from prior attempt: ${newVolume.id}`);
+        } catch {
+          // Volume from prior attempt is gone — create a new one
+          console.warn(
+            `[queue] Prior pending volume ${debugState.pendingRestoreVolumeId} not found, creating new`
+          );
+          newVolume = await createRestoreVolume(flyConfig, previousVolumeId, snapshotId, region);
+        }
       } else {
-        newVolume = await fly.createVolume(flyConfig, {
-          name: volumeName,
-          region,
-          snapshot_id: snapshotId,
-          size_gb: existingVolume.size_gb,
-          snapshot_retention: 5,
-        });
-        console.log(
-          `[queue] New volume created: id=${newVolume.id} region=${newVolume.region} from snapshot=${snapshotId}`
-        );
+        newVolume = await createRestoreVolume(flyConfig, previousVolumeId, snapshotId, region);
       }
+
+      // Persist the new volume ID before swapping so retries can find it
+      await stub.setPendingRestoreVolumeId(newVolume.id);
 
       // Step 4: Swap volume in DO state (also persists previousVolumeId for revert path)
       await stub.completeSnapshotRestore(newVolume.id, newVolume.region);

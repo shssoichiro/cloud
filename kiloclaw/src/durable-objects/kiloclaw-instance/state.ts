@@ -74,6 +74,7 @@ export async function loadState(ctx: DurableObjectState, s: InstanceMutableState
     s.execAsk = d.execAsk;
     s.previousVolumeId = d.previousVolumeId;
     s.restoreStartedAt = d.restoreStartedAt;
+    s.pendingRestoreVolumeId = d.pendingRestoreVolumeId;
   } else {
     const hasAnyData = entries.size > 0;
     if (hasAnyData) {
@@ -138,6 +139,7 @@ export function resetMutableState(s: InstanceMutableState): void {
   s.execAsk = null;
   s.previousVolumeId = null;
   s.restoreStartedAt = null;
+  s.pendingRestoreVolumeId = null;
   s.lastLiveCheckAt = null;
   s.restartingAt = null;
   s.loaded = false;
@@ -196,6 +198,7 @@ export function createMutableState(): InstanceMutableState {
     execAsk: null,
     previousVolumeId: null,
     restoreStartedAt: null,
+    pendingRestoreVolumeId: null,
     lastLiveCheckAt: null,
   };
 }
