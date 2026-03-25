@@ -2,6 +2,7 @@ import { type LucideIcon, ShieldCheck, Zap } from 'lucide-react-native';
 import { Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
+import { QueryError } from '@/components/query-error';
 import { ScreenHeader } from '@/components/screen-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -68,6 +69,22 @@ export default function ExecPolicyScreen() {
             <Skeleton className="h-20 w-full rounded-lg" />
           </Animated.View>
         </Animated.View>
+      </View>
+    );
+  }
+
+  if (statusQuery.isError) {
+    return (
+      <View className="flex-1 bg-background">
+        <ScreenHeader title="Execution Policy" />
+        <View className="flex-1 items-center justify-center">
+          <QueryError
+            message="Could not load execution policy"
+            onRetry={() => {
+              void statusQuery.refetch();
+            }}
+          />
+        </View>
       </View>
     );
   }

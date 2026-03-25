@@ -5,6 +5,7 @@ import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanim
 
 import { EmptyState } from '@/components/empty-state';
 import { CATALOG_ICONS } from '@/components/icons';
+import { QueryError } from '@/components/query-error';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -34,6 +35,17 @@ export default function DevicePairingScreen() {
 
   const isLoading = pairingQuery.isPending || devicePairingQuery.isPending;
 
+  const refreshButton = (
+    <Pressable
+      onPress={() => {
+        void handleRefresh();
+      }}
+      className="p-2"
+    >
+      <RefreshCw size={18} color={colors.foreground} />
+    </Pressable>
+  );
+
   async function handleRefresh() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: trpc.kiloclaw.listPairingRequests.queryKey() }),
@@ -46,7 +58,7 @@ export default function DevicePairingScreen() {
   if (isLoading) {
     return (
       <View className="flex-1 bg-background">
-        <ScreenHeader title="Device Pairing" />
+        <ScreenHeader title="Device Pairing" headerRight={refreshButton} />
         <Animated.View layout={LinearTransition} className="flex-1 px-4 pt-4 gap-3">
           <Animated.View exiting={FadeOut.duration(150)}>
             <Skeleton className="h-16 w-full rounded-lg" />
@@ -56,8 +68,24 @@ export default function DevicePairingScreen() {
     );
   }
 
-  const channelRequests = pairingQuery.data?.requests ?? [];
-  const deviceRequests = devicePairingQuery.data?.requests ?? [];
+  if (pairingQuery.isError || devicePairingQuery.isError) {
+    return (
+      <View className="flex-1 bg-background">
+        <ScreenHeader title="Device Pairing" headerRight={refreshButton} />
+        <View className="flex-1 items-center justify-center">
+          <QueryError
+            message="Could not load pairing requests"
+            onRetry={() => {
+              void handleRefresh();
+            }}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  const channelRequests = pairingQuery.data.requests;
+  const deviceRequests = devicePairingQuery.data.requests;
   const hasAnyRequests = channelRequests.length > 0 || deviceRequests.length > 0;
 
   function handleApproveChannel(channel: string, code: string) {
@@ -88,17 +116,6 @@ export default function DevicePairingScreen() {
       },
     ]);
   }
-
-  const refreshButton = (
-    <Pressable
-      onPress={() => {
-        void handleRefresh();
-      }}
-      className="p-2"
-    >
-      <RefreshCw size={18} color={colors.foreground} />
-    </Pressable>
-  );
 
   if (!hasAnyRequests) {
     return (

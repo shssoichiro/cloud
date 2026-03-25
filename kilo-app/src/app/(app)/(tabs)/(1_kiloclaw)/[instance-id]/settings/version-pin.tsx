@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, Keyboard, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
+import { QueryError } from '@/components/query-error';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -58,6 +59,24 @@ export default function VersionPinScreen() {
             <Skeleton className="h-12 w-full rounded-lg" />
           </Animated.View>
         </Animated.View>
+      </View>
+    );
+  }
+
+  if (myPinQuery.isError || latestVersionQuery.isError || availableVersionsQuery.isError) {
+    return (
+      <View className="flex-1 bg-background">
+        <ScreenHeader title="Version Pinning" />
+        <View className="flex-1 items-center justify-center">
+          <QueryError
+            message="Could not load version information"
+            onRetry={() => {
+              void myPinQuery.refetch();
+              void latestVersionQuery.refetch();
+              void availableVersionsQuery.refetch();
+            }}
+          />
+        </View>
       </View>
     );
   }

@@ -2,6 +2,7 @@ import { ExternalLink } from 'lucide-react-native';
 import { Linking, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
+import { QueryError } from '@/components/query-error';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -108,7 +109,19 @@ export default function BillingScreen() {
   }
 
   if (!billing) {
-    return;
+    return (
+      <View className="flex-1 bg-background">
+        <ScreenHeader title="Billing" />
+        <View className="flex-1 items-center justify-center">
+          <QueryError
+            message="Could not load billing information"
+            onRetry={() => {
+              void billingQuery.refetch();
+            }}
+          />
+        </View>
+      </View>
+    );
   }
 
   return (

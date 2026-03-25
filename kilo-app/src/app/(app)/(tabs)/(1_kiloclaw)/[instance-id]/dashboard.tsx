@@ -7,6 +7,7 @@ import { BillingBanner } from '@/components/kiloclaw/billing-banner';
 import { InstanceControls } from '@/components/kiloclaw/instance-controls';
 import { SettingsList } from '@/components/kiloclaw/settings-list';
 import { StatusCard } from '@/components/kiloclaw/status-card';
+import { QueryError } from '@/components/query-error';
 import { ScreenHeader } from '@/components/screen-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
@@ -72,6 +73,23 @@ export default function DashboardScreen() {
             <Skeleton className="h-10 w-full rounded-lg" />
           </Animated.View>
         </Animated.View>
+      </View>
+    );
+  }
+
+  if (statusQuery.isError || billingQuery.isError) {
+    return (
+      <View className="flex-1 bg-background">
+        <ScreenHeader title="Dashboard" />
+        <View className="flex-1 items-center justify-center">
+          <QueryError
+            message="Could not load dashboard"
+            onRetry={() => {
+              void statusQuery.refetch();
+              void billingQuery.refetch();
+            }}
+          />
+        </View>
       </View>
     );
   }

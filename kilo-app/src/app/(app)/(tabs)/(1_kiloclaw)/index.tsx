@@ -6,6 +6,7 @@ import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanim
 import { EmptyState } from '@/components/empty-state';
 import { InstanceRow } from '@/components/kiloclaw/instance-row';
 import { ProfileAvatarButton } from '@/components/profile-avatar-button';
+import { QueryError } from '@/components/query-error';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -54,6 +55,22 @@ export default function KiloClawInstanceList() {
       return (
         <Animated.View exiting={FadeOut.duration(150)}>
           <Skeleton className="h-16 w-full rounded-lg" />
+        </Animated.View>
+      );
+    }
+    if (statusQuery.isError || billingQuery.isError) {
+      return (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          className="flex-1 items-center justify-center"
+        >
+          <QueryError
+            message="Could not load your instance"
+            onRetry={() => {
+              void statusQuery.refetch();
+              void billingQuery.refetch();
+            }}
+          />
         </Animated.View>
       );
     }

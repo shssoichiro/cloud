@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeftRight, Building2, DollarSign, KeyRound, LogOut, User } from 'lucide-react-native';
-import { Alert, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { ScreenHeader } from '@/components/screen-header';
@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { useAppContext } from '@/lib/context/context-context';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import { useTRPC } from '@/lib/trpc';
+import { parseTimestamp } from '@/lib/utils';
 
 function providerIcon(_provider: string) {
   return KeyRound;
@@ -19,10 +20,15 @@ function providerIcon(_provider: string) {
 function CreditsCard({ hasOrgs }: Readonly<{ hasOrgs: boolean }>) {
   const trpc = useTRPC();
   const colors = useThemeColors();
-  const { data: balance, isLoading: balanceLoading } = useQuery(
-    trpc.user.getBalance.queryOptions()
+  const {
+    data: balance,
+    isLoading: balanceLoading,
+    isError: balanceError,
+    refetch: refetchBalance,
+  } = useQuery(trpc.user.getBalance.queryOptions());
+  const { data: creditData, isLoading: creditsLoading } = useQuery(
+    trpc.user.getCreditBlocks.queryOptions({})
   );
-  const { data: creditData } = useQuery(trpc.user.getCreditBlocks.queryOptions({}));
 
   const label = hasOrgs ? 'Remaining Personal Credits' : 'Remaining Credits';
 
@@ -38,22 +44,36 @@ function CreditsCard({ hasOrgs }: Readonly<{ hasOrgs: boolean }>) {
       <Text variant="small" className="uppercase tracking-wide text-muted-foreground">
         {label}
       </Text>
-      {balanceLoading ? (
-        <Skeleton className="h-12 w-32 rounded-lg" />
-      ) : (
+      {balanceLoading && <Skeleton className="h-12 w-32 rounded-lg" />}
+      {balanceError && (
+        <Pressable
+          className="rounded-lg bg-secondary p-3 active:opacity-70"
+          onPress={() => {
+            void refetchBalance();
+          }}
+        >
+          <Text className="text-sm text-destructive">Failed to load balance. Tap to retry.</Text>
+        </Pressable>
+      )}
+      {!balanceLoading && !balanceError && (
         <View className="rounded-lg bg-secondary p-3">
           <View className="flex-row items-center gap-2">
             <DollarSign size={18} color={colors.secondaryForeground} />
             <Text className="text-2xl font-bold">${balance?.balance.toFixed(2) ?? '0.00'}</Text>
           </View>
-          {expiringTotal > 0 && Boolean(earliestExpiry) && (
-            <Text className="mt-1 text-xs text-muted-foreground">
-              ${expiringTotal.toFixed(2)} in bonus credits expiring{' '}
-              {new Date(earliestExpiry).toLocaleDateString(undefined, {
-                month: 'short',
-                day: 'numeric',
-              })}
-            </Text>
+          {creditsLoading ? (
+            <Skeleton className="mt-1 h-3 w-48 rounded" />
+          ) : (
+            expiringTotal > 0 &&
+            Boolean(earliestExpiry) && (
+              <Text className="mt-1 text-xs text-muted-foreground">
+                ${expiringTotal.toFixed(2)} in bonus credits expiring{' '}
+                {parseTimestamp(earliestExpiry).toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </Text>
+            )
           )}
         </View>
       )}
@@ -65,7 +85,12 @@ export function ProfileScreen() {
   const { signOut } = useAuth();
   const { context, clearContext } = useAppContext();
   const trpc = useTRPC();
-  const { data, isLoading } = useQuery(trpc.user.getAuthProviders.queryOptions());
+  const {
+    data,
+    isLoading,
+    isError: providersError,
+    refetch: refetchProviders,
+  } = useQuery(trpc.user.getAuthProviders.queryOptions());
   const { data: orgs } = useQuery(trpc.organizations.list.queryOptions());
   const colors = useThemeColors();
 
@@ -123,6 +148,19 @@ export function ProfileScreen() {
               <Skeleton className="h-12 w-full rounded-lg" />
               <Skeleton className="h-12 w-full rounded-lg" />
             </Animated.View>
+          )}
+
+          {providersError && (
+            <Pressable
+              className="rounded-lg bg-secondary p-3 active:opacity-70"
+              onPress={() => {
+                void refetchProviders();
+              }}
+            >
+              <Text className="text-sm text-destructive">
+                Failed to load accounts. Tap to retry.
+              </Text>
+            </Pressable>
           )}
 
           {data?.providers.map(p => {

@@ -1,13 +1,54 @@
+import { Newspaper } from 'lucide-react-native';
 import { ScrollView, View } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
+import { EmptyState } from '@/components/empty-state';
 import { ChangelogList } from '@/components/kiloclaw/changelog-list';
+import { QueryError } from '@/components/query-error';
 import { ScreenHeader } from '@/components/screen-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { useKiloClawChangelog } from '@/lib/hooks/use-kiloclaw';
 
 export default function ChangelogScreen() {
-  const { data: entries, isPending } = useKiloClawChangelog();
+  const changelogQuery = useKiloClawChangelog();
+  const entries = changelogQuery.data;
+
+  function renderContent() {
+    if (changelogQuery.isPending) {
+      return (
+        <Animated.View exiting={FadeOut.duration(150)} className="gap-3">
+          <Skeleton className="h-16 rounded-lg" />
+          <Skeleton className="h-16 rounded-lg" />
+          <Skeleton className="h-16 rounded-lg" />
+        </Animated.View>
+      );
+    }
+    if (changelogQuery.isError) {
+      return (
+        <QueryError
+          message="Could not load changelog"
+          onRetry={() => {
+            void changelogQuery.refetch();
+          }}
+        />
+      );
+    }
+    if (!entries || entries.length === 0) {
+      return (
+        <EmptyState
+          icon={Newspaper}
+          title="No updates yet"
+          description="Changelog entries will appear here."
+        />
+      );
+    }
+    return (
+      <Animated.View entering={FadeIn.duration(200)}>
+        <ChangelogList entries={entries} />
+      </Animated.View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-background">
@@ -17,15 +58,7 @@ export default function ChangelogScreen() {
           <Text className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
             Recent Updates
           </Text>
-          {isPending || !entries ? (
-            <View className="gap-3">
-              <Skeleton className="h-16 rounded-lg" />
-              <Skeleton className="h-16 rounded-lg" />
-              <Skeleton className="h-16 rounded-lg" />
-            </View>
-          ) : (
-            <ChangelogList entries={entries} />
-          )}
+          {renderContent()}
         </View>
       </ScrollView>
     </View>

@@ -5,6 +5,7 @@ import { Alert, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { GmailIcon, GoogleIcon } from '@/components/icons';
+import { QueryError } from '@/components/query-error';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -35,6 +36,22 @@ export default function GoogleScreen() {
             <Skeleton className="h-16 w-full rounded-lg" />
           </Animated.View>
         </Animated.View>
+      </View>
+    );
+  }
+
+  if (statusQuery.isError) {
+    return (
+      <View className="flex-1 bg-background">
+        <ScreenHeader title="Google Account" />
+        <View className="flex-1 items-center justify-center">
+          <QueryError
+            message="Could not load Google account status"
+            onRetry={() => {
+              void statusQuery.refetch();
+            }}
+          />
+        </View>
       </View>
     );
   }
@@ -104,16 +121,19 @@ export default function GoogleScreen() {
                 Setup Command
               </Text>
               <View className="rounded-lg bg-muted p-3 gap-2">
-                {setupQuery.isPending ? (
-                  <Skeleton className="h-4 w-full rounded" />
-                ) : (
+                {setupQuery.isPending && <Skeleton className="h-4 w-full rounded" />}
+                {setupQuery.isError && (
+                  <Text className="text-xs text-destructive">Failed to load setup command</Text>
+                )}
+                {setupQuery.isSuccess && (
                   <Text className="font-mono text-xs text-foreground">
-                    {setupQuery.data?.command}
+                    {setupQuery.data.command}
                   </Text>
                 )}
               </View>
               <Button
                 variant="outline"
+                disabled={!setupQuery.data?.command}
                 onPress={() => {
                   void handleCopy();
                 }}
