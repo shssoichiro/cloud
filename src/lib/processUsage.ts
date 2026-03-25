@@ -53,6 +53,7 @@ import {
   parseMessagesMicrodollarUsageFromString,
 } from '@/lib/processUsage.messages';
 import { OPENROUTER_BYOK_COST_MULTIPLIER } from '@/lib/processUsage.constants';
+import { computeOpenRouterCostFields, drainSseStream } from '@/lib/processUsage.shared';
 import { isAnthropicModel } from '@/lib/providers/anthropic';
 import { isMinimaxModel } from '@/lib/providers/minimax';
 
@@ -598,31 +599,12 @@ export function processOpenRouterUsage(
   usage: OpenRouterUsage | null | undefined,
   coreProps: NotYetCostedUsageStats
 ): JustTheCostsUsageStats {
-  const is_byok = usage?.is_byok ?? null;
-  const openrouterCost_USD = usage?.cost ?? 0;
-  const upstream_inference_cost_USD = usage?.cost_details?.upstream_inference_cost ?? 0;
-  const cost_mUsd = toMicrodollars(is_byok ? upstream_inference_cost_USD : openrouterCost_USD);
-  const inferredUpstream_USD = openrouterCost_USD * OPENROUTER_BYOK_COST_MULTIPLIER;
-  const microdollar_error = (inferredUpstream_USD - upstream_inference_cost_USD) * 1000000;
-  if (
-    (is_byok == null && (openrouterCost_USD || upstream_inference_cost_USD)) || // unknown byok status but known non-zero costs? We're borked!
-    (is_byok && usage?.cost !== 0 && 1.1 < Math.abs(microdollar_error)) // byok and cost is not 5% of upstream? Weird, EXCEPT sometimes cost is 0 due to openrouter promo.
-  ) {
-    const { responseContent: _ignore, ...corePropsCopy } = coreProps;
-    captureMessage("SUSPICIOUS: openrouters cost accounting doesn't make sense", {
-      level: 'error',
-      tags: { source: 'sse_processing' },
-      extra: {
-        ...corePropsCopy,
-        cost_mUsd,
-        is_byok,
-        openrouterCost_USD,
-        upstream_inference_cost_USD,
-        inferredUpstream_USD,
-        microdollar_error,
-      },
-    });
-  }
+  // usage may be null when there's no response (e.g. error), so default to empty object
+  const { cost_mUsd, is_byok } = computeOpenRouterCostFields(
+    usage ?? {},
+    coreProps,
+    'sse_processing'
+  );
 
   return {
     inputTokens: usage?.prompt_tokens ?? 0,
@@ -661,9 +643,6 @@ export async function parseMicrodollarUsageFromStream(
   let usage: OpenRouterUsage | null = null;
   let inference_provider: string | null = null;
   let finish_reason: string | null = null;
-
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
 
   const sseStreamParser = createParser({
     onEvent(event: EventSourceMessage) {
@@ -715,28 +694,11 @@ export async function parseMicrodollarUsageFromStream(
     },
   });
 
-  let wasAborted = false;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      sseStreamParser.feed(decoder.decode(value, { stream: true }));
-    }
-  } catch (error) {
-    // Handle client abort - the stream was terminated but we may have partial data
-    if (error instanceof Error && error.name === 'ResponseAborted') {
-      wasAborted = true;
-      // Continue to process whatever data we've collected
-    } else {
-      throw error;
-    }
-  } finally {
-    reader.releaseLock();
-    streamProcessingSpan.end();
-  }
+  const wasAborted = await drainSseStream(
+    stream,
+    chunk => sseStreamParser.feed(chunk),
+    streamProcessingSpan
+  );
 
   if (!reportedError && !usage) {
     captureMessage('SUSPICIOUS: No usage chunk in stream', {
