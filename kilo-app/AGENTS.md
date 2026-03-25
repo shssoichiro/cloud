@@ -66,6 +66,7 @@ npx expo install --dev <package-name>   # devDependencies
 - Add new UI components with `pnpm dlx @react-native-reusables/cli@latest add <component> --styling-library nativewind -y`. Then fix import ordering and any lint issues in the generated file.
 - The `cn()` helper for merging Tailwind classes is in `@/lib/utils`.
 - Design tokens (colors, radii) are CSS variables in `src/global.css` with `@theme inline` for Tailwind v4. The theme uses shadcn/ui neutral palette with light/dark via `prefers-color-scheme`.
+- **The Tailwind `/opacity` modifier does NOT work with CSS-variable-based theme colors** (e.g., `bg-destructive/10`, `bg-foreground/20`, `border-muted-foreground/30`). Our theme defines colors as `hsl(var(--name))`, so Tailwind can't decompose them to inject an alpha channel. The result is the opacity is silently ignored. Use hardcoded Tailwind colors with dark: variants instead (e.g., `bg-neutral-200 dark:bg-neutral-700`). The `/opacity` modifier works fine with non-variable colors like `bg-black/5` or `bg-red-500/20`.
 - Style components with Tailwind utility classes via `className`. No inline styles or `StyleSheet.create`.
 - All lint rules are set to `error`, not `warn`. Fix violations, don't suppress them.
 - `as never` is a code smell — it silences all type checking. For Expo Router dynamic paths, use `as Href` instead (import `Href` from `expo-router`). If you find yourself needing `as never`, the types are wrong and need fixing.
