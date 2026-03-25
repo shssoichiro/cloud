@@ -44,6 +44,12 @@ npx expo install --dev <package-name>   # devDependencies
 - When you need data from the backend, **always add a new tRPC procedure** rather than copying data or inventing client-side alternatives. The app uses tRPC with React Query — adding a procedure is cheap and keeps the source of truth on the server.
 - When a component takes backend data as props, derive the prop types from the tRPC router's return types (e.g., `NonNullable<ReturnType<typeof useMyQuery>['data']>`) instead of manually copying type definitions. This keeps types in sync with the backend automatically.
 
+### Mutations
+
+- Every mutation must include an `onError` handler that shows a toast (`toast.error(error.message)` via `sonner-native`). Silent failures are not acceptable — users must always see feedback when something goes wrong.
+- Centralize `onError` in the mutation hook (e.g., `useKiloClawMutations`) rather than in individual components. Components can add their own `onSuccess` callbacks via `mutate(input, { onSuccess })` for UI-specific behavior (e.g., closing a form, clearing fields).
+- For screens with text inputs, use `KeyboardAwareScrollView` from `react-native-keyboard-controller` instead of plain `ScrollView`. Set `bottomOffset` to ensure inputs and action buttons remain visible above the keyboard.
+
 ## Code Style
 
 - Expo Router requires default exports in `src/app/` — this is the only place default exports are allowed.

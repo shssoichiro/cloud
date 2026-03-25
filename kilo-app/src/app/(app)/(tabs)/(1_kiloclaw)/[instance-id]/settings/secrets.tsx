@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Alert, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import { toast } from 'sonner-native';
 
 import { ScreenHeader } from '@/components/screen-header';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,7 @@ function SecretCard({
         onSuccess: () => {
           setFieldValues({});
           setExpanded(false);
+          toast.success(`${secret.label} saved`);
         },
       }
     );
@@ -189,7 +191,7 @@ export default function SecretsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
-          bottomOffset={40}
+          bottomOffset={80}
         >
           {isLoading ? (
             <Animated.View exiting={FadeOut.duration(150)} className="gap-3 px-4">
