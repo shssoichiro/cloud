@@ -1,5 +1,5 @@
 {
-  "id": "3e4b3162-384f-4752-8e02-2a81434907ae",
+  "id": "af57bc72-2dc9-4c16-b233-dd2dbc2aa983",
   "prevId": "1939c85c-a8df-42d5-a17b-eeda39905369",
   "version": "7",
   "dialect": "postgresql",
@@ -7931,13 +7931,6 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "kiloclaw_subscriptions_user_id_unique": {
-          "name": "kiloclaw_subscriptions_user_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "user_id"
-          ]
-        },
         "kiloclaw_subscriptions_stripe_subscription_id_unique": {
           "name": "kiloclaw_subscriptions_stripe_subscription_id_unique",
           "nullsNotDistinct": false,

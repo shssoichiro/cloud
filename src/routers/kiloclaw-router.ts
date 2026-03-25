@@ -406,7 +406,7 @@ async function ensureProvisionAccess(userId: string, userEmail: string): Promise
     const now = new Date();
     const trialEndsAt = new Date(now.getTime() + KILOCLAW_TRIAL_DURATION_DAYS * 86_400_000);
     // Use onConflictDoNothing so concurrent requests (e.g. double-submit)
-    // don't fail on the unique user_id constraint.
+    // don't fail on the per-instance unique constraint.
     const [inserted] = await db
       .insert(kiloclaw_subscriptions)
       .values({
@@ -417,7 +417,7 @@ async function ensureProvisionAccess(userId: string, userEmail: string): Promise
         trial_started_at: now.toISOString(),
         trial_ends_at: trialEndsAt.toISOString(),
       })
-      .onConflictDoNothing({ target: kiloclaw_subscriptions.user_id })
+      .onConflictDoNothing({ target: kiloclaw_subscriptions.instance_id })
       .returning({ id: kiloclaw_subscriptions.id });
 
     if (inserted) {
@@ -1481,14 +1481,27 @@ export const kiloclawRouter = createTRPCRouter({
     }),
 
   enrollWithCredits: baseProcedure
-    .input(z.object({ plan: z.enum(['commit', 'standard']) }))
+    .input(
+      z.object({
+        plan: z.enum(['commit', 'standard']),
+        instanceId: z.string().uuid().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      // Look up the user's active (non-destroyed) instance
       const instance = await getActiveInstance(ctx.user.id);
       if (!instance) {
         throw new TRPCError({
           code: 'NOT_FOUND',
           message: 'No active instance found. Provision an instance first.',
+        });
+      }
+
+      // When a specific instanceId is provided (e.g. from the Kilo Pass upsell
+      // callback URL), validate it matches the user's active instance.
+      if (input.instanceId && instance.id !== input.instanceId) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Instance not found or does not belong to you.',
         });
       }
 
@@ -1581,7 +1594,7 @@ export const kiloclawRouter = createTRPCRouter({
           enabled: true,
           required: 'never',
         },
-        success_url: `${APP_URL}/payments/kilo-pass/awarding?session_id={CHECKOUT_SESSION_ID}&clawHostingPlan=${input.hostingPlan}`,
+        success_url: `${APP_URL}/payments/kilo-pass/awarding?session_id={CHECKOUT_SESSION_ID}&clawHostingPlan=${input.hostingPlan}&clawInstanceId=${instance.id}`,
         cancel_url: `${APP_URL}/claw?checkout=cancelled`,
         subscription_data: {
           metadata: {

@@ -45,6 +45,7 @@ export function KiloPassAwardingCreditsClient() {
   const [redirectSecondsRemaining, setRedirectSecondsRemaining] = useState<number | null>(null);
 
   const clawHostingPlan = searchParams.get('clawHostingPlan');
+  const clawInstanceId = searchParams.get('clawInstanceId');
   const isClawAutoActivation = !!clawHostingPlan;
 
   const [activationStep, setActivationStep] = useState<ActivationStep>('payment');
@@ -107,9 +108,18 @@ export function KiloPassAwardingCreditsClient() {
       (clawHostingPlan === 'standard' || clawHostingPlan === 'commit')
     ) {
       enrollmentTriggered.current = true;
-      enrollWithCredits.mutate({ plan: clawHostingPlan });
+      enrollWithCredits.mutate({
+        plan: clawHostingPlan,
+        ...(clawInstanceId ? { instanceId: clawInstanceId } : {}),
+      });
     }
-  }, [isClawAutoActivation, activationStep, clawHostingPlan, enrollWithCredits.mutate]);
+  }, [
+    isClawAutoActivation,
+    activationStep,
+    clawHostingPlan,
+    clawInstanceId,
+    enrollWithCredits.mutate,
+  ]);
 
   // Standard (non-KiloClaw) flow: redirect to /profile when ready
   useEffect(() => {

@@ -339,7 +339,7 @@ async function processCreditRenewalRow(
 
     // Rule 10: Suspended recovery — auto-resume instance.
     if (wasPastDue && row.suspended_at) {
-      await autoResumeIfSuspended(userId);
+      await autoResumeIfSuspended(userId, row.instance_id ?? undefined);
     }
 
     summary.credit_renewals++;
@@ -501,7 +501,10 @@ export async function runKiloClawBillingLifecycleCron(
   // with a non-null suspension timestamp — indicates auto-resume was
   // interrupted after payment recovery (spec rule 5).
   const interruptedResumeRows = await database
-    .select({ user_id: kiloclaw_subscriptions.user_id })
+    .select({
+      user_id: kiloclaw_subscriptions.user_id,
+      instance_id: kiloclaw_subscriptions.instance_id,
+    })
     .from(kiloclaw_subscriptions)
     .where(
       and(
@@ -513,7 +516,7 @@ export async function runKiloClawBillingLifecycleCron(
 
   for (const row of interruptedResumeRows) {
     try {
-      await autoResumeIfSuspended(row.user_id);
+      await autoResumeIfSuspended(row.user_id, row.instance_id ?? undefined);
       summary.interrupted_auto_resumes++;
       logInfo('Retried interrupted auto-resume', { user_id: row.user_id });
     } catch (error) {

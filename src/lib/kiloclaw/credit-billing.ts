@@ -1,12 +1,17 @@
 import 'server-only';
 
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { addMonths, format } from 'date-fns';
 
 import { db } from '@/lib/drizzle';
-import { credit_transactions, kilocode_users, kiloclaw_subscriptions } from '@kilocode/db/schema';
+import {
+  credit_transactions,
+  kilocode_users,
+  kiloclaw_instances,
+  kiloclaw_subscriptions,
+} from '@kilocode/db/schema';
 import { processTopUp } from '@/lib/credits';
-import { autoResumeIfSuspended } from '@/lib/kiloclaw/stripe-handlers';
+import { autoResumeIfSuspended } from '@/lib/kiloclaw/instance-lifecycle';
 import {
   computeUsageTriggeredMonthlyBonusDecision,
   maybeIssueKiloPassBonusFromUsageThreshold,
@@ -108,6 +113,7 @@ export async function applyStripeFundedKiloClawPeriod(params: {
   const periodStartDate = periodStart.slice(0, 10); // YYYY-MM-DD
 
   let wasSuspended = false;
+  let resolvedInstanceId: string | undefined;
 
   await db.transaction(async tx => {
     // Fetch the user row — processTopUp needs the full User record.
@@ -177,31 +183,45 @@ export async function applyStripeFundedKiloClawPeriod(params: {
     }
 
     // Step 1d: Read existing subscription row to check for suspension and scheduled plan.
-    // Currently keyed on user_id (UNIQUE constraint means one row per user).
-    // TODO: When multi-instance subscriptions ship, key on stripe_subscription_id instead.
+    // Key on stripe_subscription_id — each Stripe subscription maps to exactly one row.
     const [existingRow] = await tx
       .select({
+        instance_id: kiloclaw_subscriptions.instance_id,
         suspended_at: kiloclaw_subscriptions.suspended_at,
         scheduled_plan: kiloclaw_subscriptions.scheduled_plan,
         scheduled_by: kiloclaw_subscriptions.scheduled_by,
         stripe_schedule_id: kiloclaw_subscriptions.stripe_schedule_id,
       })
       .from(kiloclaw_subscriptions)
-      .where(eq(kiloclaw_subscriptions.user_id, userId))
+      .where(eq(kiloclaw_subscriptions.stripe_subscription_id, stripeSubscriptionId))
       .limit(1);
 
     wasSuspended = !!existingRow?.suspended_at;
+    resolvedInstanceId = existingRow?.instance_id ?? undefined;
 
     // If a scheduled plan change matches the settled plan, clear the schedule.
     const shouldClearSchedule = existingRow?.scheduled_plan === plan;
 
     const commitEndsAt = plan === 'commit' ? periodEnd : null;
 
-    // Upsert the subscription row to hybrid state.
+    // If the row doesn't exist yet (settlement arrived before subscription.created),
+    // look up the user's active instance so the INSERT path can populate instance_id.
+    let instanceId = existingRow?.instance_id ?? null;
+    if (!existingRow) {
+      const [activeInstance] = await tx
+        .select({ id: kiloclaw_instances.id })
+        .from(kiloclaw_instances)
+        .where(and(eq(kiloclaw_instances.user_id, userId), isNull(kiloclaw_instances.destroyed_at)))
+        .limit(1);
+      instanceId = activeInstance?.id ?? null;
+    }
+
+    // Upsert the subscription row to hybrid state, keyed on stripe_subscription_id.
     await tx
       .insert(kiloclaw_subscriptions)
       .values({
         user_id: userId,
+        instance_id: instanceId,
         stripe_subscription_id: stripeSubscriptionId,
         payment_source: 'credits',
         plan,
@@ -217,9 +237,8 @@ export async function applyStripeFundedKiloClawPeriod(params: {
           : {}),
       })
       .onConflictDoUpdate({
-        target: kiloclaw_subscriptions.user_id,
+        target: kiloclaw_subscriptions.stripe_subscription_id,
         set: {
-          stripe_subscription_id: stripeSubscriptionId,
           payment_source: 'credits',
           status: 'active',
           plan,
@@ -239,7 +258,7 @@ export async function applyStripeFundedKiloClawPeriod(params: {
   // Step 2: Post-transaction side effects.
 
   if (wasSuspended) {
-    await autoResumeIfSuspended(userId);
+    await autoResumeIfSuspended(userId, resolvedInstanceId);
   }
 
   // Best-effort Kilo Pass bonus evaluation.
@@ -301,7 +320,7 @@ export async function enrollWithCredits(params: {
       suspended_at: kiloclaw_subscriptions.suspended_at,
     })
     .from(kiloclaw_subscriptions)
-    .where(eq(kiloclaw_subscriptions.user_id, userId))
+    .where(eq(kiloclaw_subscriptions.instance_id, instanceId))
     .limit(1);
 
   // Reject if subscription is active, past_due, or unpaid (spec rule 1)
@@ -400,9 +419,8 @@ export async function enrollWithCredits(params: {
         // DO NOT clear suspended_at or destruction_deadline (spec rule 5d)
       })
       .onConflictDoUpdate({
-        target: kiloclaw_subscriptions.user_id,
+        target: kiloclaw_subscriptions.instance_id,
         set: {
-          instance_id: instanceId,
           payment_source: 'credits',
           status: 'active',
           plan,
@@ -432,7 +450,7 @@ export async function enrollWithCredits(params: {
 
   // Step 5: Auto-resume if suspended (spec rule 7)
   if (wasSuspended) {
-    await autoResumeIfSuspended(userId);
+    await autoResumeIfSuspended(userId, instanceId);
   }
 
   logInfo('Credit enrollment completed', {

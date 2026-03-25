@@ -425,15 +425,8 @@
     {
       "idx": 60,
       "version": "7",
-      "when": 1774440658504,
-      "tag": "0060_modern_madripoor",
-      "breakpoints": true
-    },
-    {
-      "idx": 61,
-      "version": "7",
-      "when": 1774440659000,
-      "tag": "0061_backfill_kiloclaw_instance_id",
+      "when": 1774471540417,
+      "tag": "0060_dashing_amphibian",
       "breakpoints": true
     }
   ]
