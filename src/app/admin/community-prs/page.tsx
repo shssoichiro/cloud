@@ -63,7 +63,7 @@ export default function GithubPrCountsAdminPage() {
   }, []);
 
   const allSelected = selectedRepos.size === ALL_REPOS.length;
-  const reposArray = useMemo(() => [...selectedRepos], [selectedRepos]);
+  const reposArray = useMemo(() => [...selectedRepos].sort(), [selectedRepos]);
 
   const [externalSort, setExternalSort] = useState<ExternalPrSort>({
     key: 'ageDays',

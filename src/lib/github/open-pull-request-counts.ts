@@ -1000,7 +1000,7 @@ export async function getKilocodeRepoOpenPullRequestsSummary(options?: {
   maxReviewCommentPages?: number;
   maxPullRequestReviewPages?: number;
 }): Promise<OpenPullRequestsSummary> {
-  const repos = options?.repos ?? ALL_REPO_IDS;
+  const repos = [...new Set(options?.repos ?? ALL_REPO_IDS)];
   const resolvedOptions = {
     ttlMs: options?.ttlMs ?? DEFAULT_TTL_MS,
     includeDrafts: options?.includeDrafts ?? false,
@@ -1312,7 +1312,7 @@ export async function getKilocodeRepoRecentlyClosedExternalPRs(options?: {
 }): Promise<ExternalClosedPullRequestsWithWeekStats> {
   const ttlMs = options?.ttlMs ?? DEFAULT_TTL_MS;
   const maxResults = options?.maxResults ?? 50;
-  const repos = options?.repos ?? ALL_REPO_IDS;
+  const repos = [...new Set(options?.repos ?? ALL_REPO_IDS)];
   const nowDate = options?.now ?? new Date();
   const timeZone = options?.timeZone ?? 'Europe/Amsterdam';
   const weekBounds = getCurrentIsoWeekBoundsInTimeZone({ now: nowDate, timeZone });
