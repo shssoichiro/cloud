@@ -48,8 +48,16 @@ if ! $changes_only; then
   exit 0
 fi
 
-# Incremental: find workspace packages with TS or config changes and typecheck only those
-changed_dirs=$(git diff --name-only "$base" -- '*.ts' '*.tsx' 'tsconfig*.json' '*/package.json' | \
+# Incremental: find workspace packages with TS or config changes and typecheck only those.
+# Also fall back to full typecheck if pnpm-workspace.yaml changed (catalog bumps can
+# alter the type surface across packages).
+if git diff --name-only "$base" -- pnpm-workspace.yaml | grep -q .; then
+  echo "[typecheck] pnpm-workspace.yaml changed, running full workspace typecheck"
+  pnpm -r --filter '!kilocode-backend' --filter '!@kilocode/trpc' run typecheck
+  exit 0
+fi
+
+changed_dirs=$(git diff --name-only "$base" -- '*.ts' '*.tsx' '**/tsconfig*.json' '**/package.json' | \
   { grep -v '^src/' || true; } | \
   sed 's|/src/.*||; s|/[^/]*\.[^/]*$||' | \
   sort -u)
