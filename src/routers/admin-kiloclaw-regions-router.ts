@@ -3,8 +3,10 @@ import { KiloClawInternalClient, KiloClawApiError } from '@/lib/kiloclaw/kilocla
 import { TRPCError } from '@trpc/server';
 import * as z from 'zod';
 
+// Basic shape validation only — the worker validates region codes against
+// the full enum allowlist (ALL_VALID_REGIONS) and returns structured errors.
 const UpdateRegionsSchema = z.object({
-  regions: z.array(z.string().min(1)).min(2, 'At least 2 regions required'),
+  regions: z.array(z.string()).min(2, 'At least 2 regions required'),
 });
 
 /**

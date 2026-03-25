@@ -127,6 +127,7 @@ export function RegionsTab() {
                   setDirty(true);
                 }}
                 placeholder="e.g. eu,us or dfw,ord,lax"
+                maxLength={200}
                 className="font-mono"
               />
               <Button
