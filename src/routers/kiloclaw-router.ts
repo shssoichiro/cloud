@@ -1780,7 +1780,31 @@ export const kiloclawRouter = createTRPCRouter({
         cancel_at_period_end: true,
       });
     } catch (err) {
-      // Roll back conversion intent since Stripe didn't accept the cancel
+      // The Stripe call may have succeeded before the error was raised
+      // (e.g. network timeout after Stripe committed). Re-fetch the
+      // subscription to decide whether to roll back local state.
+      let stripeApplied = false;
+      try {
+        const remoteSub = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
+        stripeApplied = remoteSub.cancel_at_period_end === true;
+      } catch {
+        // Retrieval failed — assume Stripe applied the change so we
+        // don't accidentally desync. The subscription.deleted handler
+        // will see pending_conversion = true and convert correctly.
+        stripeApplied = true;
+      }
+
+      if (stripeApplied) {
+        // Stripe did apply cancel_at_period_end; local flags are
+        // already correct — let the conversion proceed normally.
+        console.error(
+          '[kiloclaw] acceptConversion: Stripe update threw but cancel_at_period_end is set remotely, proceeding with conversion',
+          { subscriptionId: sub.stripe_subscription_id, error: err }
+        );
+        return { success: true };
+      }
+
+      // Stripe confirmed cancellation was NOT applied — safe to roll back
       await db
         .update(kiloclaw_subscriptions)
         .set({
