@@ -60,7 +60,11 @@ export default {
     id: 'martian',
     apiUrl: 'https://api.withmartian.com/v1',
     apiKey: getEnvVariable('MARTIAN_API_KEY'),
-    transformRequest() {},
+    transformRequest(context) {
+      if (context.request.kind === 'chat_completions') {
+        delete context.request.body.reasoning;
+      }
+    },
   },
   MISTRAL: {
     id: 'mistral',
