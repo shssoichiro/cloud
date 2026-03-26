@@ -129,7 +129,7 @@ export default function VersionPinScreen() {
 
     return (
       <View>
-        <View className="flex-row items-center gap-3 px-4 py-3">
+        <View className="flex-row items-center gap-3 py-3">
           <View className="flex-1 gap-0.5">
             <View className="flex-row items-center gap-2">
               <Text className="text-sm font-medium">{item.openclaw_version}</Text>
@@ -165,7 +165,7 @@ export default function VersionPinScreen() {
         </View>
         {isPending && (
           <Animated.View entering={FadeIn.duration(150)} className="border-t border-border">
-            <View className="px-4 py-3 gap-3">
+            <View className="py-3 gap-3">
               <Text className="text-xs font-medium text-muted-foreground">Reason (optional)</Text>
               <TextInput
                 className="rounded-md border border-input bg-background px-3 py-2 text-sm leading-5 text-foreground"
@@ -255,7 +255,7 @@ export default function VersionPinScreen() {
             )}
           </Animated.View>
         }
-        ItemSeparatorComponent={() => <View className="h-px bg-border mx-4" />}
+        ItemSeparatorComponent={() => <View className="h-px bg-border" />}
         ListEmptyComponent={
           availableVersionsQuery.isPending ? (
             <Skeleton className="h-12 w-full rounded-lg" />
