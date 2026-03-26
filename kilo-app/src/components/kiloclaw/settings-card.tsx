@@ -94,10 +94,9 @@ export function SettingsCard({
 }>) {
   const [expanded, setExpanded] = useState(false);
   const [canSave, setCanSave] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const fieldValuesRef = useRef<Record<string, string>>({});
-
-  const isSaving = mutations.patchSecrets.isPending && !isRemoving;
   const ItemIcon = CATALOG_ICONS[item.id];
 
   const updateCanSave = useCallback(() => {
@@ -113,6 +112,7 @@ export function SettingsCard({
       const val = (fieldValuesRef.current[f.key] ?? '').trim();
       if (val) secrets[f.key] = val;
     }
+    setIsSaving(true);
     mutations.patchSecrets.mutate(
       { secrets },
       {
@@ -123,6 +123,9 @@ export function SettingsCard({
           if (successMessage) {
             toast.success(successMessage);
           }
+        },
+        onSettled: () => {
+          setIsSaving(false);
         },
       }
     );
