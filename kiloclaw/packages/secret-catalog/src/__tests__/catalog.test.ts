@@ -200,12 +200,12 @@ describe('Secret Catalog', () => {
 
     it('returns all tool entries sorted by order', () => {
       const tools = getEntriesByCategory('tool');
-      expect(tools.length).toBe(4);
+      expect(tools.length).toBe(5);
       expect(tools[0].id).toBe('github');
-      expect(tools[1].id).toBe('linear');
-      expect(tools[2].id).toBe('agentcard');
+      expect(tools[1].id).toBe('agentcard');
       expect(tools[2].id).toBe('onepassword');
       expect(tools[3].id).toBe('brave-search');
+      expect(tools[4].id).toBe('linear');
     });
 
     it('returns empty array for categories with no entries', () => {
@@ -233,7 +233,7 @@ describe('Secret Catalog', () => {
       expect(keys).toContain('agentcardApiKey');
       expect(keys).toContain('onepasswordServiceAccountToken');
       expect(keys).toContain('braveSearchApiKey');
-      expect(keys.size).toBe(6);
+      expect(keys.size).toBe(7);
     });
 
     it('returns empty set for categories with no entries', () => {

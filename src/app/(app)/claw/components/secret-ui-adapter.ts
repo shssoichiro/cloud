@@ -15,7 +15,7 @@ const ICON_MAP: Record<SecretIconKey, React.ComponentType<{ className?: string }
   slack: SlackIcon,
   key: Key,
   github: GitHubIcon,
-  'list-checks': LinearIcon,
+  linear: LinearIcon,
   'credit-card': AgentCardIcon,
   lock: Lock,
   brave: BraveSearchIcon,

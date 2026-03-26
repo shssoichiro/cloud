@@ -134,33 +134,11 @@ const SECRET_CATALOG_RAW = [
     helpUrl: 'https://github.com/settings/tokens?type=beta',
   },
   {
-    id: 'linear',
-    label: 'Linear',
-    category: 'tool',
-    icon: 'linear',
-    order: 2,
-    fields: [
-      {
-        key: 'linearApiKey',
-        label: 'API Key',
-        placeholder: 'lin_api_...',
-        placeholderConfigured: 'Enter new API key to replace',
-        envVar: 'LINEAR_API_KEY',
-        validationPattern: '^lin_api_[A-Za-z0-9]{36,60}$',
-        validationMessage:
-          'Linear API keys start with lin_api_ followed by alphanumeric characters.',
-        maxLength: 100,
-      },
-    ],
-    helpText: 'Generate an API key from your Linear account security settings.',
-    helpUrl: 'https://linear.app/settings/account/security',
-  },
-  {
     id: 'agentcard',
     label: 'AgentCard',
     category: 'tool',
     icon: 'credit-card',
-    order: 3,
+    order: 2,
     fields: [
       {
         key: 'agentcardApiKey',
@@ -218,6 +196,28 @@ const SECRET_CATALOG_RAW = [
     ],
     helpText: 'Get an API key from the Brave Search dashboard.',
     helpUrl: 'https://brave.com/search/api/',
+  },
+  {
+    id: 'linear',
+    label: 'Linear',
+    category: 'tool',
+    icon: 'linear',
+    order: 5,
+    fields: [
+      {
+        key: 'linearApiKey',
+        label: 'API Key',
+        placeholder: 'lin_api_...',
+        placeholderConfigured: 'Enter new API key to replace',
+        envVar: 'LINEAR_API_KEY',
+        validationPattern: '^lin_api_[A-Za-z0-9]{36,60}$',
+        validationMessage:
+          'Linear API keys start with lin_api_ followed by alphanumeric characters.',
+        maxLength: 100,
+      },
+    ],
+    helpText: 'Generate an API key from your Linear account security settings.',
+    helpUrl: 'https://linear.app/settings/account/security',
   },
 ] as const satisfies readonly SecretCatalogEntry[];
 
