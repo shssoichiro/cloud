@@ -24,7 +24,7 @@ export default [
         name: 'Kimi-K2.5',
         description:
           'Open-source SoTA native multimodal model with text-only input (for now), stronger code/UI generation.',
-        flags: ['recommended', 'vision'],
+        flags: ['recommended'],
         context_length: 262144,
         max_completion_tokens: 32768,
         extra_body: {
