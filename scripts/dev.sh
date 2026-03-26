@@ -30,5 +30,5 @@ echo "$PORT" > .dev-port
 echo "Dev server starting on port $PORT (written to .dev-port)"
 
 export PORT
-export NEXTAUTH_URL="http://localhost:$PORT"
+export NEXTAUTH_URL="${NEXTAUTH_URL:-${APP_URL_OVERRIDE:-http://localhost:$PORT}}"
 exec npx next dev -p "$PORT" "$@"
