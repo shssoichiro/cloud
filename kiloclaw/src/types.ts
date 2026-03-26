@@ -7,6 +7,8 @@ import type { KiloClawApp } from './durable-objects/kiloclaw-app';
 export type KiloClawEnv = {
   KILOCLAW_INSTANCE: DurableObjectNamespace<KiloClawInstance>;
   KILOCLAW_APP: DurableObjectNamespace<KiloClawApp>;
+  KILOCLAW_AE?: AnalyticsEngineDataset;
+  KILOCLAW_CONTROLLER_AE: AnalyticsEngineDataset;
   HYPERDRIVE?: Hyperdrive;
   KV_CLAW_CACHE: KVNamespace;
 
@@ -39,7 +41,11 @@ export type KiloClawEnv = {
 
   // OpenClaw gateway configuration
   OPENCLAW_ALLOWED_ORIGINS?: string;
+  KILOCLAW_CHECKIN_URL?: string;
   REQUIRE_PROXY_TOKEN?: string;
+
+  // PostHog product telemetry
+  NEXT_PUBLIC_POSTHOG_KEY?: string;
 
   // Tuning overrides (wrangler vars)
   /** Override proactive API key refresh threshold (hours). Default: 72 (3 days). */
@@ -55,5 +61,6 @@ export type AppEnv = {
     userId: string;
     authToken: string;
     sandboxId: string;
+    requestStartTime: number;
   };
 };

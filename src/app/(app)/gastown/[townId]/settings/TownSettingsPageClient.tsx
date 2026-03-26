@@ -1,14 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useGastownTRPC } from '@/lib/gastown/trpc';
+import { useUser } from '@/hooks/useUser';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { useModelSelectorList } from '@/app/api/openrouter/hooks';
+import { ModelCombobox, type ModelOption } from '@/components/shared/ModelCombobox';
 import {
   Plus,
   Trash2,
@@ -24,16 +27,29 @@ import {
   Layers,
   RefreshCw,
   Container,
+  User,
+  Key,
+  X,
 } from 'lucide-react';
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from '@/components/ui/accordion';
+import { Slider } from '@/components/ui/slider';
 import { motion } from 'motion/react';
+import { AdminViewingBanner } from '@/components/gastown/AdminViewingBanner';
 
-type Props = { townId: string };
+type Props = { townId: string; readOnly?: boolean; organizationId?: string };
 
 type EnvVarEntry = { key: string; value: string; isNew?: boolean };
 
 // Section definitions for the scrollspy nav
 const SECTIONS = [
   { id: 'git-auth', label: 'Git Authentication', icon: GitBranch },
+  { id: 'github-cli', label: 'GitHub CLI', icon: Key },
+  { id: 'commit-identity', label: 'Commit Identity', icon: User },
   { id: 'env-vars', label: 'Environment Variables', icon: Variable },
   { id: 'agent-defaults', label: 'Agent Defaults', icon: Bot },
   { id: 'convoys', label: 'Convoys', icon: Layers },
@@ -44,10 +60,12 @@ const SECTIONS = [
 
 function useScrollSpy(sectionIds: readonly string[]) {
   const [activeId, setActiveId] = useState<string>(sectionIds[0]);
+  const suppressRef = useRef(false);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       entries => {
+        if (suppressRef.current) return;
         // Find the topmost visible section
         const visible = entries
           .filter(e => e.isIntersecting)
@@ -56,7 +74,7 @@ function useScrollSpy(sectionIds: readonly string[]) {
           setActiveId(visible[0].target.id);
         }
       },
-      { rootMargin: '-80px 0px -60% 0px', threshold: 0 }
+      { rootMargin: '-56px 0px -60% 0px', threshold: 0 }
     );
 
     for (const id of sectionIds) {
@@ -67,22 +85,60 @@ function useScrollSpy(sectionIds: readonly string[]) {
     return () => observer.disconnect();
   }, [sectionIds]);
 
-  return activeId;
-}
+  function scrollTo(id: string) {
+    const el = document.getElementById(id);
+    const header = document.getElementById('settings-sticky-header');
+    if (!el) return;
 
-function scrollToSection(id: string) {
-  const el = document.getElementById(id);
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Immediately highlight the target and suppress observer during scroll
+    setActiveId(id);
+    suppressRef.current = true;
+
+    const headerHeight = header?.getBoundingClientRect().height ?? 0;
+    const top = el.getBoundingClientRect().top + window.scrollY - headerHeight - 24;
+    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+
+    // Re-enable observer after scroll settles
+    setTimeout(() => {
+      suppressRef.current = false;
+    }, 1000);
   }
+
+  return { activeId, scrollTo };
 }
 
-export function TownSettingsPageClient({ townId }: Props) {
+export function TownSettingsPageClient({ townId, readOnly = false, organizationId }: Props) {
   const trpc = useGastownTRPC();
   const queryClient = useQueryClient();
+  const { data: currentUser } = useUser();
+
+  const {
+    data: modelsData,
+    isLoading: isLoadingModels,
+    error: modelsError,
+  } = useModelSelectorList(organizationId);
+
+  const modelOptions = useMemo<ModelOption[]>(
+    () => modelsData?.data.map(model => ({ id: model.id, name: model.name })) ?? [],
+    [modelsData]
+  );
 
   const townQuery = useQuery(trpc.gastown.getTown.queryOptions({ townId }));
   const configQuery = useQuery(trpc.gastown.getTownConfig.queryOptions({ townId }));
+  const adminAccessQuery = useQuery(trpc.gastown.checkAdminAccess.queryOptions({ townId }));
+
+  // Admin viewing another user's town → force read-only
+  const isAdminViewing = adminAccessQuery.data?.isAdminViewing ?? false;
+  const effectiveReadOnly =
+    isAdminViewing || (readOnly && currentUser?.id !== configQuery.data?.created_by_user_id);
+
+  // Track server-side values so we can detect changes that require a reload
+  const savedModelRef = useRef<string>('');
+  const savedMayorModelRef = useRef<string>('');
+  const savedGithubCliPatRef = useRef<string>('');
+  const savedGithubTokenRef = useRef<string>('');
+  const savedGitlabTokenRef = useRef<string>('');
+  const savedGitlabInstanceUrlRef = useRef<string>('');
 
   const updateConfig = useMutation(
     trpc.gastown.updateTownConfig.mutationOptions({
@@ -90,7 +146,41 @@ export function TownSettingsPageClient({ townId }: Props) {
         void queryClient.invalidateQueries({
           queryKey: trpc.gastown.getTownConfig.queryKey({ townId }),
         });
-        toast.success('Configuration saved');
+
+        const defaultModelChanged = defaultModel !== savedModelRef.current;
+        const effectiveMayor = mayorModel || defaultModel;
+        const previousEffectiveMayor = savedMayorModelRef.current || savedModelRef.current;
+        const mayorEffectiveChanged = effectiveMayor !== previousEffectiveMayor;
+
+        // Detect auth config changes that trigger an SDK server restart.
+        // Compare against the non-masked form: if the current value starts
+        // with "****" it wasn't changed by the user, so skip the comparison.
+        const ghCliPatChanged =
+          !githubCliPat.startsWith('****') && githubCliPat !== savedGithubCliPatRef.current;
+        const ghTokenChanged =
+          !githubToken.startsWith('****') && githubToken !== savedGithubTokenRef.current;
+        const glTokenChanged =
+          !gitlabToken.startsWith('****') && gitlabToken !== savedGitlabTokenRef.current;
+        const glInstanceUrlChanged = gitlabInstanceUrl !== savedGitlabInstanceUrlRef.current;
+        const authChanged =
+          ghCliPatChanged || ghTokenChanged || glTokenChanged || glInstanceUrlChanged;
+
+        savedModelRef.current = defaultModel;
+        savedMayorModelRef.current = mayorModel;
+        if (!githubCliPat.startsWith('****')) savedGithubCliPatRef.current = githubCliPat;
+        if (!githubToken.startsWith('****')) savedGithubTokenRef.current = githubToken;
+        if (!gitlabToken.startsWith('****')) savedGitlabTokenRef.current = gitlabToken;
+        savedGitlabInstanceUrlRef.current = gitlabInstanceUrl;
+
+        if (defaultModelChanged || mayorEffectiveChanged || authChanged) {
+          const reason = authChanged ? 'credential change' : 'model change';
+          toast.success(`Configuration saved — reloading for ${reason}…`);
+          // Reload after a brief delay so the server-side SDK server
+          // restart has time to complete.
+          setTimeout(() => window.location.reload(), 2000);
+        } else {
+          toast.success('Configuration saved');
+        }
       },
       onError: err => toast.error(err.message),
     })
@@ -109,11 +199,18 @@ export function TownSettingsPageClient({ townId }: Props) {
   const [gitlabToken, setGitlabToken] = useState('');
   const [gitlabInstanceUrl, setGitlabInstanceUrl] = useState('');
   const [defaultModel, setDefaultModel] = useState('');
+  const [mayorModel, setMayorModel] = useState('');
+  const [refineryModel, setRefineryModel] = useState('');
+  const [polecatModel, setPolecatModel] = useState('');
   const [maxPolecats, setMaxPolecats] = useState<number | undefined>(undefined);
   const [refineryGates, setRefineryGates] = useState<string[]>([]);
   const [autoMerge, setAutoMerge] = useState(true);
   const [mergeStrategy, setMergeStrategy] = useState<'direct' | 'pr'>('direct');
   const [stagedConvoysDefault, setStagedConvoysDefault] = useState(false);
+  const [githubCliPat, setGithubCliPat] = useState('');
+  const [gitAuthorName, setGitAuthorName] = useState('');
+  const [gitAuthorEmail, setGitAuthorEmail] = useState('');
+  const [disableAiCoauthor, setDisableAiCoauthor] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [showTokens, setShowTokens] = useState(false);
 
@@ -125,15 +222,30 @@ export function TownSettingsPageClient({ townId }: Props) {
     setGitlabToken(cfg.git_auth?.gitlab_token ?? '');
     setGitlabInstanceUrl(cfg.git_auth?.gitlab_instance_url ?? '');
     setDefaultModel(cfg.default_model ?? '');
+    savedModelRef.current = cfg.default_model ?? '';
+    setMayorModel(cfg.role_models?.mayor ?? '');
+    setRefineryModel(cfg.role_models?.refinery ?? '');
+    setPolecatModel(cfg.role_models?.polecat ?? '');
+    savedMayorModelRef.current = cfg.role_models?.mayor ?? '';
     setMaxPolecats(cfg.max_polecats_per_rig);
     setRefineryGates(cfg.refinery?.gates ?? []);
     setAutoMerge(cfg.refinery?.auto_merge ?? true);
     setMergeStrategy(cfg.merge_strategy === 'pr' ? 'pr' : 'direct');
     setStagedConvoysDefault(cfg.staged_convoys_default ?? false);
+    setGithubCliPat(cfg.github_cli_pat ?? '');
+    savedGithubCliPatRef.current = cfg.github_cli_pat ?? '';
+    savedGithubTokenRef.current = cfg.git_auth?.github_token ?? '';
+    savedGitlabTokenRef.current = cfg.git_auth?.gitlab_token ?? '';
+    savedGitlabInstanceUrlRef.current = cfg.git_auth?.gitlab_instance_url ?? '';
+    setGitAuthorName(cfg.git_author_name ?? '');
+    setGitAuthorEmail(cfg.git_author_email ?? '');
+    setDisableAiCoauthor(cfg.disable_ai_coauthor ?? false);
     setInitialized(true);
   }
 
-  const activeSection = useScrollSpy(SECTIONS.map(s => s.id));
+  const { activeId: activeSection, scrollTo: scrollToSection } = useScrollSpy(
+    SECTIONS.map(s => s.id)
+  );
 
   function handleSave() {
     const envVarObj: Record<string, string> = {};
@@ -148,12 +260,24 @@ export function TownSettingsPageClient({ townId }: Props) {
       config: {
         env_vars: envVarObj,
         git_auth: {
-          ...(githubToken && !githubToken.startsWith('****') ? { github_token: githubToken } : {}),
-          ...(gitlabToken && !gitlabToken.startsWith('****') ? { gitlab_token: gitlabToken } : {}),
-          ...(gitlabInstanceUrl ? { gitlab_instance_url: gitlabInstanceUrl } : {}),
+          // Omit masked values to preserve the real secret server-side.
+          // Send empty string to clear, real value to update.
+          ...(githubToken.startsWith('****') ? {} : { github_token: githubToken }),
+          ...(gitlabToken.startsWith('****') ? {} : { gitlab_token: gitlabToken }),
+          gitlab_instance_url: gitlabInstanceUrl,
         },
-        ...(defaultModel ? { default_model: defaultModel } : {}),
+        default_model: defaultModel,
+        role_models: {
+          mayor: mayorModel || undefined,
+          refinery: refineryModel || undefined,
+          polecat: polecatModel || undefined,
+        },
         ...(maxPolecats ? { max_polecats_per_rig: maxPolecats } : {}),
+        // Omit masked values to preserve the real secret; send empty string to clear.
+        ...(githubCliPat.startsWith('****') ? {} : { github_cli_pat: githubCliPat }),
+        git_author_name: gitAuthorName,
+        git_author_email: gitAuthorEmail,
+        disable_ai_coauthor: disableAiCoauthor,
         merge_strategy: mergeStrategy,
         staged_convoys_default: stagedConvoysDefault,
         refinery: {
@@ -206,32 +330,43 @@ export function TownSettingsPageClient({ townId }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div>
+      <AdminViewingBanner townId={townId} />
       {/* Top bar */}
-      <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-3">
+      <div
+        id="settings-sticky-header"
+        className="sticky top-0 z-10 flex items-center justify-between border-b border-white/[0.06] bg-[oklch(0.1_0_0)] px-6 py-3"
+      >
         <div className="flex items-center gap-2.5">
           <Settings className="size-4 text-white/40" />
           <h1 className="text-lg font-semibold tracking-tight text-white/90">Settings</h1>
           <span className="text-sm text-white/30">{townQuery.data?.name}</span>
         </div>
-        <Button
-          onClick={handleSave}
-          disabled={updateConfig.isPending}
-          variant="primary"
-          size="sm"
-          className="gap-1.5 bg-[color:oklch(95%_0.15_108_/_0.90)] text-black hover:bg-[color:oklch(95%_0.15_108_/_0.95)]"
-        >
-          <Save className="size-3.5" />
-          {updateConfig.isPending ? 'Saving...' : 'Save'}
-        </Button>
+        {!effectiveReadOnly && (
+          <Button
+            onClick={handleSave}
+            disabled={updateConfig.isPending}
+            variant="primary"
+            size="sm"
+            className="gap-1.5 bg-[color:oklch(95%_0.15_108_/_0.90)] text-black hover:bg-[color:oklch(95%_0.15_108_/_0.95)]"
+          >
+            <Save className="size-3.5" />
+            {updateConfig.isPending ? 'Saving...' : 'Save'}
+          </Button>
+        )}
+        {effectiveReadOnly && (
+          <span className="text-xs text-white/30">
+            View only — only town creators and org owners can edit
+          </span>
+        )}
       </div>
 
-      {/* Two-column body — single scroll container so sticky works */}
-      <div className="flex-1 overflow-y-auto scroll-smooth">
-        <div className="flex">
+      {/* Two-column body — viewport scrolls so sticky works */}
+      <div className="scroll-smooth">
+        <div className="mx-auto flex max-w-4xl px-6">
           {/* Main content */}
           <div className="min-w-0 flex-1">
-            <div className="mx-auto max-w-2xl space-y-8 px-6 pt-6 pb-24">
+            <div className="space-y-8 pt-6" style={{ paddingBottom: '75vh' }}>
               {/* ── Git Authentication ──────────────────────────────── */}
               <SettingsSection
                 id="git-auth"
@@ -285,13 +420,86 @@ export function TownSettingsPageClient({ townId }: Props) {
                 </div>
               </SettingsSection>
 
+              {/* ── GitHub CLI ─────────────────────────────────────── */}
+              <SettingsSection
+                id="github-cli"
+                title="GitHub CLI"
+                description="Personal Access Token used exclusively for gh CLI operations (PRs, issues, reviews). Git clone and push still use the integration token above."
+                icon={Key}
+                index={1}
+              >
+                <div className="space-y-4">
+                  <FieldGroup
+                    label="GitHub Personal Access Token"
+                    hint="When set, PRs and issues created by agents will appear under your GitHub identity. Requires repo scope (or fine-grained: contents, pull_requests, issues)."
+                  >
+                    <Input
+                      type={showTokens ? 'text' : 'password'}
+                      value={githubCliPat}
+                      onChange={e => setGithubCliPat(e.target.value)}
+                      placeholder="ghp_xxxxxxxxxxxx or github_pat_xxxxxxxxxxxx"
+                      className="border-white/[0.08] bg-white/[0.03] font-mono text-sm text-white/85 placeholder:text-white/20"
+                    />
+                  </FieldGroup>
+                </div>
+              </SettingsSection>
+
+              {/* ── Commit Identity ─────────────────────────────────── */}
+              <SettingsSection
+                id="commit-identity"
+                title="Commit Identity"
+                description="Override the git commit author. When set, you become the primary author and the AI agent is added as co-author."
+                icon={User}
+                index={2}
+              >
+                <div className="space-y-4">
+                  <FieldGroup
+                    label="Author Name"
+                    hint="Used as GIT_AUTHOR_NAME and GIT_COMMITTER_NAME for all commits in this town."
+                  >
+                    <Input
+                      value={gitAuthorName}
+                      onChange={e => setGitAuthorName(e.target.value)}
+                      placeholder="Jane Smith"
+                      className="border-white/[0.08] bg-white/[0.03] text-sm text-white/85 placeholder:text-white/20"
+                    />
+                  </FieldGroup>
+                  <FieldGroup
+                    label="Author Email"
+                    hint="Used as GIT_AUTHOR_EMAIL and GIT_COMMITTER_EMAIL."
+                  >
+                    <Input
+                      value={gitAuthorEmail}
+                      onChange={e => setGitAuthorEmail(e.target.value)}
+                      placeholder="jane@example.com"
+                      className="border-white/[0.08] bg-white/[0.03] text-sm text-white/85 placeholder:text-white/20"
+                    />
+                  </FieldGroup>
+
+                  <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+                    <Switch
+                      checked={disableAiCoauthor}
+                      onCheckedChange={setDisableAiCoauthor}
+                      disabled={!gitAuthorName}
+                    />
+                    <div>
+                      <Label className="text-sm text-white/70">Disable AI co-authorship</Label>
+                      <p className="text-[11px] text-white/30">
+                        When enabled, the AI agent&apos;s Co-authored-by trailer is omitted from
+                        commits. Only takes effect when Author Name is set.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </SettingsSection>
+
               {/* ── Environment Variables ────────────────────────────── */}
               <SettingsSection
                 id="env-vars"
                 title="Environment Variables"
                 description="Injected into all agent processes. Agent-level overrides take precedence."
                 icon={Variable}
-                index={1}
+                index={3}
                 action={
                   <button
                     onClick={addEnvVar}
@@ -344,33 +552,97 @@ export function TownSettingsPageClient({ townId }: Props) {
                 title="Agent Defaults"
                 description="Default configuration applied to newly spawned agents."
                 icon={Bot}
-                index={2}
+                index={4}
               >
                 <div className="space-y-4">
                   <FieldGroup label="Default Model">
-                    <Input
-                      value={defaultModel}
-                      onChange={e => setDefaultModel(e.target.value)}
-                      placeholder="anthropic/claude-sonnet-4.6"
-                      className="border-white/[0.08] bg-white/[0.03] font-mono text-sm text-white/85 placeholder:text-white/20"
-                    />
+                    {modelsError ? (
+                      <Input
+                        value={defaultModel}
+                        onChange={e => setDefaultModel(e.target.value)}
+                        placeholder="e.g. anthropic/claude-sonnet-4.6"
+                        className="border-white/[0.08] bg-white/[0.03] font-mono text-sm text-white/85 placeholder:text-white/20"
+                      />
+                    ) : (
+                      <ModelCombobox
+                        label=""
+                        models={modelOptions}
+                        value={defaultModel}
+                        onValueChange={setDefaultModel}
+                        isLoading={isLoadingModels}
+                        placeholder="Select a model"
+                        className="border-white/[0.08] bg-white/[0.03] text-sm text-white/85"
+                      />
+                    )}
                   </FieldGroup>
+
+                  <Accordion type="single" collapsible className="border-none">
+                    <AccordionItem value="role-overrides" className="border-none">
+                      <AccordionTrigger className="py-0 text-xs text-white/40 hover:text-white/60 hover:no-underline">
+                        Override by role (optional)
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-4 pt-2">
+                        {(
+                          [
+                            ['Mayor', mayorModel, setMayorModel],
+                            ['Refinery', refineryModel, setRefineryModel],
+                            ['Polecat', polecatModel, setPolecatModel],
+                          ] as const
+                        ).map(([roleLabel, roleValue, setRoleValue]) => (
+                          <FieldGroup key={roleLabel} label={roleLabel}>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1">
+                                {modelsError ? (
+                                  <Input
+                                    value={roleValue}
+                                    onChange={e => setRoleValue(e.target.value)}
+                                    placeholder="Use default"
+                                    className="border-white/[0.08] bg-white/[0.03] font-mono text-sm text-white/85 placeholder:text-white/20"
+                                  />
+                                ) : (
+                                  <ModelCombobox
+                                    label=""
+                                    models={modelOptions}
+                                    value={roleValue}
+                                    onValueChange={setRoleValue}
+                                    isLoading={isLoadingModels}
+                                    placeholder="Use default"
+                                    className="border-white/[0.08] bg-white/[0.03] text-sm text-white/85"
+                                  />
+                                )}
+                              </div>
+                              {roleValue && (
+                                <button
+                                  onClick={() => setRoleValue('')}
+                                  className="rounded p-1 text-white/25 transition-colors hover:bg-white/[0.06] hover:text-white/50"
+                                  title="Reset to default"
+                                >
+                                  <X className="size-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </FieldGroup>
+                        ))}
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
 
                   <FieldGroup
                     label="Max Polecats per Rig"
                     hint="Upper bound on concurrent worker agents per rig."
                   >
-                    <Input
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={maxPolecats ?? ''}
-                      onChange={e =>
-                        setMaxPolecats(e.target.value ? parseInt(e.target.value, 10) : undefined)
-                      }
-                      placeholder="5"
-                      className="w-28 border-white/[0.08] bg-white/[0.03] font-mono text-sm text-white/85 placeholder:text-white/20"
-                    />
+                    <div className="flex items-center gap-3">
+                      <Slider
+                        min={1}
+                        max={50}
+                        value={[maxPolecats ?? 5]}
+                        onValueChange={([v]) => setMaxPolecats(v)}
+                        className="w-full"
+                      />
+                      <span className="w-8 shrink-0 text-right font-mono text-sm text-white/70">
+                        {maxPolecats ?? 5}
+                      </span>
+                    </div>
                   </FieldGroup>
                 </div>
               </SettingsSection>
@@ -381,7 +653,7 @@ export function TownSettingsPageClient({ townId }: Props) {
                 title="Convoys"
                 description="Settings for convoy (batch task) behavior."
                 icon={Layers}
-                index={3}
+                index={5}
               >
                 <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
                   <Switch
@@ -405,7 +677,7 @@ export function TownSettingsPageClient({ townId }: Props) {
                 title="Merge Strategy"
                 description="How agent work lands in the default branch. Per-rig overrides coming soon."
                 icon={GitPullRequest}
-                index={4}
+                index={6}
               >
                 <div className="space-y-3">
                   <MergeStrategyOption
@@ -429,7 +701,7 @@ export function TownSettingsPageClient({ townId }: Props) {
                 title="Refinery"
                 description="Quality gates run before merging polecat branches into the default branch."
                 icon={Shield}
-                index={5}
+                index={7}
                 action={
                   <button
                     onClick={addRefineryGate}
@@ -485,7 +757,7 @@ export function TownSettingsPageClient({ townId }: Props) {
                 title="Container"
                 description="Manage the town's container runtime and authentication tokens."
                 icon={Container}
-                index={6}
+                index={8}
               >
                 <div className="space-y-3">
                   <div className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
@@ -515,8 +787,8 @@ export function TownSettingsPageClient({ townId }: Props) {
           </div>
 
           {/* Right sidebar — sticky scrollspy nav */}
-          <div className="hidden w-52 shrink-0 lg:block">
-            <nav className="sticky top-6 px-4 pt-6">
+          <div className="hidden w-52 shrink-0 lg:sticky lg:top-[53px] lg:self-start lg:block">
+            <nav className="px-4 pt-6">
               <div className="mb-3 text-[10px] font-medium tracking-wide text-white/25 uppercase">
                 On this page
               </div>
@@ -529,19 +801,23 @@ export function TownSettingsPageClient({ townId }: Props) {
                     <li key={section.id}>
                       <button
                         onClick={() => scrollToSection(section.id)}
-                        className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors ${
+                        className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs whitespace-nowrap overflow-hidden text-ellipsis transition-colors ${
                           isActive
                             ? 'bg-white/[0.06] text-white/80'
                             : 'text-white/35 hover:bg-white/[0.03] hover:text-white/55'
                         }`}
                       >
                         <SectionIcon className="size-3 shrink-0" />
-                        <span>{section.label}</span>
+                        <span className="truncate">{section.label}</span>
                         {isActive && (
                           <motion.div
                             layoutId="settings-nav-indicator"
                             className="ml-auto size-1 rounded-full bg-[color:oklch(95%_0.15_108)]"
-                            transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                            transition={{
+                              type: 'spring',
+                              stiffness: 350,
+                              damping: 30,
+                            }}
                           />
                         )}
                       </button>
@@ -551,18 +827,20 @@ export function TownSettingsPageClient({ townId }: Props) {
               </ul>
 
               {/* Save button mirrored in sidebar */}
-              <div className="mt-6 border-t border-white/[0.06] pt-4">
-                <Button
-                  onClick={handleSave}
-                  disabled={updateConfig.isPending}
-                  variant="primary"
-                  size="sm"
-                  className="w-full gap-1.5 bg-[color:oklch(95%_0.15_108_/_0.90)] text-black hover:bg-[color:oklch(95%_0.15_108_/_0.95)]"
-                >
-                  <Save className="size-3" />
-                  {updateConfig.isPending ? 'Saving...' : 'Save'}
-                </Button>
-              </div>
+              {!effectiveReadOnly && (
+                <div className="mt-6 border-t border-white/[0.06] pt-4">
+                  <Button
+                    onClick={handleSave}
+                    disabled={updateConfig.isPending}
+                    variant="primary"
+                    size="sm"
+                    className="w-full gap-1.5 bg-[color:oklch(95%_0.15_108_/_0.90)] text-black hover:bg-[color:oklch(95%_0.15_108_/_0.95)]"
+                  >
+                    <Save className="size-3" />
+                    {updateConfig.isPending ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
+              )}
             </nav>
           </div>
         </div>
@@ -596,7 +874,6 @@ function SettingsSection({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.06, duration: 0.35 }}
-      className="scroll-mt-6"
     >
       <div className="mb-4 flex items-start justify-between">
         <div className="flex items-start gap-3">

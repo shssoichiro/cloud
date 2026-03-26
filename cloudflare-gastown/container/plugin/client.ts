@@ -116,6 +116,16 @@ export class GastownClient {
     });
   }
 
+  async requestChanges(input: {
+    feedback: string;
+    files?: string[];
+  }): Promise<{ rework_bead_id: string }> {
+    return this.request<{ rework_bead_id: string }>(this.agentPath('/request-changes'), {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
   async checkMail(): Promise<Mail[]> {
     return this.request<Mail[]>(this.agentPath('/mail'));
   }
@@ -154,6 +164,17 @@ export class GastownClient {
         from_agent_id: this.agentId,
         ...input,
       }),
+    });
+  }
+
+  async nudge(input: {
+    target_agent_id: string;
+    message: string;
+    mode: 'wait-idle' | 'immediate' | 'queue';
+  }): Promise<{ nudge_id: string }> {
+    return this.request<{ nudge_id: string }>(this.rigPath('/nudge'), {
+      method: 'POST',
+      body: JSON.stringify(input),
     });
   }
 
@@ -349,6 +370,25 @@ export class MayorGastownClient {
       method: 'POST',
       body: JSON.stringify({}),
     });
+  }
+
+  async nudge(input: {
+    rig_id: string;
+    target_agent_id: string;
+    message: string;
+    mode: 'wait-idle' | 'immediate' | 'queue';
+  }): Promise<{ nudge_id: string }> {
+    return this.request<{ nudge_id: string }>(
+      `${this.baseUrl}/api/towns/${this.townId}/rigs/${input.rig_id}/nudge`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          target_agent_id: input.target_agent_id,
+          message: input.message,
+          mode: input.mode,
+        }),
+      }
+    );
   }
 
   async listConvoys(): Promise<Convoy[]> {

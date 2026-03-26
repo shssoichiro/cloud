@@ -365,6 +365,62 @@
       "when": 1773693900169,
       "tag": "0051_chemical_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1773859539257,
+      "tag": "0052_zippy_vanisher",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1773859539258,
+      "tag": "0053_fine_stark_industries",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1773915107293,
+      "tag": "0054_strong_the_spike",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1773916598816,
+      "tag": "0055_add_terminal_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1774017577217,
+      "tag": "0056_backfill_terminal_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1774310294000,
+      "tag": "0057_backfill_billing_misclassified",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1774322639381,
+      "tag": "0058_oauth_username_and_discord_verifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1774426403576,
+      "tag": "0059_calm_gressill",
+      "breakpoints": true
     }
   ]
 }

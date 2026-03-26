@@ -5,6 +5,7 @@ import { resSuccess, resError } from '../util/res.util';
 import { parseJsonBody } from '../util/parse-json-body.util';
 import { AgentRole, AgentStatus } from '../types';
 import type { GastownEnv } from '../gastown.worker';
+import { getEnforcedAgentId } from '../middleware/auth.middleware';
 
 const AGENT_LOG = '[rig-agents.handler]';
 
@@ -188,9 +189,18 @@ export async function handleCheckMail(
   return c.json(resSuccess(messages));
 }
 
+const HeartbeatWatermark = z
+  .object({
+    lastEventType: z.string().nullable().optional(),
+    lastEventAt: z.string().nullable().optional(),
+    activeTools: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
 /**
  * Heartbeat endpoint called by the container's heartbeat reporter.
- * Updates the agent's last_activity_at timestamp in the Rig DO.
+ * Updates the agent's last_activity_at timestamp and SDK activity
+ * watermark in the Town DO's agent_metadata.
  */
 export async function handleHeartbeat(
   c: Context<GastownEnv>,
@@ -198,7 +208,30 @@ export async function handleHeartbeat(
 ) {
   const townId = c.get('townId');
   const town = getTownDOStub(c.env, townId);
-  await town.touchAgentHeartbeat(params.agentId);
+
+  // Parse watermark from body (best-effort — old containers send no body)
+  let watermark: z.infer<typeof HeartbeatWatermark> | undefined;
+  try {
+    const body: unknown = await c.req.json();
+    const parsed = HeartbeatWatermark.safeParse(body);
+    if (parsed.success) {
+      watermark = parsed.data;
+    }
+  } catch {
+    // No body or invalid JSON — old container format, just touch
+  }
+
+  await town.touchAgentHeartbeat(
+    params.agentId,
+    watermark
+      ? {
+          lastEventType: watermark.lastEventType ?? null,
+          lastEventAt: watermark.lastEventAt ?? null,
+          activeTools: watermark.activeTools,
+        }
+      : undefined
+  );
+
   return c.json(resSuccess({ heartbeat: true }));
 }
 
@@ -256,4 +289,102 @@ export async function handleDeleteAgent(
   if (!agent || agent.rig_id !== params.rigId) return c.json(resError('Agent not found'), 404);
   await town.deleteAgent(params.agentId);
   return c.json(resSuccess({ deleted: true }));
+}
+
+/**
+ * Returns undelivered, non-expired nudges for the agent.
+ * Called by the container's process-manager when the agent goes idle.
+ */
+export async function handleGetPendingNudges(
+  c: Context<GastownEnv>,
+  params: { rigId: string; agentId: string }
+) {
+  const townId = c.get('townId');
+  const town = getTownDOStub(c.env, townId);
+  const nudges = await town.getPendingNudges(params.agentId);
+  return c.json(resSuccess(nudges));
+}
+
+const QueueNudgeBody = z.object({
+  target_agent_id: z.string().min(1),
+  message: z.string().min(1),
+  mode: z.enum(['wait-idle', 'immediate', 'queue']).optional(),
+});
+
+const NudgeDeliveredBody = z.object({
+  nudge_id: z.string().min(1),
+});
+
+/**
+ * Agent-facing endpoint: queues a nudge from one agent to another.
+ * The requesting agent's identity is taken from the auth token.
+ */
+export async function handleNudge(c: Context<GastownEnv>, params: { rigId: string }) {
+  const parsed = QueueNudgeBody.safeParse(await parseJsonBody(c));
+  if (!parsed.success) {
+    return c.json(
+      { success: false, error: 'Invalid request body', issues: parsed.error.issues },
+      400
+    );
+  }
+  const sourceAgentId = getEnforcedAgentId(c) ?? 'unknown';
+  console.log(
+    `${AGENT_LOG} handleNudge: rigId=${params.rigId} from=${sourceAgentId} target=${parsed.data.target_agent_id}`
+  );
+  const townId = c.get('townId');
+  const town = getTownDOStub(c.env, townId);
+  const nudgeId = await town.queueNudge(parsed.data.target_agent_id, parsed.data.message, {
+    mode: parsed.data.mode,
+    source: 'agent',
+  });
+  return c.json(resSuccess({ nudge_id: nudgeId }));
+}
+
+/**
+ * Marks a nudge as delivered after the container has injected it into the agent.
+ */
+export async function handleNudgeDelivered(
+  c: Context<GastownEnv>,
+  _params: { rigId: string; agentId: string }
+) {
+  const parsed = NudgeDeliveredBody.safeParse(await parseJsonBody(c));
+  if (!parsed.success) {
+    return c.json(
+      { success: false, error: 'Invalid request body', issues: parsed.error.issues },
+      400
+    );
+  }
+  const townId = c.get('townId');
+  const town = getTownDOStub(c.env, townId);
+  await town.markNudgeDelivered(parsed.data.nudge_id);
+  return c.json(resSuccess({ marked: true }));
+}
+
+// ── Request Changes ──────────────────────────────────────────────────
+
+const RequestChangesBody = z.object({
+  feedback: z.string().min(1, 'Feedback is required'),
+  files: z.array(z.string()).optional(),
+});
+
+/**
+ * Refinery requests changes on an in-progress MR. Creates a rework bead
+ * that blocks the MR bead. The reconciler assigns a polecat to the rework
+ * bead; when it closes, the MR unblocks for re-review.
+ */
+export async function handleRequestChanges(
+  c: Context<GastownEnv>,
+  params: { rigId: string; agentId: string }
+) {
+  const parsed = RequestChangesBody.safeParse(await parseJsonBody(c));
+  if (!parsed.success) {
+    return c.json(
+      { success: false, error: 'Invalid request body', issues: parsed.error.issues },
+      400
+    );
+  }
+  const townId = c.get('townId');
+  const town = getTownDOStub(c.env, townId);
+  const result = await town.requestChanges(params.agentId, parsed.data);
+  return c.json(resSuccess(result), 201);
 }

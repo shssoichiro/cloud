@@ -4,7 +4,7 @@ import { registerApiMetricsRoutes } from './api-metrics-routes';
 import { evaluateAlerts } from './alerting/evaluate';
 import { registerAlertingConfigRoutes } from './alerting/config-routes';
 import { SessionMetricsParamsSchema } from './session-metrics-schema';
-import type { SessionMetricsParams } from './session-metrics-schema';
+import type { SessionMetricsParamsInput } from './session-metrics-schema';
 import { writeSessionMetricsDataPoint } from './session-metrics-analytics';
 
 export { AlertConfigDO } from './alerting/AlertConfigDO';
@@ -15,17 +15,17 @@ registerApiMetricsRoutes(app);
 registerAlertingConfigRoutes(app);
 
 export default class extends WorkerEntrypoint<Env> {
-	async fetch(request: Request): Promise<Response> {
-		return app.fetch(request, this.env, this.ctx);
-	}
+  async fetch(request: Request): Promise<Response> {
+    return app.fetch(request, this.env, this.ctx);
+  }
 
-	async scheduled(_controller: ScheduledController): Promise<void> {
-		await evaluateAlerts(this.env);
-	}
+  async scheduled(_controller: ScheduledController): Promise<void> {
+    await evaluateAlerts(this.env);
+  }
 
-	/** RPC method called by session-ingest via service binding. */
-	async ingestSessionMetrics(params: SessionMetricsParams): Promise<void> {
-		const parsed = SessionMetricsParamsSchema.parse(params);
-		await writeSessionMetricsDataPoint(parsed, this.env);
-	}
+  /** RPC method called by session-ingest via service binding. */
+  async ingestSessionMetrics(params: SessionMetricsParamsInput): Promise<void> {
+    const parsed = SessionMetricsParamsSchema.parse(params);
+    await writeSessionMetricsDataPoint(parsed, this.env);
+  }
 }

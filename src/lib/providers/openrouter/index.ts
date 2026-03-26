@@ -1,5 +1,5 @@
 import { isFreeModel, kiloFreeModels, preferredModels } from '@/lib/models';
-import { PROVIDERS } from '@/lib/providers';
+import PROVIDERS from '@/lib/providers/provider-definitions';
 import type { OpenRouterModel } from '@/lib/organizations/organization-types';
 import {
   OpenRouterModelsResponseSchema,
@@ -8,24 +8,19 @@ import {
 import { errorExceptInTest } from '@/lib/utils.server';
 import { captureException, captureMessage } from '@sentry/nextjs';
 import { convertFromKiloModel } from '@/lib/providers/kilo-free-model';
-import { isRateLimitedToDeath } from '@/lib/rate-limited-models';
+import { isForbiddenFreeModel } from '@/lib/forbidden-free-models';
 import {
   getModelSettings,
   getOpenCodeSettings,
   getVersionedModelSettings,
 } from '@/lib/providers/model-settings';
-import {
-  AUTO_MODELS,
-  deprecatedAutoModelsToPreventNewExtensionModelPickerFromGettingStuck,
-} from '@/lib/kilo-auto-model';
+import { AUTO_MODELS } from '@/lib/kilo-auto-model';
 
 // Re-export from shared module for backwards compatibility
 export { normalizeModelId } from '@/lib/model-utils';
 
 function buildAutoModels(): OpenRouterModel[] {
-  return AUTO_MODELS.concat(
-    deprecatedAutoModelsToPreventNewExtensionModelPickerFromGettingStuck()
-  ).map(m => ({
+  return AUTO_MODELS.map(m => ({
     id: m.id,
     name: m.name,
     created: 0,
@@ -60,8 +55,7 @@ function enhancedModelList(models: OpenRouterModel[]) {
   const enhancedModels = models
     .filter(
       (model: OpenRouterModel) =>
-        !kiloFreeModels.some(m => m.public_id === model.id && m.status !== 'disabled') &&
-        !isRateLimitedToDeath(model.id)
+        !kiloFreeModels.some(m => m.public_id === model.id) && !isForbiddenFreeModel(model.id)
     )
     .concat(
       kiloFreeModels.filter(m => m.status === 'public').map(model => convertFromKiloModel(model))

@@ -1,29 +1,10 @@
-import { ReasoningDetailType } from '@/lib/custom-llm/reasoning-details';
 import { getOutputHeaders } from '@/lib/llm-proxy-helpers';
 import type { ChatCompletionChunk, OpenRouterUsage } from '@/lib/processUsage.types';
-import type { MessageWithReasoning } from '@/lib/providers/openrouter/types';
 import type { EventSourceMessage } from 'eventsource-parser';
 import { createParser } from 'eventsource-parser';
 import { NextResponse } from 'next/server';
 import type OpenAI from 'openai';
-
-function convertReasoningToOpenRouterFormat(message: MessageWithReasoning) {
-  if (!message.reasoning_content) {
-    return;
-  }
-  if (!message.reasoning) {
-    message.reasoning = message.reasoning_content;
-  }
-  if (!message.reasoning_details) {
-    message.reasoning_details = [
-      {
-        type: ReasoningDetailType.Text,
-        text: message.reasoning_content,
-      },
-    ];
-  }
-  delete message.reasoning_content;
-}
+import type Anthropic from '@anthropic-ai/sdk';
 
 function rewriteUsage(usage: OpenRouterUsage) {
   // We only rewrite the response for free models, strip upstream cost
@@ -46,11 +27,6 @@ export async function rewriteFreeModelResponse_ChatCompletions(response: Respons
       json.model = model;
     }
 
-    const message = json.choices?.[0]?.message;
-    if (message) {
-      convertReasoningToOpenRouterFormat(message as MessageWithReasoning);
-    }
-
     const usage = json.usage as OpenRouterUsage;
     if (usage) {
       rewriteUsage(usage);
@@ -71,9 +47,11 @@ export async function rewriteFreeModelResponse_ChatCompletions(response: Respons
         return;
       }
 
+      let doneReceived = false;
       const parser = createParser({
         onEvent(event: EventSourceMessage) {
           if (event.data === '[DONE]') {
+            doneReceived = true;
             return;
           }
           const json = JSON.parse(event.data) as ChatCompletionChunk;
@@ -87,8 +65,6 @@ export async function rewriteFreeModelResponse_ChatCompletions(response: Respons
             if (delta?.role === null) {
               delete delta.role;
             }
-
-            convertReasoningToOpenRouterFormat(delta as MessageWithReasoning);
           }
 
           if (!json.choices) {
@@ -111,7 +87,115 @@ export async function rewriteFreeModelResponse_ChatCompletions(response: Respons
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          controller.enqueue('data: [DONE]\n\n');
+          if (doneReceived) {
+            controller.enqueue('data: [DONE]\n\n');
+          }
+          controller.close();
+          break;
+        }
+        parser.feed(decoder.decode(value, { stream: true }));
+      }
+    },
+  });
+
+  return new NextResponse(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+type MessagesApiUsage = Anthropic.Messages.Usage & {
+  cost?: number;
+  is_byok?: boolean | null;
+  cost_details?: { upstream_inference_cost: number };
+};
+
+type MessagesApiMessageStart = {
+  type: 'message_start';
+  message: Anthropic.Messages.Message & { usage: MessagesApiUsage };
+};
+
+type MessagesApiMessageDelta = {
+  type: 'message_delta';
+  usage: MessagesApiUsage;
+  delta: Anthropic.Messages.MessageDeltaEvent['delta'];
+};
+
+function rewriteMessagesUsage(usage: MessagesApiUsage) {
+  delete usage.cost;
+  delete usage.cost_details;
+  delete usage.is_byok;
+}
+
+export async function rewriteFreeModelResponse_Messages(response: Response, model: string) {
+  const headers = getOutputHeaders(response);
+
+  if (headers.get('content-type')?.includes('application/json')) {
+    const json = (await response.json()) as Anthropic.Messages.Message & {
+      usage?: MessagesApiUsage;
+    };
+    if (json.model) {
+      json.model = model;
+    }
+    if (json.usage) {
+      rewriteMessagesUsage(json.usage);
+    }
+    return NextResponse.json(json, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = response.body?.getReader();
+      if (!reader) {
+        controller.close();
+        return;
+      }
+
+      const parser = createParser({
+        onEvent(event: EventSourceMessage) {
+          if (event.data === '[DONE]') {
+            // OpenRouter sends [DONE], but this is not standard for Anthropic-style APIs
+            return;
+          }
+          const json = JSON.parse(event.data) as
+            | MessagesApiMessageStart
+            | MessagesApiMessageDelta
+            | Anthropic.Messages.MessageStreamEvent;
+
+          if (json.type === 'message_start') {
+            const e = json as MessagesApiMessageStart;
+            if (e.message.model) {
+              e.message.model = model;
+            }
+            if (e.message.usage) {
+              rewriteMessagesUsage(e.message.usage);
+            }
+          }
+
+          if (json.type === 'message_delta') {
+            const e = json as MessagesApiMessageDelta;
+            if (e.usage) {
+              rewriteMessagesUsage(e.usage);
+            }
+          }
+
+          const eventLine = event.event ? 'event: ' + event.event + '\n' : '';
+          controller.enqueue(eventLine + 'data: ' + JSON.stringify(json) + '\n\n');
+        },
+        onComment() {
+          controller.enqueue(': KILO PROCESSING\n\n');
+        },
+      });
+
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
           controller.close();
           break;
         }
@@ -160,9 +244,11 @@ export async function rewriteFreeModelResponse_Responses(response: Response, mod
         return;
       }
 
+      let doneReceived = false;
       const parser = createParser({
         onEvent(event: EventSourceMessage) {
           if (event.data === '[DONE]') {
+            doneReceived = true;
             return;
           }
           const json = JSON.parse(event.data) as ResponsesApiEvent;
@@ -185,6 +271,9 @@ export async function rewriteFreeModelResponse_Responses(response: Response, mod
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
+          if (doneReceived) {
+            controller.enqueue('data: [DONE]\n\n');
+          }
           controller.close();
           break;
         }

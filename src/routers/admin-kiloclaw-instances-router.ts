@@ -1,16 +1,45 @@
 import { adminProcedure, createTRPCRouter, UpstreamApiError } from '@/lib/trpc/init';
 import { db } from '@/lib/drizzle';
-import { kiloclaw_instances, kilocode_users } from '@kilocode/db/schema';
+import {
+  kiloclaw_instances,
+  kiloclaw_subscriptions,
+  kiloclaw_email_log,
+  kilocode_users,
+} from '@kilocode/db/schema';
 import { KiloClawInternalClient, KiloClawApiError } from '@/lib/kiloclaw/kiloclaw-internal-client';
+import { KiloClawUserClient } from '@/lib/kiloclaw/kiloclaw-user-client';
 import {
   markActiveInstanceDestroyed,
   restoreDestroyedInstance,
 } from '@/lib/kiloclaw/instance-registry';
 import { flyAppNameFromUserId } from '@/lib/kiloclaw/fly-app-name';
-import type { PlatformDebugStatusResponse, VolumeSnapshot } from '@/lib/kiloclaw/types';
+import {
+  createKiloClawAdminAuditLog,
+  listKiloClawAdminAuditLogs,
+} from '@/lib/kiloclaw/admin-audit-log';
+import type {
+  PlatformDebugStatusResponse,
+  VolumeSnapshot,
+  CandidateVolumesResponse,
+  ReassociateVolumeResponse,
+} from '@/lib/kiloclaw/types';
+import { generateApiToken, TOKEN_EXPIRY } from '@/lib/tokens';
 import { TRPCError } from '@trpc/server';
 import * as z from 'zod';
-import { eq, and, or, desc, asc, ilike, isNull, isNotNull, sql, gte, type SQL } from 'drizzle-orm';
+import {
+  eq,
+  and,
+  or,
+  desc,
+  asc,
+  ilike,
+  isNull,
+  isNotNull,
+  inArray,
+  sql,
+  gte,
+  type SQL,
+} from 'drizzle-orm';
 
 const ListInstancesSchema = z.object({
   offset: z.number().min(0).default(0),
@@ -18,7 +47,7 @@ const ListInstancesSchema = z.object({
   sortBy: z.enum(['created_at', 'destroyed_at']).default('created_at'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
   search: z.string().optional(),
-  status: z.enum(['all', 'active', 'destroyed']).default('all'),
+  status: z.enum(['all', 'active', 'suspended', 'destroyed']).default('all'),
 });
 
 const GetInstanceSchema = z.object({
@@ -112,6 +141,7 @@ export type AdminKiloclawInstance = {
   sandbox_id: string;
   created_at: string;
   destroyed_at: string | null;
+  suspended_at: string | null;
   user_email: string | null;
 };
 
@@ -127,9 +157,14 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
       .select({
         instance: kiloclaw_instances,
         user_email: kilocode_users.google_user_email,
+        suspended_at: kiloclaw_subscriptions.suspended_at,
       })
       .from(kiloclaw_instances)
       .leftJoin(kilocode_users, eq(kiloclaw_instances.user_id, kilocode_users.id))
+      .leftJoin(
+        kiloclaw_subscriptions,
+        eq(kiloclaw_instances.user_id, kiloclaw_subscriptions.user_id)
+      )
       .where(eq(kiloclaw_instances.id, input.id))
       .limit(1);
 
@@ -143,6 +178,7 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
       sandbox_id: result.instance.sandbox_id,
       created_at: result.instance.created_at,
       destroyed_at: result.instance.destroyed_at,
+      suspended_at: result.suspended_at ?? null,
       user_email: result.user_email,
     };
 
@@ -201,6 +237,10 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
 
     if (status === 'active') {
       conditions.push(isNull(kiloclaw_instances.destroyed_at));
+      conditions.push(isNull(kiloclaw_subscriptions.suspended_at));
+    } else if (status === 'suspended') {
+      conditions.push(isNull(kiloclaw_instances.destroyed_at));
+      conditions.push(isNotNull(kiloclaw_subscriptions.suspended_at));
     } else if (status === 'destroyed') {
       conditions.push(isNotNull(kiloclaw_instances.destroyed_at));
     }
@@ -214,9 +254,14 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
       .select({
         instance: kiloclaw_instances,
         user_email: kilocode_users.google_user_email,
+        suspended_at: kiloclaw_subscriptions.suspended_at,
       })
       .from(kiloclaw_instances)
       .leftJoin(kilocode_users, eq(kiloclaw_instances.user_id, kilocode_users.id))
+      .leftJoin(
+        kiloclaw_subscriptions,
+        eq(kiloclaw_instances.user_id, kiloclaw_subscriptions.user_id)
+      )
       .where(whereCondition)
       .orderBy(orderCondition)
       .limit(limit)
@@ -226,6 +271,10 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(kiloclaw_instances)
       .leftJoin(kilocode_users, eq(kiloclaw_instances.user_id, kilocode_users.id))
+      .leftJoin(
+        kiloclaw_subscriptions,
+        eq(kiloclaw_instances.user_id, kiloclaw_subscriptions.user_id)
+      )
       .where(whereCondition);
 
     const totalCount = totalCountResult[0]?.count || 0;
@@ -237,6 +286,7 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
       sandbox_id: row.instance.sandbox_id,
       created_at: row.instance.created_at,
       destroyed_at: row.instance.destroyed_at,
+      suspended_at: row.suspended_at ?? null,
       user_email: row.user_email,
     }));
 
@@ -254,15 +304,20 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
   stats: adminProcedure.input(StatsSchema).query(async ({ input }) => {
     const { days } = input;
 
-    // Overview counts
+    // Overview counts (join subscriptions to derive suspended state)
     const [overview] = await db
       .select({
         total_instances: sql<number>`COUNT(*)::int`,
-        active_instances: sql<number>`COUNT(CASE WHEN ${kiloclaw_instances.destroyed_at} IS NULL THEN 1 END)::int`,
+        active_instances: sql<number>`COUNT(CASE WHEN ${kiloclaw_instances.destroyed_at} IS NULL AND ${kiloclaw_subscriptions.suspended_at} IS NULL THEN 1 END)::int`,
+        suspended_instances: sql<number>`COUNT(CASE WHEN ${kiloclaw_instances.destroyed_at} IS NULL AND ${kiloclaw_subscriptions.suspended_at} IS NOT NULL THEN 1 END)::int`,
         destroyed_instances: sql<number>`COUNT(CASE WHEN ${kiloclaw_instances.destroyed_at} IS NOT NULL THEN 1 END)::int`,
         unique_users: sql<number>`COUNT(DISTINCT ${kiloclaw_instances.user_id})::int`,
       })
-      .from(kiloclaw_instances);
+      .from(kiloclaw_instances)
+      .leftJoin(
+        kiloclaw_subscriptions,
+        eq(kiloclaw_instances.user_id, kiloclaw_subscriptions.user_id)
+      );
 
     // Time-windowed counts
     const [last24h] = await db
@@ -341,6 +396,7 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
       overview: {
         totalInstances: overview?.total_instances ?? 0,
         activeInstances: overview?.active_instances ?? 0,
+        suspendedInstances: overview?.suspended_instances ?? 0,
         destroyedInstances: overview?.destroyed_instances ?? 0,
         uniqueUsers: overview?.unique_users ?? 0,
         last24hCreated: last24h?.count ?? 0,
@@ -504,9 +560,20 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
     const fallbackMessage = 'Failed to start machine';
     try {
       const client = new KiloClawInternalClient();
-      return await client.start(input.userId);
+      return await client.start(input.userId, { skipCooldown: true });
     } catch (err) {
       console.error('Failed to start machine for user:', input.userId, err);
+      throwKiloclawAdminError(err, fallbackMessage);
+    }
+  }),
+
+  forceRetryRecovery: adminProcedure.input(GatewayProcessSchema).mutation(async ({ input }) => {
+    const fallbackMessage = 'Failed to retry recovery';
+    try {
+      const client = new KiloClawInternalClient();
+      return await client.forceRetryRecovery(input.userId);
+    } catch (err) {
+      console.error('Failed to retry recovery for user:', input.userId, err);
       throwKiloclawAdminError(err, fallbackMessage);
     }
   }),
@@ -521,6 +588,46 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
       throwKiloclawAdminError(err, fallbackMessage);
     }
   }),
+
+  restartMachine: adminProcedure
+    .input(
+      z.object({
+        instanceId: z.string().uuid(),
+        imageTag: z
+          .string()
+          .max(128, 'Image tag too long')
+          .regex(
+            /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
+            'Image tag must be alphanumeric with dots, hyphens, or underscores'
+          )
+          .optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const [row] = await db
+        .select({ user: kilocode_users })
+        .from(kiloclaw_instances)
+        .innerJoin(kilocode_users, eq(kiloclaw_instances.user_id, kilocode_users.id))
+        .where(eq(kiloclaw_instances.id, input.instanceId))
+        .limit(1);
+
+      if (!row) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Instance not found' });
+      }
+
+      const token = generateApiToken(row.user, undefined, { expiresIn: TOKEN_EXPIRY.fiveMinutes });
+      const client = new KiloClawUserClient(token);
+      const fallbackMessage = 'Failed to restart machine';
+      try {
+        return await client.restartMachine(
+          input.imageTag ? { imageTag: input.imageTag } : undefined,
+          { userId: row.user.id }
+        );
+      } catch (err) {
+        console.error('Failed to restart machine for user:', row.user.id, err);
+        throwKiloclawAdminError(err, fallbackMessage);
+      }
+    }),
 
   destroy: adminProcedure.input(DestroyInstanceSchema).mutation(async ({ input, ctx }) => {
     const [instance] = await db
@@ -556,6 +663,156 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
       throw error;
     }
 
+    // Post-destroy cleanup: best-effort DB tidying that must not report
+    // failure after a successful destroy.
+    try {
+      // Clear lifecycle emails so they can fire again if the user re-provisions.
+      const resettableEmailTypes = [
+        'claw_suspended_trial',
+        'claw_suspended_subscription',
+        'claw_suspended_payment',
+        'claw_destruction_warning',
+        'claw_instance_destroyed',
+      ];
+      await db
+        .delete(kiloclaw_email_log)
+        .where(
+          and(
+            eq(kiloclaw_email_log.user_id, instance.user_id),
+            inArray(kiloclaw_email_log.email_type, resettableEmailTypes)
+          )
+        );
+      // Clear per-instance ready emails so a future re-provision triggers the notification.
+      await db
+        .delete(kiloclaw_email_log)
+        .where(
+          and(
+            eq(kiloclaw_email_log.user_id, instance.user_id),
+            sql`${kiloclaw_email_log.email_type} LIKE 'claw_instance_ready:%'`
+          )
+        );
+    } catch (cleanupError) {
+      console.error('[admin-kiloclaw] Post-destroy cleanup failed:', cleanupError);
+    }
+
     return { success: true };
   }),
+
+  adminAuditLogs: adminProcedure
+    .input(
+      z.object({
+        userId: z.string().min(1),
+        action: z.string().optional(),
+        limit: z.number().min(1).max(50).default(10),
+      })
+    )
+    .query(async ({ input }) => {
+      return listKiloClawAdminAuditLogs({
+        target_user_id: input.userId,
+        action: input.action as Parameters<typeof listKiloClawAdminAuditLogs>[0]['action'],
+        limit: input.limit,
+      });
+    }),
+
+  candidateVolumes: adminProcedure
+    .input(z.object({ userId: z.string().min(1) }))
+    .query(async ({ input }): Promise<CandidateVolumesResponse> => {
+      try {
+        const client = new KiloClawInternalClient();
+        return await client.listCandidateVolumes(input.userId);
+      } catch (err) {
+        throwKiloclawAdminError(err, 'Failed to list candidate volumes');
+      }
+    }),
+
+  devNukeAll: adminProcedure.mutation(async ({ ctx }) => {
+    if (process.env.NODE_ENV !== 'development') {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'This endpoint is only available in development mode',
+      });
+    }
+
+    const activeInstances = await db
+      .select({
+        id: kiloclaw_instances.id,
+        user_id: kiloclaw_instances.user_id,
+      })
+      .from(kiloclaw_instances)
+      .where(isNull(kiloclaw_instances.destroyed_at));
+
+    console.log(
+      `[admin-kiloclaw] DevNukeAll triggered by admin ${ctx.user.id} (${ctx.user.google_user_email}): ${activeInstances.length} active instances`
+    );
+
+    const client = new KiloClawInternalClient();
+    let destroyed = 0;
+    const errors: Array<{ userId: string; error: string }> = [];
+
+    for (const instance of activeInstances) {
+      const destroyedRow = await markActiveInstanceDestroyed(instance.user_id);
+      try {
+        await client.destroy(instance.user_id);
+        destroyed++;
+      } catch (err) {
+        if (destroyedRow) {
+          await restoreDestroyedInstance(destroyedRow.id);
+        }
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        errors.push({ userId: instance.user_id, error: message });
+        console.error(
+          `[admin-kiloclaw] DevNukeAll: failed to destroy instance ${instance.id} (user: ${instance.user_id}):`,
+          err
+        );
+      }
+    }
+
+    return { total: activeInstances.length, destroyed, errors };
+  }),
+
+  reassociateVolume: adminProcedure
+    .input(
+      z.object({
+        userId: z.string().min(1),
+        newVolumeId: z.string().min(1),
+        reason: z.string().min(10).max(500),
+      })
+    )
+    .mutation(async ({ input, ctx }): Promise<ReassociateVolumeResponse> => {
+      console.log(
+        `[admin-kiloclaw] Volume reassociation triggered by admin ${ctx.user.id} (${ctx.user.google_user_email}) for user ${input.userId}: newVolume=${input.newVolumeId} reason="${input.reason}"`
+      );
+      try {
+        const client = new KiloClawInternalClient();
+        const result = await client.reassociateVolume(
+          input.userId,
+          input.newVolumeId,
+          input.reason
+        );
+
+        try {
+          await createKiloClawAdminAuditLog({
+            action: 'kiloclaw.volume.reassociate',
+            actor_id: ctx.user.id,
+            actor_email: ctx.user.google_user_email,
+            actor_name: ctx.user.google_user_name,
+            target_user_id: input.userId,
+            message: `Volume reassociated: ${result.previousVolumeId ?? 'none'} → ${result.newVolumeId} (region: ${result.newRegion}). Reason: ${input.reason}`,
+            metadata: {
+              previousVolumeId: result.previousVolumeId,
+              newVolumeId: result.newVolumeId,
+              newRegion: result.newRegion,
+              reason: input.reason,
+            },
+          });
+        } catch (auditErr) {
+          console.error('Failed to write audit log for volume reassociation:', auditErr);
+        }
+
+        return result;
+      } catch (err) {
+        console.error('Failed to reassociate volume for user:', input.userId, err);
+        throwKiloclawAdminError(err, 'Failed to reassociate volume');
+      }
+    }),
 });

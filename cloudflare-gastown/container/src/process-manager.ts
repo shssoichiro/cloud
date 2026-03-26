@@ -10,6 +10,7 @@ import { createKilo, type KiloClient } from '@kilocode/sdk';
 import { z } from 'zod';
 import type { ManagedAgent, StartAgentRequest } from './types';
 import { reportAgentCompleted } from './completion-reporter';
+import { buildKiloConfigContent } from './agent-runner';
 import { log } from './logger';
 
 const MANAGER_LOG = '[process-manager]';
@@ -31,6 +32,8 @@ const sdkInstances = new Map<string, SDKInstance>();
 const eventAbortControllers = new Map<string, AbortController>();
 // Event sinks for WebSocket forwarding
 const eventSinks = new Set<(agentId: string, event: string, data: unknown) => void>();
+// Per-agent idle timers — fires exit when no nudges arrive
+const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 let nextPort = 4096;
 const startTime = Date.now();
@@ -60,7 +63,12 @@ export function unregisterEventSink(
 // ── Event buffer for HTTP polling ─────────────────────────────────────
 // The TownContainerDO polls GET /agents/:id/events?after=N to get events
 // because containerFetch doesn't support WebSocket upgrades.
-type BufferedEvent = { id: number; event: string; data: unknown; timestamp: string };
+type BufferedEvent = {
+  id: number;
+  event: string;
+  data: unknown;
+  timestamp: string;
+};
 const MAX_BUFFERED_EVENTS = 2000;
 const agentEventBuffers = new Map<string, BufferedEvent[]>();
 let nextEventId = 1;
@@ -71,7 +79,12 @@ function bufferAgentEvent(agentId: string, event: string, data: unknown): void {
     buf = [];
     agentEventBuffers.set(agentId, buf);
   }
-  buf.push({ id: nextEventId++, event, data, timestamp: new Date().toISOString() });
+  buf.push({
+    id: nextEventId++,
+    event,
+    data,
+    timestamp: new Date().toISOString(),
+  });
   if (buf.length > MAX_BUFFERED_EVENTS) {
     buf.splice(0, buf.length - MAX_BUFFERED_EVENTS);
   }
@@ -216,6 +229,180 @@ async function ensureSDKServer(
 }
 
 /**
+ * Zod schema for a single pending nudge returned by the gastown worker.
+ */
+const PendingNudge = z.object({
+  nudge_id: z.string(),
+  message: z.string(),
+  mode: z.string(),
+  priority: z.string(),
+  source: z.string(),
+});
+
+const PendingNudgesResponse = z.object({
+  success: z.boolean(),
+  data: z.array(PendingNudge),
+});
+
+/**
+ * Fetch pending nudges for an agent from the gastown worker.
+ * Returns the array (may be empty), or null on error.
+ */
+async function fetchPendingNudges(
+  agent: ManagedAgent
+): Promise<z.infer<typeof PendingNudge>[] | null> {
+  const authToken =
+    process.env.GASTOWN_CONTAINER_TOKEN ?? agent.gastownContainerToken ?? agent.gastownSessionToken;
+  if (!agent.gastownApiUrl || !authToken || !agent.townId || !agent.rigId) return null;
+
+  try {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${authToken}`,
+      'X-Gastown-Agent-Id': agent.agentId,
+      'X-Gastown-Rig-Id': agent.rigId,
+    };
+    const resp = await fetch(
+      `${agent.gastownApiUrl}/api/towns/${agent.townId}/rigs/${agent.rigId}/agents/${agent.agentId}/pending-nudges`,
+      { headers }
+    );
+    if (!resp.ok) {
+      console.warn(
+        `${MANAGER_LOG} fetchPendingNudges: non-ok status ${resp.status} for agent ${agent.agentId}`
+      );
+      return null;
+    }
+    const raw: unknown = await resp.json();
+    const parsed = PendingNudgesResponse.safeParse(raw);
+    if (!parsed.success) {
+      console.warn(
+        `${MANAGER_LOG} fetchPendingNudges: unexpected response shape`,
+        parsed.error.issues
+      );
+      return null;
+    }
+    return parsed.data.data;
+  } catch (err) {
+    console.warn(`${MANAGER_LOG} fetchPendingNudges: error for agent ${agent.agentId}:`, err);
+    return null;
+  }
+}
+
+/**
+ * Mark a nudge as delivered via the gastown worker.
+ */
+async function markNudgeDelivered(agent: ManagedAgent, nudgeId: string): Promise<void> {
+  const authToken =
+    process.env.GASTOWN_CONTAINER_TOKEN ?? agent.gastownContainerToken ?? agent.gastownSessionToken;
+  if (!agent.gastownApiUrl || !authToken || !agent.townId || !agent.rigId) return;
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authToken}`,
+      'X-Gastown-Agent-Id': agent.agentId,
+      'X-Gastown-Rig-Id': agent.rigId,
+    };
+    await fetch(
+      `${agent.gastownApiUrl}/api/towns/${agent.townId}/rigs/${agent.rigId}/agents/${agent.agentId}/nudge-delivered`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ nudge_id: nudgeId }),
+      }
+    );
+  } catch (err) {
+    console.warn(`${MANAGER_LOG} markNudgeDelivered: error for nudge ${nudgeId}:`, err);
+  }
+}
+
+/**
+ * Clear the idle timer for an agent (if any).
+ */
+function clearIdleTimer(agentId: string): void {
+  const timer = idleTimers.get(agentId);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    idleTimers.delete(agentId);
+  }
+}
+
+/**
+ * Handle a session.idle event for a non-mayor agent.
+ *
+ * - Checks for pending nudges and injects the highest-priority one if found.
+ * - If no nudges are pending, starts (or restarts) an idle timeout that will
+ *   exit the agent after AGENT_IDLE_TIMEOUT_MS (default 2 min).
+ *
+ * Returns true if the agent should continue (nudge injected or timer started),
+ * false if the agent should exit immediately (injection failed unrecoverably).
+ */
+async function handleIdleEvent(agent: ManagedAgent, onExit: () => void): Promise<void> {
+  const agentId = agent.agentId;
+  console.log(`${MANAGER_LOG} handleIdleEvent: checking nudges for agent ${agentId}`);
+
+  const nudges = await fetchPendingNudges(agent);
+
+  if (nudges === null) {
+    // Error fetching — treat as no nudges, start idle timer
+    console.warn(
+      `${MANAGER_LOG} handleIdleEvent: could not fetch nudges for ${agentId}, starting idle timer`
+    );
+  } else if (nudges.length > 0 && agent.status === 'running') {
+    // There is at least one pending nudge — inject the first (highest priority)
+    const nudge = nudges[0];
+    console.log(
+      `${MANAGER_LOG} handleIdleEvent: injecting nudge ${nudge.nudge_id} (priority=${nudge.priority}) for agent ${agentId}`
+    );
+    // Cancel any existing idle timer since the agent will keep working
+    clearIdleTimer(agentId);
+    try {
+      await sendMessage(agentId, nudge.message);
+      // Mark delivered (fire-and-forget is fine — best effort)
+      void markNudgeDelivered(agent, nudge.nudge_id);
+    } catch (err) {
+      console.warn(
+        `${MANAGER_LOG} handleIdleEvent: sendMessage failed for agent ${agentId} (status=${agent.status}), exiting:`,
+        err
+      );
+      onExit();
+    }
+    return;
+  }
+
+  // No nudges (or fetch error) — (re)start the idle timeout.
+  // Refineries get a longer timeout because their workflow is multi-step
+  // (diff → analyze → decide → merge/rework). The 2-min default kills the
+  // session between LLM turns when the refinery responds with text before
+  // issuing a tool call. See #1342.
+  clearIdleTimer(agentId);
+  const timeoutMs =
+    agent.role === 'refinery'
+      ? process.env.REFINERY_IDLE_TIMEOUT_MS !== undefined
+        ? Number(process.env.REFINERY_IDLE_TIMEOUT_MS)
+        : 600_000
+      : process.env.AGENT_IDLE_TIMEOUT_MS !== undefined
+        ? Number(process.env.AGENT_IDLE_TIMEOUT_MS)
+        : 120_000;
+
+  console.log(
+    `${MANAGER_LOG} handleIdleEvent: no nudges for ${agentId}, idle timeout in ${timeoutMs}ms`
+  );
+
+  idleTimers.set(
+    agentId,
+    setTimeout(() => {
+      idleTimers.delete(agentId);
+      if (agent.status === 'running') {
+        console.log(
+          `${MANAGER_LOG} handleIdleEvent: idle timeout fired for agent ${agentId}, exiting`
+        );
+        onExit();
+      }
+    }, timeoutMs)
+  );
+}
+
+/**
  * Subscribe to SDK events for an agent's session and forward them.
  */
 async function subscribeToEvents(
@@ -225,6 +412,32 @@ async function subscribeToEvents(
 ): Promise<void> {
   const controller = new AbortController();
   eventAbortControllers.set(agent.agentId, controller);
+
+  // Called when the agent should exit cleanly after idle timeout or nudge failure.
+  const exitAgent = () => {
+    if (agent.status !== 'running') return;
+    log.info('agent.exit', {
+      agentId: agent.agentId,
+      name: agent.name,
+      reason: 'completed',
+      exitReason: 'completed',
+    });
+    agent.status = 'exited';
+    agent.exitReason = 'completed';
+    broadcastEvent(agent.agentId, 'agent.exited', { reason: 'completed' });
+    void reportAgentCompleted(agent, 'completed');
+
+    // Release SDK session so the server can shut down when idle
+    const inst = sdkInstances.get(agent.workdir);
+    if (inst) {
+      inst.sessionCount--;
+      if (inst.sessionCount <= 0) {
+        inst.server.close();
+        sdkInstances.delete(agent.workdir);
+      }
+    }
+    controller.abort();
+  };
 
   try {
     console.log(`${MANAGER_LOG} Subscribing to events for agent ${agent.agentId}...`);
@@ -255,6 +468,8 @@ async function subscribeToEvents(
       if (sessionID && sessionID !== agent.sessionId) continue;
 
       agent.lastActivityAt = new Date().toISOString();
+      agent.lastEventType = event.type ?? 'unknown';
+      agent.lastEventAt = new Date().toISOString();
 
       // Track active tool calls
       if (event.properties && 'activeTools' in event.properties) {
@@ -267,34 +482,21 @@ async function subscribeToEvents(
       // Broadcast to WebSocket sinks
       broadcastEvent(agent.agentId, event.type ?? 'unknown', event.properties ?? {});
 
-      // Detect completion. session.idle means "done processing this turn."
-      // Mayor agents are persistent — session.idle for them means "turn done,"
-      // not "task finished." Only non-mayor agents exit on idle.
-      const isTerminal = event.type === 'session.idle' && request.role !== 'mayor';
-
-      if (isTerminal) {
-        log.info('agent.exit', {
-          agentId: agent.agentId,
-          name: agent.name,
-          reason: 'completed',
-          exitReason: 'completed',
-        });
-        agent.status = 'exited';
-        agent.exitReason = 'completed';
-        broadcastEvent(agent.agentId, 'agent.exited', { reason: 'completed' });
-        void reportAgentCompleted(agent, 'completed');
-
-        // Release SDK session so the server can shut down when idle
-        const inst = sdkInstances.get(agent.workdir);
-        if (inst) {
-          inst.sessionCount--;
-          if (inst.sessionCount <= 0) {
-            inst.server.close();
-            sdkInstances.delete(agent.workdir);
-          }
+      if (event.type === 'session.idle') {
+        if (request.role === 'mayor') {
+          // Mayor agents are persistent — session.idle means "turn done", not exit.
+          continue;
         }
-        break;
+        // Non-mayor: check for pending nudges before deciding to exit.
+        // handleIdleEvent is async; we run it in the background so the event
+        // loop continues. The exitAgent callback will abort the stream if needed.
+        void handleIdleEvent(agent, exitAgent);
+      } else {
+        // Non-idle event means the agent resumed work — cancel any pending idle timer.
+        clearIdleTimer(agent.agentId);
       }
+
+      if (controller.signal.aborted) break;
     }
   } catch (err) {
     if (!controller.signal.aborted) {
@@ -303,9 +505,12 @@ async function subscribeToEvents(
         error: err instanceof Error ? err.message : String(err),
       });
       if (agent.status === 'running') {
+        clearIdleTimer(agent.agentId);
         agent.status = 'failed';
         agent.exitReason = 'Event stream error';
-        broadcastEvent(agent.agentId, 'agent.exited', { reason: 'stream error' });
+        broadcastEvent(agent.agentId, 'agent.exited', {
+          reason: 'stream error',
+        });
         void reportAgentCompleted(agent, 'failed', 'Event stream error');
 
         // Release SDK session on stream error (same cleanup as normal completion)
@@ -320,6 +525,7 @@ async function subscribeToEvents(
       }
     }
   } finally {
+    clearIdleTimer(agent.agentId);
     eventAbortControllers.delete(agent.agentId);
   }
 }
@@ -335,7 +541,17 @@ export async function startAgent(
 ): Promise<ManagedAgent> {
   const existing = agents.get(request.agentId);
   if (existing && (existing.status === 'running' || existing.status === 'starting')) {
-    throw new Error(`Agent ${request.agentId} is already running`);
+    // Agent has a live session (probably idle after gt_done, waiting for
+    // the idle timer). Stop it so the new dispatch can proceed.
+    console.log(
+      `${MANAGER_LOG} startAgent: stopping existing session for ${request.agentId} (status=${existing.status})`
+    );
+    await stopAgent(request.agentId).catch(err => {
+      console.warn(
+        `${MANAGER_LOG} startAgent: failed to stop existing session for ${request.agentId}`,
+        err
+      );
+    });
   }
 
   const now = new Date().toISOString();
@@ -351,6 +567,8 @@ export async function startAgent(
     workdir,
     startedAt: now,
     lastActivityAt: now,
+    lastEventType: null,
+    lastEventAt: null,
     activeTools: [],
     messageCount: 0,
     exitReason: null,
@@ -360,6 +578,7 @@ export async function startAgent(
     gastownSessionToken: request.envVars?.GASTOWN_SESSION_TOKEN ?? null,
     completionCallbackUrl: request.envVars?.GASTOWN_COMPLETION_CALLBACK_URL ?? null,
     model: request.model ?? null,
+    startupEnv: env,
   };
   agents.set(request.agentId, agent);
 
@@ -447,6 +666,9 @@ export async function stopAgent(agentId: string): Promise<void> {
 
   agent.status = 'stopping';
 
+  // Cancel any pending idle timer
+  clearIdleTimer(agentId);
+
   // Abort event subscription
   const controller = eventAbortControllers.get(agentId);
   if (controller) controller.abort();
@@ -509,6 +731,221 @@ export async function sendMessage(agentId: string, prompt: string): Promise<void
   agent.lastActivityAt = new Date().toISOString();
 }
 
+/**
+ * Update the model for a running agent by restarting its SDK server with
+ * new KILO_CONFIG_CONTENT. The kilo serve child process reads the model
+ * from KILO_CONFIG_CONTENT at startup (highest config precedence after
+ * enterprise managed config), so the only reliable way to change it is
+ * to restart the server process.
+ *
+ * The agent's session is re-created on the new server. The session history
+ * is persisted on disk by kilo serve, so it survives the restart.
+ *
+ * @param model OpenRouter-style model ID (e.g. "anthropic/claude-sonnet-4.6")
+ * @param smallModel Optional small model in the same format
+ */
+/**
+ * Extract the organizationId from the current KILO_CONFIG_CONTENT env var.
+ * The org ID is embedded as `provider.kilo.options.kilocodeOrganizationId`
+ * by `buildKiloConfigContent` at agent startup.
+ */
+function extractOrganizationId(): string | undefined {
+  const raw = process.env.KILO_CONFIG_CONTENT;
+  if (!raw) return undefined;
+  try {
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const provider = config.provider as Record<string, unknown> | undefined;
+    const kilo = provider?.kilo as Record<string, unknown> | undefined;
+    const options = kilo?.options as Record<string, unknown> | undefined;
+    const orgId = options?.kilocodeOrganizationId;
+    return typeof orgId === 'string' ? orgId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const MAYOR_STARTUP_PROMPT = 'Mayor ready. Waiting for instructions.';
+
+/**
+ * Update the model for a running agent by restarting its SDK server with
+ * new KILO_CONFIG_CONTENT. The kilo serve child process reads the model
+ * from KILO_CONFIG_CONTENT at startup (highest config precedence after
+ * enterprise managed config), so the only reliable way to change it is
+ * to restart the server process.
+ *
+ * The agent's session is re-created on the new server and given the
+ * startup prompt so the mayor is ready for instructions.
+ *
+ * @param model OpenRouter-style model ID (e.g. "anthropic/claude-sonnet-4.6")
+ * @param smallModel Optional small model in the same format
+ */
+export async function updateAgentModel(
+  agentId: string,
+  model: string,
+  smallModel?: string,
+  conversationHistory?: string
+): Promise<void> {
+  const agent = agents.get(agentId);
+  if (!agent) throw new Error(`Agent ${agentId} not found`);
+  if (agent.status !== 'running' && agent.status !== 'starting') {
+    throw new Error(`Agent ${agentId} is not running (status: ${agent.status})`);
+  }
+
+  const oldInstance = sdkInstances.get(agent.workdir);
+  if (!oldInstance) throw new Error(`No SDK instance for agent ${agentId}`);
+
+  const oldSessionId = agent.sessionId;
+  const oldPort = agent.serverPort;
+  const oldModel = agent.model;
+  const prevConfigContent = process.env.KILO_CONFIG_CONTENT;
+  const prevOpenCodeContent = process.env.OPENCODE_CONFIG_CONTENT;
+
+  console.log(
+    `${MANAGER_LOG} updateAgentModel: restarting SDK server for agent ${agentId} with model=${model}`
+  );
+
+  // 1. Preserve organizationId from the current config before we replace it
+  const organizationId = extractOrganizationId();
+
+  // 2. Rebuild KILO_CONFIG_CONTENT with the new model and update process.env
+  //    so the next createKilo() spawns kilo serve with fresh config.
+  const kilocodeToken = process.env.KILOCODE_TOKEN;
+  if (kilocodeToken) {
+    const configJson = buildKiloConfigContent(
+      kilocodeToken,
+      model,
+      smallModel ?? 'anthropic/claude-haiku-4.5',
+      organizationId
+    );
+    process.env.KILO_CONFIG_CONTENT = configJson;
+    process.env.OPENCODE_CONFIG_CONTENT = configJson;
+  }
+
+  // 3. Remove the old instance from the map so ensureSDKServer creates a
+  //    new one — but DON'T close the old server yet. If the new server
+  //    fails to start we can restore the old one.
+  sdkInstances.delete(agent.workdir);
+  agent.model = model;
+
+  // Replay the full env from the initial dispatch so the new SDK server
+  // gets the same git identity, auth tokens, and plugin vars. Exclude
+  // KILO_CONFIG_CONTENT / OPENCODE_CONFIG_CONTENT — those were already
+  // rebuilt above with the new model and set on process.env.
+  //
+  // For env vars that syncConfigToContainer can update at runtime, prefer
+  // the live process.env value over the stale startupEnv snapshot.
+  const LIVE_ENV_KEYS = new Set([
+    'GASTOWN_CONTAINER_TOKEN',
+    'GIT_TOKEN',
+    'GITLAB_TOKEN',
+    'GITLAB_INSTANCE_URL',
+    'GITHUB_CLI_PAT',
+    'GASTOWN_GIT_AUTHOR_NAME',
+    'GASTOWN_GIT_AUTHOR_EMAIL',
+    'GASTOWN_DISABLE_AI_COAUTHOR',
+  ]);
+  const hotSwapEnv: Record<string, string> = {};
+  for (const [key, value] of Object.entries(agent.startupEnv)) {
+    if (key === 'KILO_CONFIG_CONTENT' || key === 'OPENCODE_CONFIG_CONTENT') continue;
+    if (LIVE_ENV_KEYS.has(key)) {
+      const live = process.env[key];
+      if (live) hotSwapEnv[key] = live;
+      continue;
+    }
+    hotSwapEnv[key] = value;
+  }
+
+  // Re-derive GH_TOKEN from live values using the same priority chain
+  // as buildAgentEnv: GITHUB_CLI_PAT > GIT_TOKEN > GITHUB_TOKEN.
+  // syncConfigToContainer updates these on process.env, but buildAgentEnv
+  // only ran once at initial dispatch. When all sources are cleared,
+  // remove GH_TOKEN so the SDK server doesn't retain stale credentials.
+  const liveGhCliPat = process.env.GITHUB_CLI_PAT;
+  const liveGhToken = liveGhCliPat ?? process.env.GIT_TOKEN ?? process.env.GITHUB_TOKEN;
+  if (liveGhToken) {
+    hotSwapEnv.GH_TOKEN = liveGhToken;
+  } else {
+    delete hotSwapEnv.GH_TOKEN;
+  }
+
+  try {
+    // 4. Create a new SDK server (spawns a fresh kilo serve with updated env)
+    const { client, port } = await ensureSDKServer(agent.workdir, hotSwapEnv);
+    agent.serverPort = port;
+
+    // 5. Create a new session and send the startup prompt.
+    //    The system prompt lives in AGENTS.md (on disk), so kilo serve picks
+    //    it up automatically for every session.
+    const sessionResult = await client.session.create({ body: {} });
+    const rawSession: unknown = sessionResult.data ?? sessionResult;
+    const parsed = SessionResponse.safeParse(rawSession);
+    if (!parsed.success) {
+      throw new Error('SDK session.create response missing required "id" field');
+    }
+    agent.sessionId = parsed.data.id;
+
+    const newInstance = sdkInstances.get(agent.workdir);
+    if (newInstance) {
+      newInstance.sessionCount++;
+    }
+
+    // Send the startup prompt, including conversation history if available
+    // so the mayor retains context across model changes (same mechanism
+    // used for container restarts — see PR #1494).
+    const prompt = conversationHistory
+      ? `${conversationHistory}\n\n${MAYOR_STARTUP_PROMPT}`
+      : MAYOR_STARTUP_PROMPT;
+    const modelParam = { providerID: 'kilo', modelID: model };
+    await client.session.prompt({
+      path: { id: agent.sessionId },
+      body: {
+        parts: [{ type: 'text', text: prompt }],
+        model: modelParam,
+      },
+    });
+    agent.messageCount = 1;
+
+    // 6. New server is healthy — now tear down the old one.
+    const oldController = eventAbortControllers.get(agentId);
+    if (oldController) oldController.abort();
+    oldInstance.server.close();
+
+    // 7. Re-subscribe to events on the new session
+    void subscribeToEvents(client, agent, {
+      agentId: agent.agentId,
+      role: agent.role,
+      name: agent.name,
+      model,
+      prompt,
+      rigId: agent.rigId,
+      townId: agent.townId,
+      identity: '',
+      gitUrl: '',
+      branch: '',
+      defaultBranch: '',
+    });
+
+    console.log(
+      `${MANAGER_LOG} updateAgentModel: SDK server restarted for agent ${agentId}, ` +
+        `old session=${oldSessionId} new session=${agent.sessionId} model=${model}`
+    );
+  } catch (err) {
+    // Restore the old server so the mayor keeps running on the previous model
+    console.warn(
+      `${MANAGER_LOG} updateAgentModel: failed for ${agentId}, restoring old server:`,
+      err
+    );
+    sdkInstances.set(agent.workdir, oldInstance);
+    agent.model = oldModel;
+    agent.sessionId = oldSessionId;
+    agent.serverPort = oldPort;
+    if (prevConfigContent !== undefined) process.env.KILO_CONFIG_CONTENT = prevConfigContent;
+    if (prevOpenCodeContent !== undefined)
+      process.env.OPENCODE_CONFIG_CONTENT = prevOpenCodeContent;
+    throw err;
+  }
+}
+
 export function getAgentStatus(agentId: string): ManagedAgent | null {
   return agents.get(agentId) ?? null;
 }
@@ -537,6 +974,12 @@ export function activeServerCount(): number {
 }
 
 export async function stopAll(): Promise<void> {
+  // Cancel all idle timers
+  for (const [, timer] of idleTimers) {
+    clearTimeout(timer);
+  }
+  idleTimers.clear();
+
   // Abort all event subscriptions
   for (const [, controller] of eventAbortControllers) {
     controller.abort();
@@ -549,7 +992,9 @@ export async function stopAll(): Promise<void> {
       try {
         const instance = sdkInstances.get(agent.workdir);
         if (instance) {
-          await instance.client.session.abort({ path: { id: agent.sessionId } });
+          await instance.client.session.abort({
+            path: { id: agent.sessionId },
+          });
         }
       } catch {
         // Best-effort

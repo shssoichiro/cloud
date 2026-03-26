@@ -1,12 +1,23 @@
 'use client';
 
-import { useState } from 'react';
-import { Cpu, HardDrive, Play, RefreshCw, RotateCw, Stethoscope } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  Check,
+  Cpu,
+  HardDrive,
+  Pencil,
+  Play,
+  RefreshCw,
+  RotateCw,
+  Stethoscope,
+  X,
+} from 'lucide-react';
 import { usePostHog } from 'posthog-js/react';
 import { toast } from 'sonner';
 import type { KiloClawDashboardStatus } from '@/lib/kiloclaw/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -37,26 +48,110 @@ export function InstanceControls({
   status,
   mutations,
   onRedeploySuccess,
+  upgradeRequested,
+  onUpgradeHandled,
 }: {
   status: KiloClawDashboardStatus;
   mutations: ClawMutations;
   onRedeploySuccess?: () => void;
+  upgradeRequested?: boolean;
+  onUpgradeHandled?: () => void;
 }) {
   const posthog = usePostHog();
   const isRunning = status.status === 'running';
   const isProvisioned = status.status === 'provisioned';
   const isStarting = status.status === 'starting';
-  const isStopped = status.status === 'stopped' || isProvisioned;
+  const isRestarting = status.status === 'restarting';
+  const isStopped = status.status === 'stopped';
+  const isStartable = isStopped || isProvisioned;
   const isDestroying = status.status === 'destroying';
   // Auto-start runs only on fresh provision (status=provisioned), not re-provision
   const isAutoStarting = isProvisioned && mutations.provision.isPending;
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState('');
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [confirmRedeploy, setConfirmRedeploy] = useState(false);
   const [redeployMode, setRedeployMode] = useState<'redeploy' | 'upgrade'>('redeploy');
 
+  const handleSaveName = () => {
+    const trimmed = nameValue.trim();
+    mutations.rename.mutate(
+      { name: trimmed || null },
+      {
+        onSuccess: () => {
+          setIsEditingName(false);
+          toast.success('Instance renamed');
+        },
+        onError: err => {
+          toast.error(err.message);
+        },
+      }
+    );
+  };
+
+  // Toggle-flag pattern: parent sets upgradeRequested=true, we open the dialog
+  // with "upgrade" preselected, then immediately reset via onUpgradeHandled.
+  // Safe for single-click flows; won't re-fire if already true (no state change).
+  useEffect(() => {
+    if (upgradeRequested) {
+      setRedeployMode('upgrade');
+      setConfirmRedeploy(true);
+      onUpgradeHandled?.();
+    }
+  }, [upgradeRequested, onUpgradeHandled]);
+
   return (
     <div>
+      <div className="flex items-center gap-2">
+        {isEditingName ? (
+          <>
+            <Input
+              value={nameValue}
+              onChange={e => setNameValue(e.target.value)}
+              maxLength={50}
+              className="h-8 w-64"
+              autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleSaveName();
+                if (e.key === 'Escape') {
+                  setIsEditingName(false);
+                  setNameValue(status.name ?? '');
+                }
+              }}
+            />
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSaveName}>
+              <Check className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => {
+                setIsEditingName(false);
+                setNameValue(status.name ?? '');
+              }}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </>
+        ) : (
+          <>
+            <h2 className="text-lg font-semibold">{status.name || 'Unnamed instance'}</h2>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => {
+                setNameValue(status.name ?? '');
+                setIsEditingName(true);
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          </>
+        )}
+      </div>
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h3 className="text-foreground mb-1 text-sm font-medium">Instance Controls</h3>
@@ -80,7 +175,12 @@ export function InstanceControls({
           variant="outline"
           className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
           disabled={
-            !isStopped || mutations.start.isPending || isAutoStarting || isDestroying || isStarting
+            !isStartable ||
+            mutations.start.isPending ||
+            isAutoStarting ||
+            isDestroying ||
+            isStarting ||
+            isRestarting
           }
           onClick={() => {
             posthog?.capture('claw_start_instance_clicked', { instance_status: status.status });
@@ -103,7 +203,13 @@ export function InstanceControls({
           size="sm"
           variant="outline"
           className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
-          disabled={!isRunning || mutations.restartOpenClaw.isPending || isDestroying || isStarting}
+          disabled={
+            !isRunning ||
+            mutations.restartOpenClaw.isPending ||
+            isDestroying ||
+            isStarting ||
+            isRestarting
+          }
           onClick={() => {
             posthog?.capture('claw_restart_openclaw_prompted', {
               instance_status: status.status,
@@ -118,7 +224,14 @@ export function InstanceControls({
           size="sm"
           variant="outline"
           className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
-          disabled={!isRunning || mutations.restartMachine.isPending || isDestroying || isStarting}
+          disabled={
+            (!isRunning && !isStopped) ||
+            !status.flyMachineId ||
+            mutations.restartMachine.isPending ||
+            isDestroying ||
+            isStarting ||
+            isRestarting
+          }
           onClick={() => {
             posthog?.capture('claw_redeploy_prompted', { instance_status: status.status });
             setRedeployMode('redeploy');
@@ -132,7 +245,13 @@ export function InstanceControls({
           size="sm"
           variant="outline"
           className="border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300"
-          disabled={!isRunning || mutations.runDoctor.isPending || isDestroying || isStarting}
+          disabled={
+            !isRunning ||
+            mutations.runDoctor.isPending ||
+            isDestroying ||
+            isStarting ||
+            isRestarting
+          }
           onClick={() => {
             posthog?.capture('claw_doctor_clicked', { instance_status: status.status });
             setDoctorOpen(true);
@@ -238,11 +357,16 @@ export function InstanceControls({
                   onError: err => toast.error(err.message, { duration: 10000 }),
                 });
               }}
-              disabled={mutations.restartMachine.isPending}
+              disabled={mutations.restartMachine.isPending || isRestarting}
             >
               {mutations.restartMachine.isPending ? (
                 <>
                   {redeployMode === 'redeploy' ? 'Redeploying' : 'Upgrading'}
+                  <AnimatedDots />
+                </>
+              ) : isRestarting ? (
+                <>
+                  Restarting
                   <AnimatedDots />
                 </>
               ) : (

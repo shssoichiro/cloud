@@ -1,4 +1,3 @@
-import { getEnvVariable } from '@/lib/dotenvx';
 import { debugSaveProxyResponseStream } from '../debugUtils';
 import { fetchWithBackoff } from '../fetchWithBackoff';
 import { captureException, captureMessage } from '@sentry/nextjs';
@@ -7,102 +6,34 @@ import type {
   OpenRouterChatCompletionRequest,
   OpenRouterGeneration,
   GatewayRequest,
+  GatewayMessagesRequest,
 } from '@/lib/providers/openrouter/types';
-import {
-  applyMistralModelSettings,
-  applyMistralProviderSettings,
-  isMistralModel,
-} from '@/lib/providers/mistral';
+import { applyMistralModelSettings, isMistralModel } from '@/lib/providers/mistral';
 import { applyXaiModelSettings, isXaiModel } from '@/lib/providers/xai';
-import { applyVercelSettings, shouldRouteToVercel } from '@/lib/providers/vercel';
+import { shouldRouteToVercel } from '@/lib/providers/vercel';
 import { kiloFreeModels } from '@/lib/models';
 import {
   applyAnthropicModelSettings,
   isAnthropicModel,
   isHaikuModel,
 } from '@/lib/providers/anthropic';
-import { applyGigaPotatoProviderSettings } from '@/lib/providers/gigapotato';
-import {
-  getBYOKforOrganization,
-  getBYOKforUser,
-  getModelUserByokProviders,
-  type BYOKResult,
-} from '@/lib/byok';
+import { getBYOKforOrganization, getBYOKforUser, getModelUserByokProviders } from '@/lib/byok';
 import type { CustomLlm } from '@kilocode/db/schema';
 import { custom_llm, type User } from '@kilocode/db/schema';
 import { OpenRouterInferenceProviderIdSchema } from '@/lib/providers/openrouter/inference-provider-id';
-import { applyCoreThinkProviderSettings } from '@/lib/providers/corethink';
 import { hasAttemptCompletionTool } from '@/lib/tool-calling';
 import { applyGoogleModelSettings, isGeminiModel } from '@/lib/providers/google';
 import { db } from '@/lib/drizzle';
 import { eq } from 'drizzle-orm';
-import { applyMoonshotProviderSettings, isMoonshotModel } from '@/lib/providers/moonshotai';
+import { applyMoonshotModelSettings, isMoonshotModel } from '@/lib/providers/moonshotai';
 import type { AnonymousUserContext } from '@/lib/anonymous';
 import { isAnonymousContext } from '@/lib/anonymous';
-import { isOpenAiModel } from '@/lib/providers/openai';
-import { applyAlibabaProviderSettings } from '@/lib/providers/qwen';
-import type { ProviderId } from '@/lib/providers/provider-id';
+import { isOpenAiModel, isOpenAiOssModel } from '@/lib/providers/openai';
 import { isZaiModel } from '@/lib/providers/zai';
 import { isMinimaxModel } from '@/lib/providers/minimax';
 import { isXiaomiModel } from '@/lib/providers/xiaomi';
-
-export type Provider = {
-  id: ProviderId;
-  apiUrl: string;
-  apiKey: string;
-  hasGenerationEndpoint: boolean;
-};
-
-export const PROVIDERS = {
-  OPENROUTER: {
-    id: 'openrouter',
-    apiUrl: 'https://openrouter.ai/api/v1',
-    apiKey: getEnvVariable('OPENROUTER_API_KEY'),
-    hasGenerationEndpoint: true,
-  },
-  ALIBABA: {
-    id: 'alibaba',
-    apiUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-    apiKey: getEnvVariable('ALIBABA_API_KEY'),
-    hasGenerationEndpoint: false,
-  },
-  GIGAPOTATO: {
-    id: 'gigapotato',
-    apiUrl: getEnvVariable('GIGAPOTATO_API_URL'),
-    apiKey: getEnvVariable('GIGAPOTATO_API_KEY'),
-    hasGenerationEndpoint: false,
-  },
-  CORETHINK: {
-    id: 'corethink',
-    apiUrl: 'https://api.corethink.ai/v1/code',
-    apiKey: getEnvVariable('CORETHINK_API_KEY'),
-    hasGenerationEndpoint: false,
-  },
-  MARTIAN: {
-    id: 'martian',
-    apiUrl: 'https://api.withmartian.com/v1',
-    apiKey: getEnvVariable('MARTIAN_API_KEY'),
-    hasGenerationEndpoint: false,
-  },
-  MISTRAL: {
-    id: 'mistral',
-    apiUrl: 'https://api.mistral.ai/v1',
-    apiKey: getEnvVariable('MISTRAL_API_KEY'),
-    hasGenerationEndpoint: false,
-  },
-  MORPH: {
-    id: 'morph',
-    apiUrl: 'https://api.morphllm.com/v1',
-    apiKey: getEnvVariable('MORPH_API_KEY'),
-    hasGenerationEndpoint: false,
-  },
-  VERCEL_AI_GATEWAY: {
-    id: 'vercel',
-    apiUrl: 'https://ai-gateway.vercel.sh/v1',
-    apiKey: getEnvVariable('VERCEL_AI_GATEWAY_API_KEY'),
-    hasGenerationEndpoint: true,
-  },
-} as const satisfies Record<string, Provider>;
+import type { BYOKResult, Provider } from '@/lib/providers/types';
+import PROVIDERS from '@/lib/providers/provider-definitions';
 
 async function checkBYOK(
   user: User | AnonymousUserContext,
@@ -119,7 +50,7 @@ async function checkBYOK(
 
 export async function getProvider(
   requestedModel: string,
-  request: OpenRouterChatCompletionRequest | GatewayResponsesRequest,
+  request: GatewayRequest,
   user: User | AnonymousUserContext,
   organizationId: string | undefined,
   taskId: string | undefined
@@ -144,7 +75,12 @@ export async function getProvider(
           id: 'custom',
           apiUrl: customLlm.base_url,
           apiKey: customLlm.api_key,
-          hasGenerationEndpoint: true,
+          transformRequest(context) {
+            Object.assign(context.request.body, customLlm?.extra_body ?? {});
+            for (const [key, value] of Object.entries(customLlm.extra_headers ?? {})) {
+              context.extraHeaders[key] = value;
+            }
+          },
         },
         userByok: null,
         customLlm,
@@ -173,12 +109,11 @@ export async function getProvider(
         organization_ids: [],
         base_url: freeModelProvider.apiUrl,
         api_key: freeModelProvider.apiKey,
-        included_tools: null,
-        excluded_tools: null,
         supports_image_input: kiloFreeModel.flags.includes('vision'),
         force_reasoning: true,
         opencode_settings: null,
         extra_body: null,
+        extra_headers: null,
         interleaved_format: null,
       },
     };
@@ -252,9 +187,12 @@ function getPreferredProviderOrder(requestedModel: string): string[] {
     return [OpenRouterInferenceProviderIdSchema.enum['xiaomi']];
   }
   if (isZaiModel(requestedModel)) {
+    return [OpenRouterInferenceProviderIdSchema.enum['z-ai']];
+  }
+  if (isOpenAiOssModel(requestedModel)) {
     return [
-      OpenRouterInferenceProviderIdSchema.enum.friendli,
-      OpenRouterInferenceProviderIdSchema.enum['z-ai'],
+      OpenRouterInferenceProviderIdSchema.enum.novita,
+      OpenRouterInferenceProviderIdSchema.enum['amazon-bedrock'],
     ];
   }
   return [];
@@ -262,7 +200,10 @@ function getPreferredProviderOrder(requestedModel: string): string[] {
 
 function applyPreferredProvider(
   requestedModel: string,
-  requestToMutate: OpenRouterChatCompletionRequest | GatewayResponsesRequest
+  requestToMutate:
+    | OpenRouterChatCompletionRequest
+    | GatewayResponsesRequest
+    | GatewayMessagesRequest
 ) {
   const preferredProviderOrder = getPreferredProviderOrder(requestedModel);
   if (preferredProviderOrder.length === 0) {
@@ -316,30 +257,19 @@ export function applyProviderSpecificLogic(
   }
 
   if (isMoonshotModel(requestedModel)) {
-    applyMoonshotProviderSettings(requestToMutate);
+    applyMoonshotModelSettings(requestToMutate);
   }
 
-  if (provider.id === 'alibaba') {
-    applyAlibabaProviderSettings(requestToMutate);
-  }
-
-  if (provider.id === 'gigapotato') {
-    applyGigaPotatoProviderSettings(requestedModel, requestToMutate);
-  }
-
-  if (provider.id === 'corethink') {
-    applyCoreThinkProviderSettings(requestToMutate);
-  }
-
-  if (provider.id === 'mistral') {
-    applyMistralProviderSettings(requestToMutate, extraHeaders);
-  } else if (isMistralModel(requestedModel)) {
+  if (isMistralModel(requestedModel)) {
     applyMistralModelSettings(requestToMutate);
   }
 
-  if (provider.id === 'vercel') {
-    applyVercelSettings(requestedModel, requestToMutate, userByok);
-  }
+  provider.transformRequest({
+    model: requestedModel,
+    request: requestToMutate,
+    extraHeaders,
+    userByok,
+  });
 }
 
 export async function openRouterRequest({
@@ -354,7 +284,7 @@ export async function openRouterRequest({
   path: string;
   search: string;
   method: string;
-  body: OpenRouterChatCompletionRequest | GatewayResponsesRequest;
+  body: OpenRouterChatCompletionRequest | GatewayResponsesRequest | GatewayMessagesRequest;
   extraHeaders: Record<string, string>;
   provider: Provider;
   signal?: AbortSignal;

@@ -2,7 +2,7 @@ FROM oven/bun:1-slim
 
 # Install git, gh CLI, and Node.js (required by @kilocode/cli which uses #!/usr/bin/env node)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git curl ca-certificates && \
+    apt-get install -y --no-install-recommends git git-lfs curl ca-certificates && \
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -13,6 +13,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends gh && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+RUN git lfs install --system
 
 # Install Kilo CLI globally via npm (needs real Node.js runtime).
 # npm's global install does not resolve optionalDependencies, so we must
@@ -41,6 +43,14 @@ RUN cd /opt/gastown-plugin && npm install --omit=dev && \
     mkdir -p /home/agent/.config/kilo/plugins && \
     ln -s /opt/gastown-plugin/index.ts /home/agent/.config/kilo/plugins/gastown.ts && \
     chown -R agent:agent /home/agent/.config
+
+# ── Git config for agent user ───────────────────────────────────────
+# Skip LFS smudge filter: agents don't need binary assets and LFS
+# downloads can fail when credentials don't cover the batch endpoint.
+# Also disable LFS fetch entirely so clone/worktree never stalls.
+RUN printf '[filter "lfs"]\n\tsmudge = git-lfs smudge --skip -- %%f\n\tprocess = git-lfs filter-process --skip\n\tclean = git-lfs clean -- %%f\n\trequired = true\n[lfs]\n\tfetchexclude = *\n' \
+      > /home/agent/.gitconfig && \
+    chown agent:agent /home/agent/.gitconfig
 
 WORKDIR /app
 

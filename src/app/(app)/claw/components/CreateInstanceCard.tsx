@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
-import { usePostHog } from 'posthog-js/react';
+import { useFeatureFlagVariantKey, usePostHog } from 'posthog-js/react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { getEntriesByCategory, type SecretCatalogEntry } from '@kilocode/kiloclaw-secret-catalog';
 import type { useKiloClawMutations } from '@/hooks/useKiloClaw';
 import { useKiloClawLatestVersion, useKiloClawMyPin } from '@/hooks/useKiloClaw';
 import { useOpenRouterModels } from '@/app/api/openrouter/hooks';
@@ -13,13 +12,12 @@ import { useTRPC } from '@/lib/trpc/utils';
 import type { ModelOption } from '@/components/shared/ModelCombobox';
 import { useUser } from '@/hooks/useUser';
 import { KILO_AUTO_FRONTIER_MODEL, KILO_AUTO_FREE_MODEL } from '@/lib/kilo-auto-model';
+import { isFreeModel } from '@/lib/models';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { ChannelTokenInput } from './ChannelTokenInput';
-import { getIcon } from './secret-ui-adapter';
 import { getCreateModelOptions } from './modelSupport';
 import { AutoModelPicker } from './AutoModelPicker';
+import { CreditsNudge } from './CreditsNudge';
 
 type ClawMutations = ReturnType<typeof useKiloClawMutations>;
 
@@ -30,8 +28,12 @@ export function CreateInstanceCard({
   mutations: ClawMutations;
   onProvisionStart?: () => void;
 }) {
+  // Evaluate the landing-page experiment flag so PostHog attaches
+  // $feature/button-vs-card to events fired in this component.
+  useFeatureFlagVariantKey('button-vs-card');
   const posthog = usePostHog();
   const trpc = useTRPC();
+  const searchParams = useSearchParams();
   const { data: billingStatus } = useQuery(trpc.kiloclaw.getBillingStatus.queryOptions());
   const { data: user, isLoading: isLoadingUser } = useUser();
   const { data: modelsData, isLoading: isLoadingModels } = useOpenRouterModels();
@@ -39,8 +41,6 @@ export function CreateInstanceCard({
   const { data: latestVersion, isLoading: isLoadingLatestVersion } = useKiloClawLatestVersion();
   const [selectedModel, setSelectedModel] = useState('');
   const hasAppliedDefault = useRef(false);
-  const [addedChannels, setAddedChannels] = useState<Set<string>>(new Set());
-  const [tokens, setTokens] = useState<Record<string, string>>({});
   const latestOpenClawVersion = latestVersion?.openclawVersion;
   const hasPin = myPin != null;
   const hasUnknownPinnedVersion = hasPin && !myPin?.openclaw_version;
@@ -52,17 +52,8 @@ export function CreateInstanceCard({
       ? 'Pinned image version metadata is unavailable. Remove or update the pin to select a model.'
       : undefined;
 
-  const channelEntries = useMemo(() => getEntriesByCategory('channel'), []);
-
-  const channelEntryMap = useMemo<ReadonlyMap<string, SecretCatalogEntry>>(
-    () => new Map(channelEntries.map(e => [e.id, e])),
-    [channelEntries]
-  );
-
   const canStartTrial = Boolean(billingStatus?.trialEligible);
-  const provisionSubtitle = canStartTrial
-    ? '30-day free trial, no credit card required'
-    : undefined;
+  const provisionSubtitle = canStartTrial ? '7-day free trial, no credit card required' : undefined;
 
   const modelOptions = useMemo<ModelOption[]>(
     () =>
@@ -87,59 +78,60 @@ export function CreateInstanceCard({
   );
 
   const hasCredits = (user?.total_microdollars_acquired ?? 0) > 0;
+  const isPaymentReturn = searchParams.get('payment') === 'success';
+  const hasAutoProvisioned = useRef(false);
 
   useEffect(() => {
     if (hasAppliedDefault.current || selectedModel !== '' || modelOptions.length === 0) return;
     if (isLoadingUser) return;
+
+    // If returning from a checkout flow, restore the previously-selected model
+    const modelParam = searchParams.get('model');
+    if (modelParam && modelOptions.some(m => m.id === modelParam)) {
+      setSelectedModel(modelParam);
+      hasAppliedDefault.current = true;
+      return;
+    }
+
     const defaultId = hasCredits ? KILO_AUTO_FRONTIER_MODEL.id : KILO_AUTO_FREE_MODEL.id;
     if (modelOptions.some(m => m.id === defaultId)) {
       setSelectedModel(defaultId);
       hasAppliedDefault.current = true;
     }
-  }, [modelOptions, hasCredits, selectedModel, isLoadingUser]);
+  }, [modelOptions, hasCredits, selectedModel, isLoadingUser, searchParams]);
 
-  function addChannel(channelId: string) {
-    setAddedChannels(prev => new Set([...prev, channelId]));
-  }
+  // After returning from a successful credit purchase, show a toast and
+  // auto-start provisioning so the user doesn't have to click again.
+  useEffect(() => {
+    if (!isPaymentReturn || hasAutoProvisioned.current) return;
+    if (!selectedModel || isLoadingModels || isLoadingProvisionTargetVersion) return;
+    if (hasProvisionTargetError) return;
 
-  function removeChannel(channelId: string) {
-    setAddedChannels(prev => {
-      const next = new Set(prev);
-      next.delete(channelId);
-      return next;
+    hasAutoProvisioned.current = true;
+    toast.success('Payment processed — setting up your instance!');
+
+    posthog?.capture('claw_create_instance_clicked', {
+      selected_model: selectedModel,
+      auto_provision_after_payment: true,
     });
-    // Clear tokens for removed channel
-    const entry = channelEntryMap.get(channelId);
-    if (entry) {
-      const fieldKeys = entry.fields.map(f => f.key);
-      setTokens(prev => {
-        const next = { ...prev };
-        for (const key of fieldKeys) delete next[key];
-        return next;
-      });
-    }
-  }
 
-  function setToken(key: string, value: string) {
-    setTokens(prev => ({ ...prev, [key]: value }));
-  }
-
-  function buildChannelsPayload() {
-    const channels: Record<string, string> = {};
-    let hasAny = false;
-    for (const channelId of addedChannels) {
-      const entry = channelEntryMap.get(channelId);
-      if (!entry) continue;
-      for (const field of entry.fields) {
-        const val = tokens[field.key]?.trim();
-        if (val) {
-          channels[field.key] = val;
-          hasAny = true;
-        }
+    mutations.provision.mutate(
+      { kilocodeDefaultModel: `kilocode/${selectedModel}` },
+      {
+        onSuccess: () => onProvisionStart?.(),
+        onError: err => toast.error(`Failed to create: ${err.message}`),
       }
-    }
-    return hasAny ? channels : undefined;
-  }
+    );
+  }, [
+    isPaymentReturn,
+    selectedModel,
+    isLoadingModels,
+    isLoadingProvisionTargetVersion,
+    hasProvisionTargetError,
+    mutations.provision,
+    posthog,
+    onProvisionStart,
+  ]);
 
   function handleCreate() {
     if (hasProvisionTargetError) {
@@ -159,30 +151,24 @@ export function CreateInstanceCard({
 
     posthog?.capture('claw_create_instance_clicked', {
       selected_model: selectedModel,
-      channels: [...addedChannels],
     });
 
-    // Validate entries with allFieldsRequired (e.g. Slack needs both tokens)
-    for (const channelId of addedChannels) {
-      const entry = channelEntryMap.get(channelId);
-      if (!entry?.allFieldsRequired) continue;
-      const values = entry.fields.map(f => tokens[f.key]?.trim());
-      const hasSome = values.some(v => !!v);
-      const hasAll = values.every(v => !!v);
-      if (hasSome && !hasAll) {
-        toast.error(`${entry.label} requires all fields to be set together.`);
-        return;
-      }
-    }
+    // Capture email before the async mutation so the onSuccess closure
+    // doesn't depend on the useUser query still being resolved.
+    const email = user?.google_user_email;
 
     mutations.provision.mutate(
       {
         kilocodeDefaultModel: `kilocode/${selectedModel}`,
-        channels: buildChannelsPayload(),
       },
       {
         onSuccess: () => {
           onProvisionStart?.();
+          // Record a Rewardful lead when an affiliate-referred user starts a trial.
+          // No-op if the visitor is not a referral or rw.js didn't load.
+          if (email && typeof window.rewardful === 'function') {
+            window.rewardful('convert', { email });
+          }
         },
         onError: err => {
           toast.error(`Failed to create: ${err.message}`);
@@ -191,7 +177,7 @@ export function CreateInstanceCard({
     );
   }
 
-  const availableChannels = channelEntries.filter(e => !addedChannels.has(e.id));
+  const needsCredits = !hasCredits && selectedModel !== '' && !isFreeModel(selectedModel);
 
   return (
     <Card>
@@ -222,95 +208,22 @@ export function CreateInstanceCard({
           }
         />
 
-        <div className="space-y-3">
-          <Label>Channels (optional)</Label>
-
-          {availableChannels.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {availableChannels.map(entry => {
-                const Icon = getIcon(entry.icon);
-                return (
-                  <Button
-                    key={entry.id}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => addChannel(entry.id)}
-                    disabled={mutations.provision.isPending}
-                  >
-                    <Icon className="mr-1.5 h-4 w-4" />
-                    {entry.label}
-                  </Button>
-                );
-              })}
-            </div>
-          )}
-
-          {[...addedChannels].map(channelId => {
-            const entry = channelEntryMap.get(channelId);
-            if (!entry) return null;
-            const Icon = getIcon(entry.icon);
-            return (
-              <div key={entry.id} className="space-y-2 rounded-md border p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-sm font-medium">
-                    <Icon className="h-4 w-4" />
-                    {entry.label}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeChannel(entry.id)}
-                    disabled={mutations.provision.isPending}
-                    className="h-6 w-6 p-0"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                {entry.fields.map(field => (
-                  <div key={field.key} className="space-y-1">
-                    <Label htmlFor={`create-${field.key}`} className="text-xs">
-                      {field.label}
-                    </Label>
-                    <ChannelTokenInput
-                      id={`create-${field.key}`}
-                      placeholder={field.placeholder}
-                      value={tokens[field.key] ?? ''}
-                      onChange={v => setToken(field.key, v)}
-                      disabled={mutations.provision.isPending}
-                    />
-                  </div>
-                ))}
-                <p className="text-muted-foreground text-xs">
-                  {entry.helpUrl ? (
-                    <>
-                      {entry.helpText}{' '}
-                      <a
-                        href={entry.helpUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline"
-                      >
-                        Learn more
-                      </a>
-                    </>
-                  ) : (
-                    entry.helpText
-                  )}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="flex">
-          <Button
-            onClick={handleCreate}
-            disabled={mutations.provision.isPending || !selectedModel}
-            className="grow bg-emerald-600 text-white hover:bg-emerald-700"
-          >
-            {mutations.provision.isPending ? 'Setting up...' : 'Get Started'}
-          </Button>
-        </div>
+        {needsCredits ? (
+          <CreditsNudge
+            selectedModel={selectedModel}
+            onSwitchToFree={() => setSelectedModel(KILO_AUTO_FREE_MODEL.id)}
+          />
+        ) : (
+          <div className="flex">
+            <Button
+              onClick={handleCreate}
+              disabled={mutations.provision.isPending || !selectedModel}
+              className="grow bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {mutations.provision.isPending ? 'Setting up...' : 'Get Started'}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
