@@ -1,4 +1,4 @@
-import type { ZodType } from 'zod';
+import { z, type ZodType } from 'zod';
 import type { KiloClawEnv } from '../../types';
 import { deriveGatewayToken } from '../../auth/gateway-token';
 import {
@@ -7,6 +7,7 @@ import {
   GatewayCommandResponseSchema,
   ConfigRestoreResponseSchema,
   ControllerVersionResponseSchema,
+  GatewayReadyResponseSchema,
   EnvPatchResponseSchema,
   OpenclawConfigResponseSchema,
   GatewayControllerError,
@@ -211,7 +212,7 @@ export function isErrorUnknownRoute(error: unknown): boolean {
   // masking genuine authentication failures.
   return (
     error instanceof GatewayControllerError &&
-    (error.status === 404 || error.code === 'controller_route_unavailable')
+    (error.code === 'controller_route_unavailable' || (error.status === 404 && !error.code))
   );
 }
 
@@ -234,6 +235,32 @@ export async function getControllerVersion(
   } catch (error) {
     if (isErrorUnknownRoute(error)) {
       return null;
+    }
+    throw error;
+  }
+}
+
+export async function getGatewayReady(
+  state: InstanceMutableState,
+  env: KiloClawEnv
+): Promise<Record<string, unknown> | null> {
+  try {
+    return await callGatewayController(
+      state,
+      env,
+      '/_kilo/gateway/ready',
+      'GET',
+      GatewayReadyResponseSchema
+    );
+  } catch (error) {
+    if (isErrorUnknownRoute(error)) {
+      return null;
+    }
+    // During startup the gateway process may not be running yet, producing
+    // a 503 from the controller. Return a descriptive object instead of
+    // throwing so the frontend poll doesn't see a wall of 500s.
+    if (error instanceof GatewayControllerError) {
+      return { ready: false, error: error.message, status: error.status };
     }
     throw error;
   }
@@ -284,6 +311,94 @@ export async function replaceConfigOnMachine(
   }
 }
 
+/** Keep in sync with: controller/src/routes/files.ts, src/lib/kiloclaw/kiloclaw-internal-client.ts */
+const FileNodeSchema: z.ZodType<{
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  children?: { name: string; path: string; type: 'file' | 'directory'; children?: unknown[] }[];
+}> = z.lazy(() =>
+  z.object({
+    name: z.string(),
+    path: z.string(),
+    type: z.enum(['file', 'directory']),
+    children: z.array(FileNodeSchema).optional(),
+  })
+);
+
+const FileTreeResponseSchema = z.object({
+  tree: z.array(FileNodeSchema),
+});
+
+export async function getFileTree(
+  state: InstanceMutableState,
+  env: KiloClawEnv
+): Promise<{ tree: unknown[] } | null> {
+  try {
+    return await callGatewayController(
+      state,
+      env,
+      '/_kilo/files/tree',
+      'GET',
+      FileTreeResponseSchema
+    );
+  } catch (error) {
+    if (isErrorUnknownRoute(error)) return null;
+    throw error;
+  }
+}
+
+const FileReadResponseSchema = z.object({
+  content: z.string(),
+  etag: z.string(),
+});
+
+export async function readFile(
+  state: InstanceMutableState,
+  env: KiloClawEnv,
+  filePath: string
+): Promise<{ content: string; etag: string } | null> {
+  try {
+    const params = new URLSearchParams({ path: filePath });
+    return await callGatewayController(
+      state,
+      env,
+      `/_kilo/files/read?${params.toString()}`,
+      'GET',
+      FileReadResponseSchema
+    );
+  } catch (error) {
+    if (isErrorUnknownRoute(error)) return null;
+    throw error;
+  }
+}
+
+const FileWriteResponseSchema = z.object({
+  etag: z.string(),
+});
+
+export async function writeFile(
+  state: InstanceMutableState,
+  env: KiloClawEnv,
+  filePath: string,
+  content: string,
+  etag?: string
+): Promise<{ etag: string } | null> {
+  try {
+    return await callGatewayController(
+      state,
+      env,
+      '/_kilo/files/write',
+      'POST',
+      FileWriteResponseSchema,
+      { path: filePath, content, etag }
+    );
+  } catch (error) {
+    if (isErrorUnknownRoute(error)) return null;
+    throw error;
+  }
+}
+
 /**
  * Push env var updates to the running controller and signal the gateway.
  * Returns null if the instance isn't running.
@@ -328,6 +443,25 @@ export async function patchConfigOnMachine(
       error: toLoggable(err),
     });
   }
+}
+
+/**
+ * Deep-merge a JSON patch into the live openclaw.json config.
+ * Unlike {@link patchConfigOnMachine}, this propagates errors to the caller.
+ */
+export async function patchOpenclawConfig(
+  state: InstanceMutableState,
+  env: KiloClawEnv,
+  patch: Record<string, unknown>
+): Promise<{ ok: boolean }> {
+  return callGatewayController(
+    state,
+    env,
+    '/_kilo/config/patch',
+    'POST',
+    GatewayCommandResponseSchema,
+    patch
+  );
 }
 
 /**

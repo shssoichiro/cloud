@@ -1,3 +1,4 @@
+import { dirname } from 'node:path';
 import type {
   ExecutionSession,
   SandboxInstance,
@@ -584,7 +585,7 @@ export class SessionService {
     if (env.KILO_OPENROUTER_BASE) {
       providerOptions.baseURL = env.KILO_OPENROUTER_BASE;
     }
-    const isInteractive = !createdOnPlatform;
+    const isInteractive = createdOnPlatform == 'cloud-agent-web';
     const commandGuardPolicy = getCommandGuardPolicy(createdOnPlatform);
 
     const permission: Record<string, unknown> = {
@@ -1310,7 +1311,8 @@ export class SessionService {
       const escapedId = metadata.kiloSessionId.replaceAll("'", "'\\''");
       const escapedWorkspace = context.workspacePath.replaceAll("'", "'\\''");
       const restoreResult = await session.exec(
-        `bun /usr/local/bin/kilo-restore-session.js '${escapedId}' '${escapedWorkspace}'`
+        `bun /usr/local/bin/kilo-restore-session.js '${escapedId}' '${escapedWorkspace}'`,
+        { cwd: dirname(context.workspacePath) }
       );
 
       if (restoreResult.exitCode !== 0) {
@@ -1703,7 +1705,8 @@ export class SessionService {
     kiloUserId: string,
     env: PersistenceEnv,
     organizationId: string | undefined,
-    createdOnPlatform: string
+    createdOnPlatform: string,
+    title?: string
   ): Promise<void> {
     try {
       await env.SESSION_INGEST.createSessionForCloudAgent({
@@ -1712,6 +1715,7 @@ export class SessionService {
         cloudAgentSessionId,
         organizationId,
         createdOnPlatform,
+        title,
       });
     } catch (error) {
       logger

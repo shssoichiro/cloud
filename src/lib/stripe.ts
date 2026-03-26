@@ -52,7 +52,9 @@ import {
   handleKiloClawSubscriptionUpdated,
   handleKiloClawSubscriptionDeleted,
   handleKiloClawScheduleEvent,
+  handleKiloClawInvoicePaid,
 } from '@/lib/kiloclaw/stripe-handlers';
+import { invoiceLooksLikeKiloClawByPriceId } from '@/lib/kiloclaw/stripe-invoice-classifier.server';
 import {
   STRIPE_ENTERPRISE_SUBSCRIPTION_PRODUCT_ID,
   STRIPE_TEAMS_SUBSCRIPTION_PRODUCT_ID,
@@ -627,6 +629,12 @@ export async function processStripePaymentEventHook(event: Stripe.Event) {
         break;
       }
 
+      // KiloClaw subscription invoice — fire claw_transaction for revenue tracking.
+      if (invoiceLooksLikeKiloClawByPriceId(invoice) && invoice.amount_paid > 0) {
+        handleKiloClawInvoicePaid({ eventId: event.id, invoice });
+        break;
+      }
+
       // Handle auto-topup (user or organization)
       const isUserAutoTopup = invoice.metadata?.type === 'auto-topup';
       const isOrgAutoTopup = invoice.metadata?.type === 'org-auto-topup';
@@ -993,7 +1001,9 @@ export async function getStripeTopUpCheckoutUrl(
   stripeCustomerId: User['stripe_customer_id'],
   amount: number,
   origin: string = 'web',
-  organizationId?: string | null
+  organizationId?: string | null,
+  /** Optional internal path to redirect to when the user cancels checkout. */
+  cancelPath?: string | null
 ): Promise<string | null> {
   const line_items = amount
     ? [
@@ -1016,9 +1026,13 @@ export async function getStripeTopUpCheckoutUrl(
       ];
 
   const isOrganizationTopUp = Boolean(organizationId);
-  let cancelUrl = `${APP_URL}/profile?payment_status=topup_cancelled&origin=${origin}`;
-  if (isOrganizationTopUp) {
+  let cancelUrl: string;
+  if (cancelPath) {
+    cancelUrl = `${APP_URL}${cancelPath}`;
+  } else if (isOrganizationTopUp) {
     cancelUrl = `${APP_URL}/organizations/${organizationId}?${TOPUP_CANCELED_QUERY_STRING_KEY}=true`;
+  } else {
+    cancelUrl = `${APP_URL}/profile?payment_status=topup_cancelled&origin=${origin}`;
   }
 
   const rewardfulReferral = await getRewardfulReferral();

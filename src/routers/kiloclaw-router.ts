@@ -10,14 +10,15 @@ import { encryptKiloClawSecret } from '@/lib/kiloclaw/encryption';
 import {
   ALL_SECRET_FIELD_KEYS,
   FIELD_KEY_TO_ENTRY,
+  MAX_SECRET_FIELD_LENGTH,
   validateFieldValue,
+  getEntriesByCategory,
   type SecretFieldKey,
 } from '@kilocode/kiloclaw-secret-catalog';
 import {
   KILOCLAW_API_URL,
   STRIPE_KILOCLAW_EARLYBIRD_PRICE_ID,
   STRIPE_KILOCLAW_EARLYBIRD_COUPON_ID,
-  STRIPE_KILOCLAW_BILLING_START,
   KILOCLAW_BILLING_ENFORCEMENT,
 } from '@/lib/config.server';
 import { db } from '@/lib/drizzle';
@@ -27,32 +28,84 @@ import {
   kiloclaw_earlybird_purchases,
   kiloclaw_subscriptions,
   kiloclaw_instances,
+  kiloclaw_email_log,
 } from '@kilocode/db/schema';
-import { and, eq, desc, sql } from 'drizzle-orm';
+import { and, eq, desc, isNull, inArray, sql } from 'drizzle-orm';
 import { sentryLogger } from '@/lib/utils.server';
 import type { KiloClawDashboardStatus, KiloCodeConfigResponse } from '@/lib/kiloclaw/types';
 import {
   ensureActiveInstance,
+  getActiveInstance,
   markActiveInstanceDestroyed,
+  markInstanceDestroyedById,
+  renameInstance,
   restoreDestroyedInstance,
 } from '@/lib/kiloclaw/instance-registry';
 import { client as stripe } from '@/lib/stripe-client';
 import { APP_URL } from '@/lib/constants';
 import { getRewardfulReferral } from '@/lib/rewardful';
-import { redactOpenclawConfig, restoreRedactedSecrets } from '@/lib/kiloclaw/config-redaction';
 import { clawAccessProcedure } from '@/lib/kiloclaw/access-gate';
-import { getStripePriceIdForClawPlan } from '@/lib/kiloclaw/stripe-price-ids.server';
+import {
+  getStripePriceIdForClawPlan,
+  getStripePriceIdForClawPlanIntro,
+} from '@/lib/kiloclaw/stripe-price-ids.server';
+import { ensureAutoIntroSchedule, resolvePhasePrice } from '@/lib/kiloclaw/stripe-handlers';
 import {
   KILOCLAW_EARLYBIRD_EXPIRY_DATE,
   KILOCLAW_TRIAL_DURATION_DAYS,
 } from '@/lib/kiloclaw/constants';
 import type { ClawBillingStatus } from '@/app/(app)/claw/components/billing/billing-types';
+import PostHogClient from '@/lib/posthog';
+import { CHANGELOG_ENTRIES } from '@/app/(app)/claw/components/changelog-data';
 
 /**
  * Error codes whose messages may contain raw internal details (e.g. filesystem
  * paths) and should NOT be forwarded to the client.
  */
 const UNSAFE_ERROR_CODES = new Set(['config_read_failed', 'config_replace_failed']);
+
+/**
+ * Map KiloClawApiError responses to TRPCErrors for file operations.
+ * Always throws — call as `handleFileOperationError(err, 'read file')`.
+ */
+function handleFileOperationError(err: unknown, operation: string): never {
+  if (err instanceof TRPCError) throw err;
+  if (err instanceof KiloClawApiError && err.statusCode === 404) {
+    const { code, message } = getKiloClawApiErrorPayload(err);
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message:
+        code === 'controller_route_unavailable'
+          ? `Instance needs redeploy to support ${operation}`
+          : (message ?? `Failed to ${operation}`),
+    });
+  }
+  if (err instanceof KiloClawApiError && err.statusCode === 400) {
+    const { message, code } = getKiloClawApiErrorPayload(err);
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message:
+        code && UNSAFE_ERROR_CODES.has(code)
+          ? `Failed to ${operation}`
+          : (message ?? `Failed to ${operation}`),
+    });
+  }
+  if (err instanceof KiloClawApiError && err.statusCode === 409) {
+    const { message, code } = getKiloClawApiErrorPayload(err);
+    throw new TRPCError({
+      code: 'CONFLICT',
+      message: message ?? 'File was modified externally',
+      cause: code ? new UpstreamApiError(code) : undefined,
+    });
+  }
+  throw new TRPCError({
+    code: 'INTERNAL_SERVER_ERROR',
+    message:
+      err instanceof KiloClawApiError
+        ? (getKiloClawApiErrorPayload(err).message ?? `Failed to ${operation}`)
+        : `Failed to ${operation}`,
+  });
+}
 
 function getKiloClawApiErrorPayload(err: KiloClawApiError): { message?: string; code?: string } {
   if (!err.responseBody) return {};
@@ -170,7 +223,11 @@ async function provisionInstance(
   user: Parameters<typeof generateApiToken>[0],
   input: z.infer<typeof updateConfigSchema>
 ) {
-  await ensureActiveInstance(user.id);
+  // Remember which row existed before so we can detect whether
+  // ensureActiveInstance created a new one for this attempt.
+  const preExistingRow = await getActiveInstance(user.id);
+  const instanceRow = await ensureActiveInstance(user.id);
+  const rowIsNew = !preExistingRow || preExistingRow.id !== instanceRow.id;
 
   const encryptedSecrets = input.secrets
     ? Object.fromEntries(
@@ -193,15 +250,29 @@ async function provisionInstance(
   const pinnedImageTag = pin?.image_tag;
 
   const client = new KiloClawInternalClient();
-  return client.provision(user.id, {
-    envVars: input.envVars,
-    encryptedSecrets,
-    channels: buildWorkerChannels(input.channels),
-    kilocodeApiKey,
-    kilocodeApiKeyExpiresAt,
-    kilocodeDefaultModel: input.kilocodeDefaultModel ?? undefined,
-    pinnedImageTag,
-  });
+  try {
+    return await client.provision(user.id, {
+      envVars: input.envVars,
+      encryptedSecrets,
+      channels: buildWorkerChannels(input.channels),
+      kilocodeApiKey,
+      kilocodeApiKeyExpiresAt,
+      kilocodeDefaultModel: input.kilocodeDefaultModel ?? undefined,
+      pinnedImageTag,
+    });
+  } catch (error) {
+    // Only clean up the exact row this attempt created. Target by primary
+    // key so a concurrent request's row is never affected.
+    if (rowIsNew) {
+      await markInstanceDestroyedById(instanceRow.id).catch(cleanupErr => {
+        console.error(
+          '[kiloclaw] Failed to clean up instance row after provision error:',
+          cleanupErr
+        );
+      });
+    }
+    throw error;
+  }
 }
 
 async function patchConfig(
@@ -229,6 +300,37 @@ const STATUS_PAGE_TIMEOUT_MS = 5_000;
 
 const logStatusPageWarning = sentryLogger('kiloclaw-status-page', 'warning');
 const logBillingError = sentryLogger('kiloclaw-billing', 'error');
+
+/** Returns true if a Stripe error indicates the schedule is already in a terminal state. */
+function isScheduleAlreadyInactive(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    msg.includes('not active') ||
+    msg.includes('released') ||
+    msg.includes('canceled') ||
+    msg.includes('completed')
+  );
+}
+
+/**
+ * Release a Stripe schedule, tolerating already-released/canceled states.
+ * Returns true if the schedule was released (or was already inactive).
+ * Returns false if the release failed with a transient error.
+ */
+async function releaseScheduleIfActive(scheduleId: string): Promise<boolean> {
+  try {
+    await stripe.subscriptionSchedules.release(scheduleId);
+    return true;
+  } catch (error) {
+    return isScheduleAlreadyInactive(error);
+  }
+}
+
+/** Resolve a Stripe schedule reference (string ID or expanded object) to its ID. */
+function resolveScheduleId(schedule: string | { id: string } | null | undefined): string | null {
+  if (!schedule) return null;
+  return typeof schedule === 'string' ? schedule : schedule.id;
+}
 
 async function fetchKiloClawServiceDegraded(): Promise<boolean> {
   try {
@@ -263,7 +365,7 @@ async function fetchKiloClawServiceDegraded(): Promise<boolean> {
  * Earlybird is checked first so earlybird purchasers never get an accidental
  * trial row, and expired earlybird users cannot regain access by provisioning.
  */
-async function ensureProvisionAccess(userId: string): Promise<void> {
+async function ensureProvisionAccess(userId: string, userEmail: string): Promise<void> {
   // Check earlybird before anything else — active earlybird grants access,
   // expired earlybird must not fall through to the trial bootstrap.
   const [earlybird] = await db
@@ -293,7 +395,7 @@ async function ensureProvisionAccess(userId: string): Promise<void> {
     // don't fail on the unique user_id constraint.
     const now = new Date();
     const trialEndsAt = new Date(now.getTime() + KILOCLAW_TRIAL_DURATION_DAYS * 86_400_000);
-    await db
+    const [inserted] = await db
       .insert(kiloclaw_subscriptions)
       .values({
         user_id: userId,
@@ -302,7 +404,20 @@ async function ensureProvisionAccess(userId: string): Promise<void> {
         trial_started_at: now.toISOString(),
         trial_ends_at: trialEndsAt.toISOString(),
       })
-      .onConflictDoNothing({ target: kiloclaw_subscriptions.user_id });
+      .onConflictDoNothing({ target: kiloclaw_subscriptions.user_id })
+      .returning({ id: kiloclaw_subscriptions.id });
+
+    if (inserted) {
+      PostHogClient().capture({
+        distinctId: userEmail,
+        event: 'claw_trial_started',
+        properties: {
+          user_id: userId,
+          plan: 'trial',
+          trial_ends_at: trialEndsAt.toISOString(),
+        },
+      });
+    }
     return;
   }
 
@@ -329,6 +444,10 @@ async function ensureProvisionAccess(userId: string): Promise<void> {
 }
 
 export const kiloclawRouter = createTRPCRouter({
+  getChangelog: baseProcedure.query(() => {
+    return CHANGELOG_ENTRIES;
+  }),
+
   serviceDegraded: baseProcedure.query(async () => {
     return fetchKiloClawServiceDegraded();
   }),
@@ -338,28 +457,32 @@ export const kiloclawRouter = createTRPCRouter({
     return client.getLatestVersion();
   }),
 
-  // Status + gateway token (two internal client calls, merged for the dashboard)
   getStatus: baseProcedure.query(async ({ ctx }) => {
     const client = new KiloClawInternalClient();
     const status = await client.getStatus(ctx.user.id);
-
-    let gatewayToken: string | null = null;
-    if (status.sandboxId) {
-      try {
-        const tokenResp = await client.getGatewayToken(ctx.user.id);
-        gatewayToken = tokenResp.gatewayToken;
-      } catch (err) {
-        console.warn(
-          `[kiloclaw] getGatewayToken failed (non-fatal) userId=${ctx.user.id}:`,
-          err instanceof Error ? err.message : String(err)
-        );
-      }
-    }
-
     const workerUrl = KILOCLAW_API_URL || 'https://claw.kilo.ai';
 
-    return { ...status, gatewayToken, workerUrl } satisfies KiloClawDashboardStatus;
+    const instance = await getActiveInstance(ctx.user.id);
+
+    return {
+      ...status,
+      name: instance?.name ?? null,
+      workerUrl,
+    } satisfies KiloClawDashboardStatus;
   }),
+
+  renameInstance: baseProcedure
+    .input(z.object({ name: z.string().min(1).max(50).nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await renameInstance(ctx.user.id, input.name);
+      } catch (error) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: error instanceof Error ? error.message : 'Failed to rename instance',
+        });
+      }
+    }),
 
   // Instance lifecycle
   start: clawAccessProcedure.mutation(async ({ ctx }) => {
@@ -372,22 +495,77 @@ export const kiloclawRouter = createTRPCRouter({
     return client.stop(ctx.user.id);
   }),
 
-  destroy: clawAccessProcedure.mutation(async ({ ctx }) => {
+  destroy: baseProcedure.mutation(async ({ ctx }) => {
     const destroyedRow = await markActiveInstanceDestroyed(ctx.user.id);
     const client = new KiloClawInternalClient();
+    let result;
     try {
-      return await client.destroy(ctx.user.id);
+      result = await client.destroy(ctx.user.id);
     } catch (error) {
       if (destroyedRow) {
         await restoreDestroyedInstance(destroyedRow.id);
       }
       throw error;
     }
+
+    // Post-destroy cleanup: best-effort DB tidying that must not undo a
+    // successful destroy. If any of these fail, log and move on.
+    try {
+      // Clear the destruction lifecycle so the billing cron doesn't
+      // send warning emails or attempt a redundant destroy.
+      // Only clear suspended_at for non-past_due subscriptions — nulling it
+      // on a past_due row would re-enable access without fixing payment.
+      const [sub] = await db
+        .select({ status: kiloclaw_subscriptions.status })
+        .from(kiloclaw_subscriptions)
+        .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id))
+        .limit(1);
+      const clearFields: { suspended_at?: null; destruction_deadline: null } = {
+        destruction_deadline: null,
+      };
+      if (sub && sub.status !== 'past_due') {
+        clearFields.suspended_at = null;
+      }
+      await db
+        .update(kiloclaw_subscriptions)
+        .set(clearFields)
+        .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+
+      // Clear lifecycle emails so they can fire again if the user re-provisions.
+      const resettableEmailTypes = [
+        'claw_suspended_trial',
+        'claw_suspended_subscription',
+        'claw_suspended_payment',
+        'claw_destruction_warning',
+        'claw_instance_destroyed',
+      ];
+      await db
+        .delete(kiloclaw_email_log)
+        .where(
+          and(
+            eq(kiloclaw_email_log.user_id, ctx.user.id),
+            inArray(kiloclaw_email_log.email_type, resettableEmailTypes)
+          )
+        );
+      // Clear per-instance ready emails so a future re-provision triggers the notification.
+      await db
+        .delete(kiloclaw_email_log)
+        .where(
+          and(
+            eq(kiloclaw_email_log.user_id, ctx.user.id),
+            sql`${kiloclaw_email_log.email_type} LIKE 'claw_instance_ready:%'`
+          )
+        );
+    } catch (cleanupError) {
+      console.error('[kiloclaw] Post-destroy cleanup failed:', cleanupError);
+    }
+
+    return result;
   }),
 
   // Explicit lifecycle APIs
   provision: baseProcedure.input(updateConfigSchema).mutation(async ({ ctx, input }) => {
-    await ensureProvisionAccess(ctx.user.id);
+    await ensureProvisionAccess(ctx.user.id, ctx.user.google_user_email);
     return provisionInstance(ctx.user, input);
   }),
 
@@ -400,7 +578,7 @@ export const kiloclawRouter = createTRPCRouter({
   // Backward-compatible alias — uses the same trial-bootstrap flow as provision
   // so first-time callers can create a trial row (clawAccessProcedure would reject them).
   updateConfig: baseProcedure.input(updateConfigSchema).mutation(async ({ ctx, input }) => {
-    await ensureProvisionAccess(ctx.user.id);
+    await ensureProvisionAccess(ctx.user.id, ctx.user.google_user_email);
     return provisionInstance(ctx.user, input);
   }),
 
@@ -417,6 +595,13 @@ export const kiloclawRouter = createTRPCRouter({
     });
   }),
 
+  patchExecPreset: clawAccessProcedure
+    .input(z.object({ security: z.string().optional(), ask: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const client = new KiloClawInternalClient();
+      return client.patchExecPreset(ctx.user.id, input);
+    }),
+
   /**
    * Generic secret patch — catalog-driven replacement for patchChannels.
    * Validates keys against the secret catalog, enforces allFieldsRequired,
@@ -426,7 +611,7 @@ export const kiloclawRouter = createTRPCRouter({
     .input(
       z.object({
         secrets: z
-          .record(z.string(), z.string().max(500).nullable())
+          .record(z.string(), z.string().max(MAX_SECRET_FIELD_LENGTH).nullable())
           .refine(obj => Object.keys(obj).every(k => ALL_SECRET_FIELD_KEYS.has(k)), {
             message: 'Unknown secret field key',
           }),
@@ -499,6 +684,56 @@ export const kiloclawRouter = createTRPCRouter({
     return client.getConfig({ userId: ctx.user.id });
   }),
 
+  getChannelCatalog: baseProcedure.query(async ({ ctx }) => {
+    const client = new KiloClawUserClient(
+      generateApiToken(ctx.user, undefined, { expiresIn: TOKEN_EXPIRY.fiveMinutes })
+    );
+    const config = await client.getConfig({ userId: ctx.user.id });
+    const channels = getEntriesByCategory('channel');
+
+    return channels.map(entry => ({
+      id: entry.id,
+      label: entry.label,
+      configured: config.configuredSecrets[entry.id] ?? false,
+      fields: entry.fields.map(f => ({
+        key: f.key,
+        label: f.label,
+        placeholder: f.placeholder,
+        placeholderConfigured: f.placeholderConfigured,
+        validationPattern: f.validationPattern,
+        validationMessage: f.validationMessage,
+      })),
+      helpText: entry.helpText,
+      helpUrl: entry.helpUrl,
+      allFieldsRequired: entry.allFieldsRequired ?? false,
+    }));
+  }),
+
+  getSecretCatalog: baseProcedure.query(async ({ ctx }) => {
+    const client = new KiloClawUserClient(
+      generateApiToken(ctx.user, undefined, { expiresIn: TOKEN_EXPIRY.fiveMinutes })
+    );
+    const config = await client.getConfig({ userId: ctx.user.id });
+    const tools = getEntriesByCategory('tool');
+
+    return tools.map(entry => ({
+      id: entry.id,
+      label: entry.label,
+      configured: config.configuredSecrets[entry.id] ?? false,
+      fields: entry.fields.map(f => ({
+        key: f.key,
+        label: f.label,
+        placeholder: f.placeholder,
+        placeholderConfigured: f.placeholderConfigured,
+        validationPattern: f.validationPattern,
+        validationMessage: f.validationMessage,
+      })),
+      helpText: entry.helpText,
+      helpUrl: entry.helpUrl,
+      allFieldsRequired: entry.allFieldsRequired ?? false,
+    }));
+  }),
+
   restartMachine: clawAccessProcedure
     .input(
       z
@@ -566,6 +801,25 @@ export const kiloclawRouter = createTRPCRouter({
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
         message: 'Failed to fetch gateway status',
+      });
+    }
+  }),
+
+  gatewayReady: baseProcedure.query(async ({ ctx }) => {
+    try {
+      const client = new KiloClawInternalClient();
+      return await client.getGatewayReady(ctx.user.id);
+    } catch (err) {
+      console.error('[gatewayReady] error for user:', ctx.user.id, err);
+      if (err instanceof KiloClawApiError && (err.statusCode === 404 || err.statusCode === 409)) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Gateway ready check unavailable',
+        });
+      }
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to fetch gateway ready state',
       });
     }
   }),
@@ -913,81 +1167,73 @@ export const kiloclawRouter = createTRPCRouter({
     return { success: true };
   }),
 
-  openclawConfig: baseProcedure.query(async ({ ctx }) => {
+  fileTree: clawAccessProcedure.query(async ({ ctx }) => {
     try {
       const client = new KiloClawInternalClient();
-      const response = await client.getOpenclawConfig(ctx.user.id);
-      return {
-        ...response,
-        config: redactOpenclawConfig(response.config),
-      };
+      const result = await client.getFileTree(ctx.user.id);
+      return result.tree;
     } catch (err) {
-      if (err instanceof KiloClawApiError && err.statusCode === 404) {
-        const { code, message } = getKiloClawApiErrorPayload(err);
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message:
-            code === 'controller_route_unavailable'
-              ? 'Instance needs redeploy to support fetching OpenClaw config'
-              : (message ?? 'Failed to fetch OpenClaw config'),
-        });
-      }
-      if (err instanceof KiloClawApiError && err.statusCode === 409) {
-        const { message, code } = getKiloClawApiErrorPayload(err);
-        throw new TRPCError({
-          code: 'CONFLICT',
-          message: message ?? 'Instance is not provisioned or not running',
-          cause: code ? new UpstreamApiError(code) : undefined,
-        });
-      }
-      throw new TRPCError({
-        code: 'INTERNAL_SERVER_ERROR',
-        message:
-          err instanceof KiloClawApiError
-            ? (getKiloClawApiErrorPayload(err).message ?? 'Failed to fetch OpenClaw config')
-            : 'Failed to fetch OpenClaw config',
-      });
+      handleFileOperationError(err, 'fetch file tree');
     }
   }),
 
-  replaceOpenclawConfig: clawAccessProcedure
-    .input(z.object({ config: z.record(z.string(), z.unknown()), etag: z.string().optional() }))
+  readFile: clawAccessProcedure
+    .input(z.object({ path: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const client = new KiloClawInternalClient();
+        return await client.readFile(ctx.user.id, input.path);
+      } catch (err) {
+        handleFileOperationError(err, 'read file');
+      }
+    }),
+
+  writeFile: clawAccessProcedure
+    .input(
+      z.object({
+        path: z.string().min(1),
+        content: z.string(),
+        etag: z.string().min(1),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       try {
         const client = new KiloClawInternalClient();
+        let content = input.content;
 
-        // Fetch the current config so we can restore any redacted secrets
-        // that the user didn't change (they'll still have the placeholder).
-        const current = await client.getOpenclawConfig(ctx.user.id);
-        const mergedConfig = restoreRedactedSecrets(input.config, current.config);
+        if (input.path === 'openclaw.json') {
+          let userConfig: unknown;
+          try {
+            userConfig = JSON.parse(content);
+          } catch {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'openclaw.json must be valid JSON',
+            });
+          }
+          if (typeof userConfig !== 'object' || userConfig === null || Array.isArray(userConfig)) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'openclaw.json must be a JSON object',
+            });
+          }
+          content = JSON.stringify(userConfig, null, 2);
+        }
 
-        return await client.replaceOpenclawConfig(ctx.user.id, mergedConfig, input.etag);
+        return await client.writeFile(ctx.user.id, input.path, content, input.etag);
       } catch (err) {
-        if (err instanceof KiloClawApiError && err.statusCode === 404) {
-          const { code, message } = getKiloClawApiErrorPayload(err);
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message:
-              code === 'controller_route_unavailable'
-                ? 'Instance cannot update OpenClaw config until redeployed'
-                : (message ?? 'Failed to replace openclaw config'),
-          });
-        }
-        if (err instanceof KiloClawApiError && err.statusCode === 409) {
-          const { message, code } = getKiloClawApiErrorPayload(err);
-          throw new TRPCError({
-            code: 'CONFLICT',
-            message: message ?? 'Instance is not provisioned or not running',
-            cause: code ? new UpstreamApiError(code) : undefined,
-          });
-        }
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message:
-            err instanceof KiloClawApiError
-              ? (getKiloClawApiErrorPayload(err).message ?? 'Failed to replace openclaw config')
-              : 'Failed to replace openclaw config',
-        });
+        handleFileOperationError(err, 'write file');
+      }
+    }),
+
+  patchOpenclawConfig: clawAccessProcedure
+    .input(z.object({ patch: z.record(z.string(), z.unknown()) }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const client = new KiloClawInternalClient();
+        return await client.patchOpenclawConfig(ctx.user.id, input.patch);
+      } catch (err) {
+        handleFileOperationError(err, 'patch openclaw config');
       }
     }),
 
@@ -1113,7 +1359,7 @@ export const kiloclawRouter = createTRPCRouter({
       // Reject checkout if any non-ended subscription exists (active, past_due, unpaid).
       // The trialing status is exempted so trial users can convert to paid.
       const [existing] = await db
-        .select({ status: kiloclaw_subscriptions.status })
+        .select({ status: kiloclaw_subscriptions.status, plan: kiloclaw_subscriptions.plan })
         .from(kiloclaw_subscriptions)
         .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id))
         .limit(1);
@@ -1125,14 +1371,8 @@ export const kiloclawRouter = createTRPCRouter({
         });
       }
 
-      // Guard against duplicate Stripe subscriptions from concurrent checkouts.
-      // The local DB check above exempts trialing rows, so a user could open
-      // multiple Checkout Sessions before the first webhook flips the row to active.
-      // We check for both completed subscriptions and open checkout sessions:
-      // - Active/trialing subscriptions catch the case where a prior checkout completed.
-      // - Open checkout sessions catch the race where a parallel request just
-      //   created a session but the user hasn't completed it yet, preventing
-      //   multiple pending sessions from leading to duplicate subscriptions.
+      // Guard against duplicate Stripe subscriptions: the DB check above exempts
+      // trialing rows, so also verify against live Stripe state.
       const [activeSubs, trialingSubs, openSessions] = await Promise.all([
         stripe.subscriptions.list({ customer: stripeCustomerId, status: 'active', limit: 10 }),
         stripe.subscriptions.list({ customer: stripeCustomerId, status: 'trialing', limit: 10 }),
@@ -1147,18 +1387,22 @@ export const kiloclawRouter = createTRPCRouter({
           message: 'You already have an active subscription.',
         });
       }
-      const hasPendingKiloClawCheckout = openSessions.data.some(
-        s => s.metadata?.type === 'kiloclaw'
+      // Best-effort: expire stale open checkout sessions so the user can retry.
+      // Concurrent duplicates are tolerable — hasActiveKiloClawSub prevents
+      // duplicate subscriptions, which is what actually matters.
+      const staleKiloClawSessions = openSessions.data.filter(s => s.metadata?.type === 'kiloclaw');
+      await Promise.all(
+        staleKiloClawSessions.map(s => stripe.checkout.sessions.expire(s.id).catch(() => {}))
       );
-      if (hasPendingKiloClawCheckout) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message:
-            'A checkout is already in progress. Please complete or cancel the existing checkout.',
-        });
-      }
 
-      const priceId = getStripePriceIdForClawPlan(input.plan);
+      // New standard subscribers get the intro price; returning subscribers who
+      // previously had a paid subscription get the regular price. A canceled trial
+      // (plan === 'trial') does not count as a prior paid subscription.
+      const hadPaidSubscription = existing?.status === 'canceled' && existing.plan !== 'trial';
+      const priceId =
+        input.plan === 'standard' && !hadPaidSubscription
+          ? getStripePriceIdForClawPlanIntro('standard')
+          : getStripePriceIdForClawPlan(input.plan);
 
       const rewardfulReferral = await getRewardfulReferral();
 
@@ -1166,19 +1410,15 @@ export const kiloclawRouter = createTRPCRouter({
         mode: 'subscription',
         customer: stripeCustomerId,
         ...(rewardfulReferral && { client_reference_id: rewardfulReferral }),
-        allow_promotion_codes: input.plan === 'standard',
         billing_address_collection: 'required',
         line_items: [{ price: priceId, quantity: 1 }],
+        allow_promotion_codes: true,
         customer_update: { name: 'auto', address: 'auto' },
         tax_id_collection: { enabled: true, required: 'never' },
         success_url: `${APP_URL}/payments/kiloclaw/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${APP_URL}/claw?checkout=cancelled`,
         subscription_data: {
           metadata: { type: 'kiloclaw', plan: input.plan, kiloUserId: ctx.user.id },
-          ...(STRIPE_KILOCLAW_BILLING_START &&
-          Date.now() < new Date(STRIPE_KILOCLAW_BILLING_START).getTime()
-            ? { trial_end: Math.floor(new Date(STRIPE_KILOCLAW_BILLING_START).getTime() / 1000) }
-            : {}),
         },
         metadata: { type: 'kiloclaw', plan: input.plan, kiloUserId: ctx.user.id },
       });
@@ -1204,44 +1444,32 @@ export const kiloclawRouter = createTRPCRouter({
       });
     }
 
-    // If there's a pending schedule, release it first.
-    // Only clear the local pointer after release succeeds or the schedule is
-    // already released/canceled, so Stripe and local state stay in sync.
-    if (sub.stripe_schedule_id) {
-      try {
-        await stripe.subscriptionSchedules.release(sub.stripe_schedule_id);
-      } catch (releaseError) {
-        // If the schedule was already released/canceled, Stripe returns an error
-        // with status 400 and a message about the schedule not being active.
-        // In that case we should still clear our local pointer.
-        const msg = releaseError instanceof Error ? releaseError.message : String(releaseError);
-        const alreadyInactive =
-          msg.includes('not active') || msg.includes('released') || msg.includes('canceled');
-        if (!alreadyInactive) {
-          logBillingError('Failed to release subscription schedule — aborting cancellation', {
-            user_id: ctx.user.id,
-            schedule_id: sub.stripe_schedule_id,
-            error: msg,
-          });
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'Unable to cancel: failed to release pending plan schedule. Please try again.',
-          });
-        }
+    // Reconcile hidden-schedule state: Stripe may have an attached schedule
+    // that the DB doesn't know about.
+    const liveSub = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
+    const scheduleIdToRelease = sub.stripe_schedule_id ?? resolveScheduleId(liveSub.schedule);
+
+    if (scheduleIdToRelease) {
+      const released = await releaseScheduleIfActive(scheduleIdToRelease);
+      if (!released) {
+        logBillingError('Failed to release subscription schedule — aborting cancellation', {
+          user_id: ctx.user.id,
+          schedule_id: scheduleIdToRelease,
+        });
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Unable to cancel: failed to release pending plan schedule. Please try again.',
+        });
       }
     }
 
-    // Set cancel_at_period_end in Stripe BEFORE clearing local schedule fields.
-    // If this Stripe call fails, the schedule was already released in Stripe but
-    // local state still references it, so reactivateSubscription can recreate it.
     await stripe.subscriptions.update(sub.stripe_subscription_id, { cancel_at_period_end: true });
 
-    // Both Stripe calls succeeded — now persist all local changes together.
     await db
       .update(kiloclaw_subscriptions)
       .set({
         cancel_at_period_end: true,
-        ...(sub.stripe_schedule_id
+        ...(scheduleIdToRelease
           ? { stripe_schedule_id: null, scheduled_plan: null, scheduled_by: null }
           : {}),
       })
@@ -1270,6 +1498,16 @@ export const kiloclawRouter = createTRPCRouter({
       .set({ cancel_at_period_end: false })
       .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
 
+    // Best-effort: restore the auto intro→regular schedule if on an intro price
+    try {
+      await ensureAutoIntroSchedule(sub.stripe_subscription_id, ctx.user.id);
+    } catch (err) {
+      console.error('Failed to restore auto intro schedule after reactivation', {
+        userId: ctx.user.id,
+        error: err,
+      });
+    }
+
     return { success: true };
   }),
 
@@ -1294,7 +1532,33 @@ export const kiloclawRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot switch from a trial plan.' });
       }
 
-      if (sub.stripe_schedule_id) {
+      // Reconcile hidden-schedule state: Stripe may have an attached schedule
+      // that the DB doesn't know about.
+      const liveSub = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
+      const effectiveScheduleId = sub.stripe_schedule_id ?? resolveScheduleId(liveSub.schedule);
+
+      let effectiveScheduledBy = sub.scheduled_by;
+      if (!sub.stripe_schedule_id && effectiveScheduleId) {
+        const hiddenSchedule = await stripe.subscriptionSchedules.retrieve(effectiveScheduleId);
+        if (hiddenSchedule.metadata?.origin === 'auto-intro') {
+          effectiveScheduledBy = 'auto';
+        } else {
+          // Hidden non-auto schedule — must release before creating a fresh one,
+          // otherwise Stripe rejects the create because the subscription is still
+          // attached to the old schedule.
+          const released = await releaseScheduleIfActive(effectiveScheduleId);
+          if (!released) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message:
+                'Unable to switch plan: failed to release existing schedule. Please try again.',
+            });
+          }
+          effectiveScheduledBy = null;
+        }
+      }
+
+      if (effectiveScheduledBy === 'user') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'A plan switch is already pending. Cancel it before requesting a new one.',
@@ -1302,51 +1566,133 @@ export const kiloclawRouter = createTRPCRouter({
       }
 
       const targetPriceId = getStripePriceIdForClawPlan(input.toPlan);
-      const currentPriceId = getStripePriceIdForClawPlan(sub.plan);
 
-      // Create schedule for plan transition at period end.
-      // from_subscription creates a schedule with one phase matching the current billing period.
-      // We must preserve that phase's start/end dates so the switch happens at renewal, not immediately.
-      const schedule = await stripe.subscriptionSchedules.create({
-        from_subscription: sub.stripe_subscription_id,
-      });
+      // If an auto schedule exists, update it in place for the user's plan switch.
+      if (effectiveScheduledBy === 'auto' && effectiveScheduleId) {
+        try {
+          const existingSchedule = await stripe.subscriptionSchedules.retrieve(effectiveScheduleId);
+          const autoCurrentPhase = existingSchedule.phases[0];
+          const phase1Price = autoCurrentPhase ? resolvePhasePrice(autoCurrentPhase) : null;
 
-      const currentPhase = schedule.phases[0];
-      if (!currentPhase) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Stripe schedule has no current phase.',
-        });
+          if (!autoCurrentPhase || !phase1Price) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Cannot determine current phase price from schedule.',
+            });
+          }
+
+          await stripe.subscriptionSchedules.update(effectiveScheduleId, {
+            end_behavior: 'release',
+            phases: [
+              {
+                items: [{ price: phase1Price }],
+                start_date: autoCurrentPhase.start_date,
+                end_date: autoCurrentPhase.end_date,
+              },
+              { items: [{ price: targetPriceId }] },
+            ],
+          });
+
+          await db
+            .update(kiloclaw_subscriptions)
+            .set({
+              stripe_schedule_id: effectiveScheduleId,
+              scheduled_plan: input.toPlan,
+              scheduled_by: 'user',
+            })
+            .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+
+          return { success: true };
+        } catch (err) {
+          // Stale schedule — clear pointer and fall through to fresh creation
+          if (!isScheduleAlreadyInactive(err)) throw err;
+
+          await db
+            .update(kiloclaw_subscriptions)
+            .set({ stripe_schedule_id: null, scheduled_plan: null, scheduled_by: null })
+            .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+        }
       }
 
-      // Both directions use a 2-phase schedule: current plan until period end,
-      // then the target plan (open-ended, end_behavior: 'release'). When the
-      // final phase starts, Stripe releases the schedule and the subscription
-      // continues on the new price. The plan change is picked up by
-      // subscription.updated via detectPlanFromSubscription, and the schedule
-      // release event clears the tracking fields.
-      await stripe.subscriptionSchedules.update(schedule.id, {
-        end_behavior: 'release',
-        phases: [
-          {
-            items: [{ price: currentPriceId }],
-            start_date: currentPhase.start_date,
-            end_date: currentPhase.end_date,
-          },
-          { items: [{ price: targetPriceId }] },
-        ],
-      });
+      // Fresh schedule creation: no existing schedule (or stale one was cleared above).
+      // from_subscription mirrors the subscription's current state at create-time,
+      // so the phase price reflects the actual current price even if a schedule
+      // released at a billing boundary since our earlier subscriptions.retrieve().
+      let stripeScheduleId: string | null = null;
+      try {
+        const schedule = await stripe.subscriptionSchedules.create({
+          from_subscription: sub.stripe_subscription_id,
+        });
+        stripeScheduleId = schedule.id;
 
-      await db
-        .update(kiloclaw_subscriptions)
-        .set({
-          stripe_schedule_id: schedule.id,
-          scheduled_plan: input.toPlan,
-          scheduled_by: 'user',
-        })
-        .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+        const currentPhase = schedule.phases[0];
+        if (!currentPhase) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Stripe schedule has no current phase.',
+          });
+        }
 
-      return { success: true };
+        const freshPhase1Price = resolvePhasePrice(currentPhase);
+        if (!freshPhase1Price) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Cannot determine current subscription price from schedule.',
+          });
+        }
+
+        await stripe.subscriptionSchedules.update(schedule.id, {
+          metadata: { origin: 'user-switch' },
+          end_behavior: 'release',
+          phases: [
+            {
+              items: [{ price: freshPhase1Price }],
+              start_date: currentPhase.start_date,
+              end_date: currentPhase.end_date,
+            },
+            { items: [{ price: targetPriceId }] },
+          ],
+        });
+
+        // Optimistic concurrency: only write if no other request wrote a schedule first.
+        const updated = await db
+          .update(kiloclaw_subscriptions)
+          .set({
+            stripe_schedule_id: schedule.id,
+            scheduled_plan: input.toPlan,
+            scheduled_by: 'user',
+          })
+          .where(
+            and(
+              eq(kiloclaw_subscriptions.user_id, ctx.user.id),
+              isNull(kiloclaw_subscriptions.stripe_schedule_id)
+            )
+          )
+          .returning({ id: kiloclaw_subscriptions.id });
+
+        if (updated.length === 0) {
+          // A concurrent request already wrote a schedule — release ours.
+          await stripe.subscriptionSchedules.release(schedule.id);
+          stripeScheduleId = null; // Already cleaned up; skip catch-block cleanup.
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'A plan switch is already pending. Cancel it before requesting a new one.',
+          });
+        }
+
+        return { success: true };
+      } catch (error) {
+        // Best-effort cleanup: if we created a schedule on Stripe but something
+        // failed afterward, release it so it doesn't become orphaned.
+        if (stripeScheduleId) {
+          try {
+            await stripe.subscriptionSchedules.release(stripeScheduleId);
+          } catch {
+            // Swallow cleanup errors — the original error is more important.
+          }
+        }
+        throw error;
+      }
     }),
 
   cancelPlanSwitch: baseProcedure.mutation(async ({ ctx }) => {
@@ -1368,11 +1714,30 @@ export const kiloclawRouter = createTRPCRouter({
       });
     }
 
-    await stripe.subscriptionSchedules.release(sub.stripe_schedule_id);
+    const released = await releaseScheduleIfActive(sub.stripe_schedule_id);
+    if (!released) {
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to release pending plan schedule. Please try again.',
+      });
+    }
+
     await db
       .update(kiloclaw_subscriptions)
       .set({ stripe_schedule_id: null, scheduled_plan: null, scheduled_by: null })
       .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+
+    // Best-effort: restore the auto intro→regular schedule if on an intro price
+    try {
+      if (sub.stripe_subscription_id) {
+        await ensureAutoIntroSchedule(sub.stripe_subscription_id, ctx.user.id);
+      }
+    } catch (err) {
+      console.error('Failed to restore auto intro schedule after cancel plan switch', {
+        userId: ctx.user.id,
+        error: err,
+      });
+    }
 
     return { success: true };
   }),

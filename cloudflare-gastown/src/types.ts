@@ -162,6 +162,15 @@ export type PrimeContext = {
   hooked_bead: Bead | null;
   undelivered_mail: Mail[];
   open_beads: Bead[];
+  /** Present when the hooked bead is a rework request (gt:rework label). */
+  rework_context: {
+    feedback: string;
+    branch: string | null;
+    target_branch: string | null;
+    files: string[];
+    original_bead_title: string | null;
+    mr_bead_id: string | null;
+  } | null;
 };
 
 // -- Agent done --
@@ -205,17 +214,36 @@ export const TownConfigSchema = z.object({
   /** Owner user ID — stored so the mayor can mint JWTs without a rig config */
   owner_user_id: z.string().optional(),
 
+  /** Town ownership type */
+  owner_type: z.enum(['user', 'org']).optional().default('user'),
+  /** Owner identifier — userId when owner_type='user', orgId when owner_type='org' */
+  owner_id: z.string().optional(),
+  /** The userId who originally created this town (for audit trail in org towns) */
+  created_by_user_id: z.string().optional(),
+  /** Organization ID — set when owner_type='org', convenience alias for owner_id */
+  organization_id: z.string().optional(),
+
   /** Kilo API token for LLM gateway authentication */
   kilocode_token: z.string().optional(),
 
   /** Default LLM model for new agent sessions */
   default_model: z.string().optional(),
 
+  /** Per-role model overrides. When set, the specified role uses this model
+   *  instead of default_model. */
+  role_models: z
+    .object({
+      mayor: z.string().optional(),
+      refinery: z.string().optional(),
+      polecat: z.string().optional(),
+    })
+    .optional(),
+
   /** Lightweight model for title generation, explore subagent, etc. */
   small_model: z.string().optional(),
 
   /** Maximum concurrent polecats per rig */
-  max_polecats_per_rig: z.number().int().min(1).max(20).optional(),
+  max_polecats_per_rig: z.number().int().min(1).max(50).optional(),
 
   /**
    * Town-level merge strategy. Rigs inherit this when they don't set their own.
@@ -248,6 +276,21 @@ export const TownConfigSchema = z.object({
 
   /** When true, all convoys are created as staged by default (agents not dispatched until started). */
   staged_convoys_default: z.boolean().default(false),
+
+  /** GitHub PAT used exclusively for `gh` CLI operations (PRs, issues, etc.).
+   *  Git clone/push still uses the integration token from git_auth. */
+  github_cli_pat: z.string().optional(),
+
+  /** Custom git commit author name. When set, the user becomes the primary author
+   *  and the AI agent is added as co-author (unless disable_ai_coauthor is true). */
+  git_author_name: z.string().optional(),
+
+  /** Custom git commit author email. Used alongside git_author_name. */
+  git_author_email: z.string().optional(),
+
+  /** When true, AI agent co-authorship trailer is omitted from commits.
+   *  Only takes effect when git_author_name is set. */
+  disable_ai_coauthor: z.boolean().default(false),
 });
 
 export type TownConfig = z.infer<typeof TownConfigSchema>;
@@ -269,10 +312,21 @@ export const TownConfigUpdateSchema = z.object({
     })
     .optional(),
   owner_user_id: z.string().optional(),
+  owner_type: z.enum(['user', 'org']).optional(),
+  owner_id: z.string().optional(),
+  created_by_user_id: z.string().optional(),
+  organization_id: z.string().optional(),
   kilocode_token: z.string().optional(),
   default_model: z.string().optional(),
+  role_models: z
+    .object({
+      mayor: z.string().optional(),
+      refinery: z.string().optional(),
+      polecat: z.string().optional(),
+    })
+    .optional(),
   small_model: z.string().optional(),
-  max_polecats_per_rig: z.number().int().min(1).max(20).optional(),
+  max_polecats_per_rig: z.number().int().min(1).max(50).optional(),
   merge_strategy: MergeStrategy.optional(),
   refinery: z
     .object({
@@ -289,6 +343,10 @@ export const TownConfigUpdateSchema = z.object({
     })
     .optional(),
   staged_convoys_default: z.boolean().optional(),
+  github_cli_pat: z.string().optional(),
+  git_author_name: z.string().optional(),
+  git_author_email: z.string().optional(),
+  disable_ai_coauthor: z.boolean().optional(),
 });
 export type TownConfigUpdate = z.infer<typeof TownConfigUpdateSchema>;
 

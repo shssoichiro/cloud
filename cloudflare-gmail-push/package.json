@@ -5,8 +5,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",
-    "typecheck": "tsgo --noEmit --incremental false",
-    "lint": "eslint src/",
+    "typecheck": "tsgo --noEmit",
+    "lint": "pnpm -w exec oxlint --config .oxlintrc.json cloudflare-gmail-push/src",
     "cf-typegen": "wrangler types --env-file /dev/null"
   },
   "dependencies": {
@@ -15,9 +15,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.8.34",
-    "@kilocode/eslint-config": "workspace:*",
-    "@typescript/native-preview": "7.0.0-dev.20251019.1",
+    "@cloudflare/vitest-pool-workers": "^0.8.71",
+    "@typescript/native-preview": "catalog:",
     "typescript": "catalog:",
     "vitest": "~3.2.4",
     "wrangler": "catalog:"

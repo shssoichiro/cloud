@@ -8,6 +8,7 @@ import {
   FIRST_TOPUP_BONUS_AMOUNT,
   REFERRAL_BONUS_AMOUNT,
   PROMO_CREDIT_EXPIRY_HRS,
+  WELCOME_CREDIT_EXPIRY_HRS,
 } from '@/lib/constants';
 import { promoCategoriesOld } from '@/lib/promoCreditCategoriesOld';
 import {
@@ -172,9 +173,9 @@ const nonSelfServicePromos: readonly NonSelfServicePromoCreditCategoryConfig[] =
   {
     credit_category: 'automatic-welcome-credits',
     description: 'Free credits for new users who pass both Turnstile and Stytch validation',
-    amount_usd: 5,
+    amount_usd: 2.5,
     is_idempotent: true,
-    expiry_hours: PROMO_CREDIT_EXPIRY_HRS,
+    expiry_hours: WELCOME_CREDIT_EXPIRY_HRS,
   },
   {
     credit_category: 'autocomplete-rollout-2025-11',
@@ -570,7 +571,7 @@ const encryptedSelfServicePromos: readonly EncryptedSelfServicePromoCreditCatego
     is_user_selfservicable: true,
     is_idempotent: true,
     amount_usd: 10,
-    promotion_ends_at: new Date('2026-03-01'),
+    promotion_ends_at: new Date('2027-01-01'),
     description: 'Emilie Valentine Experiment',
     total_redemptions_allowed: 5000,
   },
@@ -668,11 +669,20 @@ const encryptedSelfServicePromos: readonly EncryptedSelfServicePromoCreditCatego
     encrypted_credit_category: 'FCD+K/F3UGQR533OdgPViQ==:n5QOBh7aSdIR/hxdtBI7gA==:LkUxLKCCiQw=',
     is_user_selfservicable: true,
     is_idempotent: true,
-    amount_usd: 10,
-    expiry_hours: 30 * 24,
+    amount_usd: 50,
+    expiry_hours: 14 * 24,
     promotion_ends_at: new Date('2026-04-30'),
     description: 'Austin ClawCon Credits',
     total_redemptions_allowed: 2000,
+  },
+  {
+    encrypted_credit_category: 'RFk4Mcj/NAJbHZoMe9zs2Q==:80p2tRoXKZS91Rd4DFeLVg==:aVXBzgFw/2Ppmg==',
+    is_user_selfservicable: true,
+    is_idempotent: true,
+    amount_usd: 100,
+    expiry_hours: 30 * 24,
+    description: 'Creator promo',
+    total_redemptions_allowed: 30,
   },
 ];
 

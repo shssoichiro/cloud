@@ -202,12 +202,8 @@ export async function createVolume(
 /**
  * Create a volume, walking a list of regions until one succeeds.
  *
- * Fly doesn't support meta-regions (us, eu) for volume creation, so callers
- * must provide an explicit list of regions to try. On capacity-related 412
- * errors, the next region is tried. Any other error is thrown immediately.
- *
- * The compute hint tells Fly what machine spec will attach to this volume,
- * so it can pick a host with capacity for both.
+ * On capacity-related 412 errors the next region is tried.
+ * Any other error is thrown immediately.
  */
 export async function createVolumeWithFallback(
   config: FlyClientConfig,
@@ -357,6 +353,12 @@ export async function listMachines(
 export async function getVolume(config: FlyClientConfig, volumeId: string): Promise<FlyVolume> {
   const resp = await flyFetch(config, `/volumes/${volumeId}`);
   await assertOk(resp, 'getVolume');
+  return resp.json();
+}
+
+export async function listVolumes(config: FlyClientConfig): Promise<FlyVolume[]> {
+  const resp = await flyFetch(config, '/volumes');
+  await assertOk(resp, 'listVolumes');
   return resp.json();
 }
 

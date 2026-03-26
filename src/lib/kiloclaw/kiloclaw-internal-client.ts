@@ -21,12 +21,25 @@ import type {
   GatewayProcessStatusResponse,
   GatewayProcessActionResponse,
   ConfigRestoreResponse,
+  GatewayReadyResponse,
   ControllerVersionResponse,
   OpenclawConfigResponse,
   GoogleCredentialsInput,
   GoogleCredentialsResponse,
   GmailNotificationsResponse,
+  CandidateVolumesResponse,
+  ReassociateVolumeResponse,
+  RegionsResponse,
+  UpdateRegionsResponse,
 } from './types';
+
+/** Keep in sync with: kiloclaw/controller/src/routes/files.ts, kiloclaw/src/.../gateway.ts (Zod) */
+export interface FileNode {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  children?: FileNode[];
+}
 
 /**
  * Error thrown when the KiloClaw API returns a non-OK response.
@@ -117,12 +130,12 @@ export class KiloClawInternalClient {
     );
   }
 
-  async start(userId: string): Promise<{ ok: true }> {
+  async start(userId: string, options?: { skipCooldown?: boolean }): Promise<{ ok: true }> {
     return this.request(
       '/api/platform/start',
       {
         method: 'POST',
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId, ...options }),
       },
       { userId }
     );
@@ -164,14 +177,6 @@ export class KiloClawInternalClient {
     );
   }
 
-  async getGatewayToken(userId: string): Promise<{ gatewayToken: string }> {
-    return this.request(
-      `/api/platform/gateway-token?userId=${encodeURIComponent(userId)}`,
-      undefined,
-      { userId }
-    );
-  }
-
   async patchKiloCodeConfig(
     userId: string,
     patch: KiloCodeConfigPatchInput
@@ -192,6 +197,20 @@ export class KiloClawInternalClient {
       {
         method: 'PATCH',
         body: JSON.stringify({ userId, ...input }),
+      },
+      { userId }
+    );
+  }
+
+  async patchExecPreset(
+    userId: string,
+    patch: { security?: string; ask?: string }
+  ): Promise<{ execSecurity: string | null; execAsk: string | null }> {
+    return this.request(
+      '/api/platform/exec-preset',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ userId, ...patch }),
       },
       { userId }
     );
@@ -279,6 +298,14 @@ export class KiloClawInternalClient {
     );
   }
 
+  async getGatewayReady(userId: string): Promise<GatewayReadyResponse> {
+    return this.request(
+      `/api/platform/gateway/ready?userId=${encodeURIComponent(userId)}`,
+      undefined,
+      { userId }
+    );
+  }
+
   async getControllerVersion(userId: string): Promise<ControllerVersionResponse> {
     return this.request(
       `/api/platform/controller-version?userId=${encodeURIComponent(userId)}`,
@@ -354,6 +381,42 @@ export class KiloClawInternalClient {
     );
   }
 
+  async patchOpenclawConfig(
+    userId: string,
+    patch: Record<string, unknown>
+  ): Promise<{ ok: boolean }> {
+    return this.request(
+      '/api/platform/openclaw-config',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ userId, patch }),
+      },
+      { userId }
+    );
+  }
+
+  async getFileTree(userId: string): Promise<{ tree: FileNode[] }> {
+    const params = new URLSearchParams({ userId });
+    return this.request(`/api/platform/files/tree?${params.toString()}`);
+  }
+
+  async readFile(userId: string, filePath: string): Promise<{ content: string; etag: string }> {
+    const params = new URLSearchParams({ userId, path: filePath });
+    return this.request(`/api/platform/files/read?${params.toString()}`);
+  }
+
+  async writeFile(
+    userId: string,
+    filePath: string,
+    content: string,
+    etag?: string
+  ): Promise<{ etag: string }> {
+    return this.request('/api/platform/files/write', {
+      method: 'POST',
+      body: JSON.stringify({ userId, path: filePath, content, etag }),
+    });
+  }
+
   async updateGoogleCredentials(
     userId: string,
     input: GoogleCredentialsInput
@@ -397,5 +460,50 @@ export class KiloClawInternalClient {
       },
       { userId }
     );
+  }
+
+  async forceRetryRecovery(userId: string): Promise<{ ok: true }> {
+    return this.request(
+      '/api/platform/force-retry-recovery',
+      {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      },
+      { userId }
+    );
+  }
+
+  async listCandidateVolumes(userId: string): Promise<CandidateVolumesResponse> {
+    return this.request(
+      `/api/platform/candidate-volumes?userId=${encodeURIComponent(userId)}`,
+      undefined,
+      { userId }
+    );
+  }
+
+  async reassociateVolume(
+    userId: string,
+    newVolumeId: string,
+    reason: string
+  ): Promise<ReassociateVolumeResponse> {
+    return this.request(
+      '/api/platform/reassociate-volume',
+      {
+        method: 'POST',
+        body: JSON.stringify({ userId, newVolumeId, reason }),
+      },
+      { userId }
+    );
+  }
+
+  async getRegions(): Promise<RegionsResponse> {
+    return this.request('/api/platform/regions');
+  }
+
+  async updateRegions(regions: string[]): Promise<UpdateRegionsResponse> {
+    return this.request('/api/platform/regions', {
+      method: 'PUT',
+      body: JSON.stringify({ regions }),
+    });
   }
 }

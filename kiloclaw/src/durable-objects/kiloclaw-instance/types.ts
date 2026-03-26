@@ -51,6 +51,8 @@ export type InstanceMutableState = {
   googleCredentials: GoogleCredentials | null;
   provisionedAt: number | null;
   startingAt: number | null;
+  restartingAt: number | null;
+  restartUpdateSent: boolean;
   lastStartedAt: number | null;
   lastStoppedAt: number | null;
   flyAppName: string | null;
@@ -73,15 +75,18 @@ export type InstanceMutableState = {
   lastDestroyErrorAt: number | null;
   lastStartErrorMessage: string | null;
   lastStartErrorAt: number | null;
+  lastRestartErrorMessage: string | null;
+  lastRestartErrorAt: number | null;
   lastBoundMachineRecoveryAt: number | null;
   instanceFeatures: string[];
   gmailNotificationsEnabled: boolean;
   gmailLastHistoryId: string | null;
   gmailPushOidcEmail: string | null;
+  execSecurity: string | null;
+  execAsk: string | null;
+  instanceReadyEmailSent: boolean;
   /** In-memory only — throttles live Fly checks in getStatus(). */
   lastLiveCheckAt: number | null;
-  /** In-memory only — guards syncStatusFromLiveCheck during restartMachine. */
-  restartingAt: number | null;
 };
 
 /**

@@ -18,7 +18,7 @@ module.exports = {
         "This is an orphan module - it's likely not used (anymore?). Either use it or " +
         "remove it. If it's logical this module is an orphan (i.e. it's a config file), " +
         'add an exception for it in your dependency-cruiser configuration. By default ' +
-        'this rule does not scrutinize dot-files (e.g. .eslintrc.js), TypeScript declaration ' +
+        'this rule does not scrutinize dot-files (e.g. .oxlintrc.json), TypeScript declaration ' +
         'files (.d.ts), tsconfig.json and some of the babel and webpack configs.',
       severity: 'warn',
       from: {
@@ -209,7 +209,7 @@ module.exports = {
 
     // moduleSystems: ['cjs', 'es6'],
 
-    /* 
+    /*
       false: don't look at JSDoc imports (the default)
       true: dependency-cruiser will detect dependencies in JSDoc-style
       import statements. Implies "parser": "tsc", so the dependency-cruiser
@@ -334,7 +334,7 @@ module.exports = {
       // aliasFields: ["browser"],
     },
 
-    /* skipAnalysisNotInRules will make dependency-cruiser execute 
+    /* skipAnalysisNotInRules will make dependency-cruiser execute
        analysis strictly necessary for checking the rule set only. 
 
        See https://github.com/sverweij/dependency-cruiser/blob/main/doc/options-reference.md#skipanalysisnotinrules

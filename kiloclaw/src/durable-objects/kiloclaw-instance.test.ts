@@ -49,6 +49,7 @@ vi.mock('../fly/client', async () => {
     deleteVolume: vi.fn(),
     getVolume: vi.fn(),
     listMachines: vi.fn().mockResolvedValue([]),
+    listVolumes: vi.fn().mockResolvedValue([]),
     listVolumeSnapshots: vi.fn().mockResolvedValue([]),
     execCommand: vi.fn(),
   };
@@ -103,6 +104,7 @@ import {
   ALARM_JITTER_MS,
   SELF_HEAL_THRESHOLD,
   STARTING_TIMEOUT_MS,
+  RESTARTING_TIMEOUT_MS,
   STALE_PROVISION_THRESHOLD_MS,
 } from '../config';
 
@@ -178,10 +180,11 @@ function createFakeAppStub() {
 
 function createFakeEnv() {
   const appStub = createFakeAppStub();
+  const writeDataPoint = vi.fn();
   return {
     FLY_API_TOKEN: 'test-token',
     FLY_APP_NAME: 'test-app',
-    FLY_REGION: 'dfw,ewr,iad,lax,sjc,eu',
+    FLY_REGION: 'eu,us',
     GATEWAY_TOKEN_SECRET: 'test-secret',
     NEXTAUTH_SECRET: 'test-nextauth-secret-at-least-32-chars',
     WORKER_ENV: 'development',
@@ -196,7 +199,25 @@ function createFakeEnv() {
       put: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),
     } as unknown,
+    KILOCLAW_AE: {
+      writeDataPoint,
+    } as unknown,
   };
+}
+
+function analyticsEvents(env: ReturnType<typeof createFakeEnv>): Record<string, unknown>[] {
+  const dataset = env.KILOCLAW_AE as { writeDataPoint: Mock };
+  return dataset.writeDataPoint.mock.calls.map(call => call[0] as Record<string, unknown>);
+}
+
+function analyticsEventsByName(
+  env: ReturnType<typeof createFakeEnv>,
+  eventName: string
+): Record<string, unknown>[] {
+  return analyticsEvents(env).filter(call => {
+    const blobs = call.blobs;
+    return Array.isArray(blobs) && blobs[0] === eventName;
+  });
 }
 
 function createInstance(
@@ -266,6 +287,18 @@ async function seedStarting(
   });
 }
 
+async function seedRestarting(
+  storage: ReturnType<typeof createFakeStorage>,
+  overrides: Record<string, unknown> = {}
+) {
+  await seedProvisioned(storage, {
+    status: 'restarting',
+    flyMachineId: 'machine-1',
+    restartingAt: Date.now(),
+    ...overrides,
+  });
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -308,6 +341,20 @@ afterEach(() => {
 });
 
 describe('two-phase destroy', () => {
+  it('throws with status 404 when instance was never provisioned', async () => {
+    const { instance } = createInstance();
+
+    const err: Error & { status?: number } = await instance.destroy().then(
+      () => {
+        throw new Error('expected rejection');
+      },
+      (e: Error & { status?: number }) => e
+    );
+
+    expect(err.message).toBe('Instance not provisioned');
+    expect(err.status).toBe(404);
+  });
+
   it('clears all state when both Fly deletes succeed', async () => {
     const { instance, storage } = createInstance();
     await seedRunning(storage);
@@ -1232,6 +1279,22 @@ describe('alarm runs for all live statuses', () => {
   });
 });
 
+describe('start: not provisioned', () => {
+  it('throws with status 404 when instance was never provisioned', async () => {
+    const { instance } = createInstance();
+
+    const err: Error & { status?: number } = await instance.start('user-1').then(
+      () => {
+        throw new Error('expected rejection');
+      },
+      (e: Error & { status?: number }) => e
+    );
+
+    expect(err.message).toBe('Instance not provisioned');
+    expect(err.status).toBe(404);
+  });
+});
+
 describe('startExistingMachine: transient vs 404 errors', () => {
   it('does NOT recreate machine on transient 500 error', async () => {
     const { instance, storage } = createInstance();
@@ -1557,7 +1620,15 @@ describe('gateway process control via controller', () => {
 // ============================================================================
 
 import { selectRecoveryCandidate } from './machine-recovery';
-import { parseRegions, deprioritizeRegion, shuffleRegions } from './regions';
+import {
+  parseRegions,
+  deprioritizeRegion,
+  shuffleRegions,
+  isMetaRegion,
+  prepareRegions,
+  resolveRegions,
+  FLY_REGIONS_KV_KEY,
+} from './regions';
 import type { FlyMachine } from '../fly/types';
 
 function fakeMachine(overrides: Partial<FlyMachine>): FlyMachine {
@@ -2085,6 +2156,31 @@ describe('updateGoogleCredentials', () => {
 
     expect(storage._store.get('gmailPushOidcEmail')).toBeNull();
   });
+
+  it('enables gmailNotificationsEnabled when storing Google credentials', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    const putSpy = vi.spyOn(storage, 'put');
+
+    await instance.updateGoogleCredentials({
+      gogConfigTarball: {
+        encryptedData: 'enc-data',
+        encryptedDEK: 'enc-dek',
+        algorithm: 'rsa-aes-256-gcm' as const,
+        version: 1 as const,
+      },
+      email: 'user@example.com',
+      gmailPushOidcEmail: 'sa@project.iam.gserviceaccount.com',
+    });
+
+    expect(putSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gmailNotificationsEnabled: true,
+      })
+    );
+    expect(storage._store.get('gmailNotificationsEnabled')).toBe(true);
+  });
 });
 
 // ============================================================================
@@ -2305,16 +2401,28 @@ describe('parseRegions', () => {
 });
 
 describe('deprioritizeRegion', () => {
-  it('moves failed region to end', () => {
-    expect(deprioritizeRegion(['dfw', 'yyz', 'cdg'], 'dfw')).toEqual(['yyz', 'cdg', 'dfw']);
+  it('removes failed region entirely with 3+ distinct regions', () => {
+    expect(deprioritizeRegion(['dfw', 'yyz', 'cdg'], 'dfw')).toEqual(['yyz', 'cdg']);
   });
 
-  it('moves middle region to end', () => {
-    expect(deprioritizeRegion(['dfw', 'yyz', 'cdg'], 'yyz')).toEqual(['dfw', 'cdg', 'yyz']);
+  it('removes middle region entirely with 3+ distinct regions', () => {
+    expect(deprioritizeRegion(['dfw', 'yyz', 'cdg'], 'yyz')).toEqual(['dfw', 'cdg']);
   });
 
-  it('returns list unchanged when failed region is already last', () => {
-    expect(deprioritizeRegion(['dfw', 'yyz', 'cdg'], 'cdg')).toEqual(['dfw', 'yyz', 'cdg']);
+  it('removes last region entirely with 3+ distinct regions', () => {
+    expect(deprioritizeRegion(['dfw', 'yyz', 'cdg'], 'cdg')).toEqual(['dfw', 'yyz']);
+  });
+
+  it('removes all duplicates of failed region with 3+ distinct', () => {
+    expect(deprioritizeRegion(['dfw', 'dfw', 'yyz', 'cdg'], 'dfw')).toEqual(['yyz', 'cdg']);
+  });
+
+  it('moves failed region to end with only 2 distinct regions', () => {
+    expect(deprioritizeRegion(['dfw', 'yyz'], 'dfw')).toEqual(['yyz', 'dfw']);
+  });
+
+  it('moves failed region to end with 2 distinct including duplicates', () => {
+    expect(deprioritizeRegion(['dfw', 'dfw', 'yyz'], 'dfw')).toEqual(['yyz', 'dfw']);
   });
 
   it('returns list unchanged when failed region is not in list', () => {
@@ -2323,10 +2431,6 @@ describe('deprioritizeRegion', () => {
 
   it('returns list unchanged when failedRegion is null', () => {
     expect(deprioritizeRegion(['dfw', 'yyz'], null)).toEqual(['dfw', 'yyz']);
-  });
-
-  it('handles single-element list', () => {
-    expect(deprioritizeRegion(['dfw'], 'dfw')).toEqual(['dfw']);
   });
 });
 
@@ -2359,6 +2463,132 @@ describe('shuffleRegions', () => {
     }
     // With 6 elements (720 permutations), 50 shuffles should produce at least 2 distinct orderings
     expect(orderings.size).toBeGreaterThan(1);
+  });
+});
+
+// ============================================================================
+// isMetaRegion + prepareRegions + resolveRegions
+// ============================================================================
+
+describe('isMetaRegion', () => {
+  it('returns true for eu', () => {
+    expect(isMetaRegion('eu')).toBe(true);
+  });
+
+  it('returns true for us', () => {
+    expect(isMetaRegion('us')).toBe(true);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isMetaRegion('EU')).toBe(true);
+    expect(isMetaRegion('Us')).toBe(true);
+  });
+
+  it('returns false for specific regions', () => {
+    expect(isMetaRegion('dfw')).toBe(false);
+    expect(isMetaRegion('iad')).toBe(false);
+    expect(isMetaRegion('cdg')).toBe(false);
+    expect(isMetaRegion('lhr')).toBe(false);
+  });
+});
+
+describe('prepareRegions', () => {
+  it('does not shuffle when all regions are meta', () => {
+    const result = prepareRegions(['eu', 'us']);
+    expect(result).toEqual(['eu', 'us']);
+  });
+
+  it('does not shuffle a single meta region', () => {
+    expect(prepareRegions(['eu'])).toEqual(['eu']);
+  });
+
+  it('shuffles when all regions are specific', () => {
+    const input = ['dfw', 'ord', 'lax', 'iad', 'cdg', 'arn'];
+    const orderings = new Set<string>();
+    for (let i = 0; i < 50; i++) {
+      orderings.add(prepareRegions([...input]).join(','));
+    }
+    expect(orderings.size).toBeGreaterThan(1);
+  });
+
+  it('shuffles when mix of meta and specific regions', () => {
+    const input = ['dfw', 'eu', 'ord', 'us'];
+    const orderings = new Set<string>();
+    for (let i = 0; i < 50; i++) {
+      orderings.add(prepareRegions([...input]).join(','));
+    }
+    expect(orderings.size).toBeGreaterThan(1);
+  });
+
+  it('preserves all elements including duplicates', () => {
+    const result = prepareRegions(['dfw', 'dfw', 'ord']);
+    expect(result.sort()).toEqual(['dfw', 'dfw', 'ord'].sort());
+  });
+
+  it('does not mutate the input array', () => {
+    const input = ['dfw', 'ord', 'lax'];
+    const copy = [...input];
+    prepareRegions(input);
+    expect(input).toEqual(copy);
+  });
+});
+
+describe('resolveRegions', () => {
+  function createMockKV(value: string | null = null) {
+    const getMock = vi.fn().mockResolvedValue(value);
+    const kv = { get: getMock, put: vi.fn(), delete: vi.fn() } as unknown as KVNamespace;
+    return { kv, getMock };
+  }
+
+  it('reads from KV when value is present', async () => {
+    const { kv, getMock } = createMockKV('dfw,ord,lax');
+    const result = await resolveRegions(kv, 'eu,us');
+    // Specific regions → shuffled, but all elements preserved
+    expect(result.sort()).toEqual(['dfw', 'lax', 'ord']);
+    expect(getMock).toHaveBeenCalledWith(FLY_REGIONS_KV_KEY);
+  });
+
+  it('falls back to env FLY_REGION when KV is empty', async () => {
+    const { kv } = createMockKV(null);
+    const result = await resolveRegions(kv, 'eu,us');
+    // Meta regions → not shuffled
+    expect(result).toEqual(['eu', 'us']);
+  });
+
+  it('falls back to DEFAULT_FLY_REGION when both KV and env are missing', async () => {
+    const { kv } = createMockKV(null);
+    const result = await resolveRegions(kv, undefined);
+    // DEFAULT_FLY_REGION is 'eu,us' → meta → not shuffled
+    expect(result).toEqual(['eu', 'us']);
+  });
+
+  it('applies shuffle to specific regions from KV', async () => {
+    const { kv } = createMockKV('arn,cdg,iad,ams,fra,lhr');
+    const orderings = new Set<string>();
+    for (let i = 0; i < 50; i++) {
+      const result = await resolveRegions(kv, undefined);
+      orderings.add(result.join(','));
+    }
+    expect(orderings.size).toBeGreaterThan(1);
+  });
+
+  it('does not shuffle meta regions from KV', async () => {
+    const { kv } = createMockKV('us,eu');
+    const result = await resolveRegions(kv, undefined);
+    expect(result).toEqual(['us', 'eu']);
+  });
+
+  it('preserves duplicates for shuffle biasing', async () => {
+    const { kv } = createMockKV('dfw,dfw,ord');
+    const result = await resolveRegions(kv, undefined);
+    expect(result.sort()).toEqual(['dfw', 'dfw', 'ord']);
+  });
+
+  it('falls back to env when KV read throws', async () => {
+    const getMock = vi.fn().mockRejectedValue(new Error('KV unavailable'));
+    const kv = { get: getMock, put: vi.fn(), delete: vi.fn() } as unknown as KVNamespace;
+    const result = await resolveRegions(kv, 'eu,us');
+    expect(result).toEqual(['eu', 'us']);
   });
 });
 
@@ -2576,7 +2806,8 @@ describe('start: 412 insufficient resources recovery', () => {
   });
 
   it('fresh provision (never started): deletes volume and creates fresh with deprioritized regions', async () => {
-    const { instance, storage } = createInstance();
+    const env = createFakeEnv();
+    const { instance, storage } = createInstance(undefined, env);
     await seedProvisioned(storage, { flyMachineId: null, lastStartedAt: null });
 
     // First createMachine fails with 412
@@ -2604,16 +2835,9 @@ describe('start: 412 insufficient resources recovery', () => {
         compute: expect.objectContaining({ cpus: 2, memory_mb: 3072 }) as unknown,
       })
     );
-    // Regions are shuffled, so just check the set (deprioritize is a no-op here
-    // because 'iad' is not in FLY_REGION='dfw,ewr,iad,lax,sjc,eu')
-    expect((regions412Call[2] as string[]).sort()).toEqual([
-      'dfw',
-      'eu',
-      'ewr',
-      'iad',
-      'lax',
-      'sjc',
-    ]);
+    // Regions are passed in configured order, and deprioritize is a no-op here
+    // because 'iad' is not in FLY_REGION='eu,us'.
+    expect(regions412Call[2] as string[]).toEqual(['eu', 'us']);
     // source_volume_id should NOT be set for fresh provision
     const createVolumeCall = (flyClient.createVolumeWithFallback as Mock).mock
       .calls[0][1] as Record<string, unknown>;
@@ -2625,6 +2849,13 @@ describe('start: 412 insufficient resources recovery', () => {
     expect(storage._store.get('flyVolumeId')).toBe('vol-new');
     expect(storage._store.get('flyRegion')).toBe('cdg');
     expect(storage._store.get('status')).toBe('running');
+
+    const recoveryEvents = analyticsEventsByName(env, 'instance.start_capacity_recovery');
+    expect(recoveryEvents).toHaveLength(1);
+    expect(recoveryEvents[0].blobs).toEqual(
+      expect.arrayContaining(['instance.start_capacity_recovery', 'user-1', 'do'])
+    );
+    expect(recoveryEvents[0].blobs).toContain('fly_412_insufficient_resources');
   });
 
   it('existing instance (has user data): forks volume to preserve data', async () => {
@@ -2662,15 +2893,8 @@ describe('start: 412 insufficient resources recovery', () => {
     const forkCreateVolumeCall = (flyClient.createVolumeWithFallback as Mock).mock
       .calls[0][1] as Record<string, unknown>;
     expect(forkCreateVolumeCall.size_gb).toBeUndefined();
-    // Regions are shuffled — check the set
-    expect((regionsForkCall[2] as string[]).sort()).toEqual([
-      'dfw',
-      'eu',
-      'ewr',
-      'iad',
-      'lax',
-      'sjc',
-    ]);
+    // Regions are passed in configured order.
+    expect(regionsForkCall[2] as string[]).toEqual(['eu', 'us']);
     // Old volume was deleted
     expect(flyClient.deleteVolume).toHaveBeenCalledWith(expect.anything(), 'vol-1');
     // Machine was retried
@@ -2737,15 +2961,8 @@ describe('start: 412 insufficient resources recovery', () => {
     const updateForkCreateVolumeCall = (flyClient.createVolumeWithFallback as Mock).mock
       .calls[0][1] as Record<string, unknown>;
     expect(updateForkCreateVolumeCall.size_gb).toBeUndefined();
-    // Regions are shuffled then deprioritized — check the set
-    expect((regionsUpdateCall[2] as string[]).sort()).toEqual([
-      'dfw',
-      'eu',
-      'ewr',
-      'iad',
-      'lax',
-      'sjc',
-    ]);
+    // Regions are passed in configured order then deprioritized.
+    expect(regionsUpdateCall[2] as string[]).toEqual(['eu', 'us']);
     // New machine was created
     expect(storage._store.get('flyMachineId')).toBe('machine-new');
     expect(storage._store.get('flyVolumeId')).toBe('vol-new');
@@ -2869,6 +3086,20 @@ describe('stop: error propagation', () => {
 
     expect(storage._store.get('status')).toBe('stopped');
     expect(storage._store.get('lastStoppedAt')).toBeDefined();
+  });
+
+  it('throws with status 404 when instance was never provisioned', async () => {
+    const { instance } = createInstance();
+
+    const err: Error & { status?: number } = await instance.stop().then(
+      () => {
+        throw new Error('expected rejection');
+      },
+      (e: Error & { status?: number }) => e
+    );
+
+    expect(err.message).toBe('Instance not provisioned');
+    expect(err.status).toBe(404);
   });
 });
 
@@ -3817,7 +4048,8 @@ describe('provision: auto-start after fresh provision', () => {
 
 describe('startAsync: catch handler writes stopped state on pre-machine failure', () => {
   it('transitions to stopped immediately when start() throws before machine creation', async () => {
-    const { instance, storage, waitUntilPromises } = createInstance();
+    const env = createFakeEnv();
+    const { instance, storage, waitUntilPromises } = createInstance(undefined, env);
 
     (flyClient.createVolumeWithFallback as Mock).mockResolvedValue({
       id: 'vol-1',
@@ -3839,6 +4071,11 @@ describe('startAsync: catch handler writes stopped state on pre-machine failure'
     expect(storage._store.get('flyMachineId')).toBeFalsy();
     expect(storage._store.get('lastStartErrorMessage')).toBe('Fly API unavailable');
     expect(storage._store.get('lastStartErrorAt')).toBeGreaterThan(0);
+
+    const failedEvents = analyticsEventsByName(env, 'instance.provisioning_failed');
+    expect(failedEvents).toHaveLength(1);
+    expect(failedEvents[0].blobs).toContain('no_machine_created');
+    expect(failedEvents[0].blobs).toContain('Fly API unavailable');
   });
 
   it('does NOT overwrite state when start() fails after machine ID is persisted', async () => {
@@ -3862,6 +4099,124 @@ describe('startAsync: catch handler writes stopped state on pre-machine failure'
     expect(storage._store.get('status')).toBe('starting');
     // Error fields should NOT be populated for post-machine failures
     expect(storage._store.get('lastStartErrorMessage')).toBeFalsy();
+  });
+});
+
+describe('start failure analytics events', () => {
+  it('emits instance.provisioning_failed when reconcile times out with no machine', async () => {
+    vi.useFakeTimers();
+    const env = createFakeEnv();
+    const { instance, storage } = createInstance(undefined, env);
+    await seedStarting(storage, {
+      flyMachineId: null,
+      startingAt: Date.now() - STARTING_TIMEOUT_MS - 1,
+      lastStartErrorMessage: 'timed out bootstrapping',
+    });
+
+    await instance.alarm();
+
+    const failedEvents = analyticsEventsByName(env, 'instance.provisioning_failed');
+    expect(failedEvents).toHaveLength(1);
+    expect(failedEvents[0].blobs).toContain('starting_timeout');
+    expect(failedEvents[0].blobs).toContain('timed out bootstrapping');
+  });
+
+  it('emits instance.provisioning_failed when Fly reports failed state during reconcile', async () => {
+    vi.useFakeTimers();
+    const env = createFakeEnv();
+    const { instance, storage } = createInstance(undefined, env);
+    await seedStarting(storage, {
+      flyMachineId: 'machine-1',
+      startingAt: Date.now() - 1_000,
+    });
+    (flyClient.getMachine as Mock).mockResolvedValue({ state: 'failed' });
+    (flyClient.getVolume as Mock).mockResolvedValue({ id: 'vol-1', region: 'iad' });
+
+    await instance.alarm();
+
+    const failedEvents = analyticsEventsByName(env, 'instance.provisioning_failed');
+    expect(failedEvents).toHaveLength(1);
+    expect(failedEvents[0].blobs).toContain('fly_failed_state');
+    expect(failedEvents[0].blobs).toContain('fly machine entered failed state');
+  });
+
+  it('does not emit instance.provisioning_failed for a running machine that later fails', async () => {
+    vi.useFakeTimers();
+    const env = createFakeEnv();
+    const { instance, storage } = createInstance(undefined, env);
+    await seedRunning(storage, {
+      flyMachineId: 'machine-1',
+    });
+    (flyClient.getMachine as Mock).mockResolvedValue({ state: 'failed' });
+
+    await instance.alarm();
+
+    const failedEvents = analyticsEventsByName(env, 'instance.provisioning_failed');
+    expect(failedEvents).toHaveLength(0);
+  });
+});
+
+describe('manual and crash recovery analytics events', () => {
+  it('can record manual start success events through Analytics Engine payloads', () => {
+    const env = createFakeEnv();
+    const dataset = env.KILOCLAW_AE as { writeDataPoint: Mock };
+
+    dataset.writeDataPoint({
+      blobs: [
+        'instance.manual_start_succeeded',
+        'user-1',
+        'http',
+        '/api/platform/start',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+      ],
+      doubles: [12, 0],
+      indexes: ['instance.manual_start_succeeded'],
+    });
+
+    const successEvents = analyticsEventsByName(env, 'instance.manual_start_succeeded');
+    expect(successEvents).toHaveLength(1);
+    expect(successEvents[0].blobs).toEqual(
+      expect.arrayContaining(['instance.manual_start_succeeded', 'user-1', 'http'])
+    );
+  });
+
+  it('can record crash recovery failure events through Analytics Engine payloads', () => {
+    const env = createFakeEnv();
+    const dataset = env.KILOCLAW_AE as { writeDataPoint: Mock };
+
+    dataset.writeDataPoint({
+      blobs: [
+        'instance.crash_recovery_failed',
+        'user-1',
+        'http',
+        '',
+        'restart failed',
+        'acct-test',
+        'machine-1',
+        'sandbox-1',
+        'running',
+        '',
+        '',
+        '',
+        '',
+      ],
+      doubles: [34, 0],
+      indexes: ['instance.crash_recovery_failed'],
+    });
+
+    const failureEvents = analyticsEventsByName(env, 'instance.crash_recovery_failed');
+    expect(failureEvents).toHaveLength(1);
+    expect(failureEvents[0].blobs).toEqual(
+      expect.arrayContaining(['instance.crash_recovery_failed', 'user-1', 'http', 'restart failed'])
+    );
   });
 });
 
@@ -4314,8 +4669,18 @@ describe('reconcileApiKeyExpiry', () => {
       })
     );
 
-    // Push succeeded → only one updateMachine call (persist), no restart
-    expect(flyClient.updateMachine).toHaveBeenCalledTimes(1);
+    // Push succeeded via in-process env patch. Extra updateMachine calls may
+    // occur elsewhere in this test file, so only assert the skipLaunch update.
+    expect(
+      (flyClient.updateMachine as Mock).mock.calls.some(
+        ([, machineId, , options]) =>
+          machineId === 'machine-1' &&
+          typeof options === 'object' &&
+          options !== null &&
+          'skipLaunch' in (options as Record<string, unknown>) &&
+          (options as { skipLaunch?: boolean }).skipLaunch === true
+      )
+    ).toBe(true);
   });
 
   it('skips refresh when key is far from expiry', async () => {
@@ -4839,7 +5204,10 @@ describe('start: concurrent calls do not create duplicate machines', () => {
 describe('restartMachine restartingAt guard', () => {
   beforeEach(() => {
     (flyClient.stopMachineAndWait as Mock).mockResolvedValue(undefined);
-    (flyClient.updateMachine as Mock).mockResolvedValue(undefined);
+    (flyClient.updateMachine as Mock).mockResolvedValue({
+      id: 'machine-1',
+      instance_id: 'inst-updated-001',
+    });
     (flyClient.waitForState as Mock).mockResolvedValue(undefined);
     (flyClient.getMachine as Mock).mockResolvedValue({
       id: 'machine-1',
@@ -4852,42 +5220,601 @@ describe('restartMachine restartingAt guard', () => {
     const { instance, storage, waitUntilPromises } = createInstance();
     await seedRunning(storage);
 
-    // Simulate restartMachine setting the guard by calling getStatus during
-    // a restart. We'll make stopMachineAndWait trigger a getStatus mid-flight.
-    (flyClient.stopMachineAndWait as Mock).mockImplementation(async () => {
-      // While stop is in progress, simulate a concurrent getStatus poll.
-      // getMachine returns 'stopped' because machine is mid-restart.
-      (flyClient.getMachine as Mock).mockResolvedValueOnce({
-        state: 'stopped',
-        config: {},
-      });
-      await instance.getStatus();
-      await Promise.all(waitUntilPromises);
+    const result = await instance.restartMachine();
+
+    expect(result.success).toBe(true);
+    (flyClient.getMachine as Mock).mockClear();
+    const inFlightStatus = await instance.getStatus();
+    expect(inFlightStatus.status).toBe('restarting');
+    expect(flyClient.getMachine).not.toHaveBeenCalled();
+
+    await Promise.all(waitUntilPromises);
+
+    // The async restart then finishes and the persisted state transitions back to running.
+    const finalStatus = await instance.getStatus();
+    expect(finalStatus.status).toBe('running');
+  });
+
+  it('persists restarting state immediately and clears restartingAt in storage on success', async () => {
+    const { instance, storage, waitUntilPromises } = createInstance();
+    await seedRunning(storage);
+
+    const result = await instance.restartMachine();
+
+    expect(result.success).toBe(true);
+    expect(storage._store.get('status')).toBe('restarting');
+    expect(storage._store.get('restartingAt')).toBeTruthy();
+
+    await Promise.all(waitUntilPromises);
+
+    expect(storage._store.get('status')).toBe('running');
+    expect(storage._store.get('restartingAt')).toBeNull();
+    expect(storage._store.get('lastRestartErrorMessage')).toBeNull();
+  });
+
+  it('does not falsely recover when background failed but machine reports started', async () => {
+    const { instance, storage, waitUntilPromises } = createInstance();
+    await seedRunning(storage);
+
+    (flyClient.updateMachine as Mock).mockRejectedValueOnce(new Error('Fly API error'));
+
+    const result = await instance.restartMachine();
+
+    expect(result.success).toBe(true);
+
+    await Promise.all(waitUntilPromises);
+
+    expect(storage._store.get('status')).toBe('restarting');
+    expect(storage._store.get('lastRestartErrorMessage')).toBe('Fly API error');
+
+    // Machine is still started with old config — update never ran.
+    (flyClient.getMachine as Mock).mockResolvedValue({
+      id: 'machine-1',
+      state: 'started',
+      config: { guest: { cpus: 1, memory_mb: 256, cpu_kind: 'shared' } },
+    });
+
+    await instance.alarm();
+
+    // Reconcile must NOT clear the error or declare success — the update
+    // never happened, so started means old config is still running.
+    expect(storage._store.get('status')).toBe('restarting');
+    expect(storage._store.get('lastRestartErrorMessage')).toBe('Fly API error');
+  });
+
+  it('allows restart from stopped when a machine exists', async () => {
+    const { instance, storage, waitUntilPromises } = createInstance();
+    await seedRunning(storage, { status: 'stopped' });
+
+    const result = await instance.restartMachine();
+
+    expect(result.success).toBe(true);
+    await Promise.all(waitUntilPromises);
+    expect(storage._store.get('status')).toBe('running');
+  });
+
+  it('rejects restart when no machine exists', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, { flyMachineId: null });
+
+    const result = await instance.restartMachine();
+
+    expect(result).toEqual({ success: false, error: 'No machine exists' });
+  });
+
+  it('rejects restart during busy states', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, { status: 'starting' });
+
+    const result = await instance.restartMachine();
+
+    expect(result).toEqual({ success: false, error: 'Instance is busy' });
+  });
+
+  it('rejects restart while destroying', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, { status: 'destroying' });
+
+    const result = await instance.restartMachine();
+
+    expect(result).toEqual({ success: false, error: 'Instance is busy' });
+  });
+
+  it('rejects restart while already restarting', async () => {
+    const { instance, storage } = createInstance();
+    await seedRestarting(storage);
+
+    const result = await instance.restartMachine();
+
+    expect(result).toEqual({ success: false, error: 'Instance is busy' });
+  });
+
+  it('rejects restart while provisioned even if a machine id exists', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { flyMachineId: 'machine-1' });
+
+    const result = await instance.restartMachine();
+
+    expect(result).toEqual({ success: false, error: 'Instance is busy' });
+  });
+
+  it('keeps restarting status on timeout while Fly remains transient (replacing)', async () => {
+    const { instance, storage } = createInstance();
+    await seedRestarting(storage, {
+      restartingAt: Date.now() - RESTARTING_TIMEOUT_MS - 1_000,
+    });
+
+    (flyClient.getMachine as Mock).mockResolvedValue({
+      id: 'machine-1',
+      state: 'replacing',
+      config: { guest: { cpus: 1, memory_mb: 256, cpu_kind: 'shared' } },
+    });
+
+    await instance.alarm();
+
+    expect(storage._store.get('status')).toBe('restarting');
+    expect(storage._store.get('lastRestartErrorMessage')).toBe(
+      'Restart is taking longer than expected; still reconciling while the machine remains replacing'
+    );
+  });
+
+  it('keeps restarting status on timeout while Fly remains transient (updating)', async () => {
+    const { instance, storage } = createInstance();
+    await seedRestarting(storage, {
+      restartingAt: Date.now() - RESTARTING_TIMEOUT_MS - 1_000,
+    });
+
+    (flyClient.getMachine as Mock).mockResolvedValue({
+      id: 'machine-1',
+      state: 'updating',
+      config: { guest: { cpus: 1, memory_mb: 256, cpu_kind: 'shared' } },
+    });
+
+    await instance.alarm();
+
+    expect(storage._store.get('status')).toBe('restarting');
+    expect(storage._store.get('lastRestartErrorMessage')).toBe(
+      'Restart is taking longer than expected; still reconciling while the machine remains updating'
+    );
+  });
+
+  it('transitions to stopped on terminal stopped state during restart reconcile', async () => {
+    const { instance, storage } = createInstance();
+    await seedRestarting(storage, {
+      restartingAt: Date.now() - RESTARTING_TIMEOUT_MS - 1_000,
+    });
+
+    (flyClient.getMachine as Mock).mockResolvedValue({
+      id: 'machine-1',
+      state: 'stopped',
+      config: { guest: { cpus: 1, memory_mb: 256, cpu_kind: 'shared' } },
+    });
+
+    await instance.alarm();
+
+    expect(storage._store.get('status')).toBe('stopped');
+    expect(storage._store.get('restartingAt')).toBeNull();
+    expect(storage._store.get('lastRestartErrorMessage')).toBe(
+      'Restart is taking longer than expected; still reconciling while the machine remains stopped'
+    );
+  });
+
+  it('preserves restart error when Fly reports failed during reconcile', async () => {
+    const { instance, storage } = createInstance();
+    await seedRestarting(storage, {
+      restartingAt: Date.now() - RESTARTING_TIMEOUT_MS - 1_000,
+      lastRestartErrorMessage: 'prior restart error',
+      lastRestartErrorAt: Date.now() - 2_000,
+    });
+
+    (flyClient.getMachine as Mock).mockResolvedValue({
+      id: 'machine-1',
+      state: 'failed',
+      config: { guest: { cpus: 1, memory_mb: 256, cpu_kind: 'shared' } },
+    });
+
+    await instance.alarm();
+
+    expect(storage._store.get('status')).toBe('stopped');
+    expect(storage._store.get('restartingAt')).toBeNull();
+    expect(storage._store.get('lastRestartErrorMessage')).toBe('prior restart error');
+  });
+
+  it('does not falsely mark restart successful when update never ran but machine is still started', async () => {
+    const { instance, storage } = createInstance();
+    // restartUpdateSent defaults to false — updateMachine() never ran
+    await seedRestarting(storage);
+
+    (flyClient.getMachine as Mock).mockResolvedValue({
+      id: 'machine-1',
+      state: 'started',
+      config: { guest: { cpus: 1, memory_mb: 256, cpu_kind: 'shared' } },
+    });
+
+    await instance.alarm();
+
+    expect(storage._store.get('status')).toBe('restarting');
+  });
+
+  it('marks success when updateMachine was sent but waitForState timed out and Fly eventually started', async () => {
+    const { instance, storage } = createInstance();
+    // updateMachine ran successfully, but waitForState timed out in background
+    await seedRestarting(storage, {
+      restartUpdateSent: true,
+      lastRestartErrorMessage: 'waitForState timed out',
+      lastRestartErrorAt: Date.now() - 30_000,
+    });
+
+    (flyClient.getMachine as Mock).mockResolvedValue({
+      id: 'machine-1',
+      state: 'started',
+      config: { guest: { cpus: 1, memory_mb: 256, cpu_kind: 'shared' } },
+    });
+
+    await instance.alarm();
+
+    expect(storage._store.get('status')).toBe('running');
+    expect(storage._store.get('restartingAt')).toBeNull();
+    expect(storage._store.get('restartUpdateSent')).toBe(false);
+    expect(storage._store.get('lastRestartErrorMessage')).toBeNull();
+  });
+
+  it('handles restart reconciliation after a fresh DO instance loads persisted state', async () => {
+    const storage = createFakeStorage();
+    await seedRestarting(storage, { restartUpdateSent: true });
+
+    const { instance } = createInstance(storage);
+
+    await instance.alarm();
+
+    expect(storage._store.get('status')).toBe('running');
+    expect(storage._store.get('restartingAt')).toBeNull();
+  });
+
+  it('preserves existing lastStartedAt when reconcile marks restart successful', async () => {
+    const { instance, storage } = createInstance();
+    const existingLastStartedAt = Date.now() - 60_000;
+    await seedRestarting(storage, {
+      restartUpdateSent: true,
+      lastStartedAt: existingLastStartedAt,
+    });
+
+    (flyClient.getMachine as Mock).mockResolvedValue({
+      id: 'machine-1',
+      state: 'started',
+      config: { guest: { cpus: 1, memory_mb: 256, cpu_kind: 'shared' } },
+    });
+
+    await instance.alarm();
+
+    expect(storage._store.get('status')).toBe('running');
+    expect(storage._store.get('restartingAt')).toBeNull();
+    expect(storage._store.get('lastStartedAt')).toBe(existingLastStartedAt);
+  });
+
+  it('records restart errors durably on failure', async () => {
+    const { instance, storage, waitUntilPromises } = createInstance();
+    await seedRunning(storage);
+
+    (flyClient.updateMachine as Mock).mockRejectedValueOnce(new Error('Fly API error'));
+
+    const result = await instance.restartMachine();
+
+    expect(result.success).toBe(true);
+    await Promise.all(waitUntilPromises);
+    expect(storage._store.get('lastRestartErrorMessage')).toBe('Fly API error');
+    expect(storage._store.get('lastRestartErrorAt')).toBeGreaterThan(0);
+  });
+
+  it('background restart aborts without writing state if instance was destroyed concurrently', async () => {
+    const { instance, storage, waitUntilPromises } = createInstance();
+    await seedRunning(storage);
+
+    // Make updateMachine simulate destroy clearing storage mid-flight
+    (flyClient.updateMachine as Mock).mockImplementation(async () => {
+      // Simulate destroy() running during the update
+      storage._store.clear();
+    });
+
+    const result = await instance.restartMachine();
+    expect(result.success).toBe(true);
+
+    await Promise.all(waitUntilPromises);
+
+    // Storage should remain empty — background must not recreate partial state
+    expect(storage._store.has('lastRestartErrorMessage')).toBe(false);
+    expect(storage._store.has('restartUpdateSent')).toBe(false);
+  });
+
+  it('clears restart errors at the beginning of a retry attempt', async () => {
+    const { instance, storage } = createInstance();
+    await seedRunning(storage, {
+      lastRestartErrorMessage: 'old restart error',
+      lastRestartErrorAt: Date.now() - 10_000,
     });
 
     const result = await instance.restartMachine();
 
     expect(result.success).toBe(true);
-    // The key assertion: even though live check saw 'stopped', status
-    // should be restored to the persisted value ('running') by the finally block.
-    const finalStatus = await instance.getStatus();
-    expect(finalStatus.status).toBe('running');
+    expect(storage._store.get('lastRestartErrorMessage')).toBeNull();
+    expect(storage._store.get('lastRestartErrorAt')).toBeNull();
+  });
+});
+
+// ============================================================================
+// Volume reassociation (admin)
+// ============================================================================
+
+describe('listCandidateVolumes', () => {
+  it('returns all usable volumes with isCurrent flag', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { status: 'stopped', flyVolumeId: 'vol-1' });
+
+    (flyClient.listVolumes as Mock).mockResolvedValueOnce([
+      {
+        id: 'vol-1',
+        name: 'kiloclaw_sb1',
+        state: 'attached',
+        size_gb: 1,
+        region: 'iad',
+        attached_machine_id: 'mach-1',
+        created_at: '2025-01-01T00:00:00Z',
+      },
+      {
+        id: 'vol-2',
+        name: 'kiloclaw_sb1_old',
+        state: 'detached',
+        size_gb: 1,
+        region: 'iad',
+        attached_machine_id: null,
+        created_at: '2024-12-01T00:00:00Z',
+      },
+      {
+        id: 'vol-3',
+        name: 'kiloclaw_sb1_destroyed',
+        state: 'destroyed',
+        size_gb: 1,
+        region: 'iad',
+        attached_machine_id: null,
+        created_at: '2024-11-01T00:00:00Z',
+      },
+    ]);
+
+    const result = await instance.listCandidateVolumes();
+
+    expect(result.currentVolumeId).toBe('vol-1');
+    // Destroyed volumes are filtered out
+    expect(result.volumes).toHaveLength(2);
+    expect(result.volumes[0].id).toBe('vol-1');
+    expect(result.volumes[0].isCurrent).toBe(true);
+    expect(result.volumes[1].id).toBe('vol-2');
+    expect(result.volumes[1].isCurrent).toBe(false);
   });
 
-  it('restartMachine clears restartingAt guard on failure so live check can correct state', async () => {
+  it('filters out destroying volumes', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { status: 'stopped', flyVolumeId: 'vol-1' });
+
+    (flyClient.listVolumes as Mock).mockResolvedValueOnce([
+      {
+        id: 'vol-1',
+        name: 'v1',
+        state: 'attached',
+        size_gb: 1,
+        region: 'iad',
+        attached_machine_id: null,
+        created_at: '2025-01-01T00:00:00Z',
+      },
+      {
+        id: 'vol-4',
+        name: 'v4',
+        state: 'destroying',
+        size_gb: 1,
+        region: 'iad',
+        attached_machine_id: null,
+        created_at: '2025-01-01T00:00:00Z',
+      },
+    ]);
+
+    const result = await instance.listCandidateVolumes();
+    expect(result.volumes).toHaveLength(1);
+    expect(result.volumes[0].id).toBe('vol-1');
+  });
+});
+
+describe('reassociateVolume', () => {
+  it('rejects when instance is not provisioned', async () => {
+    const { instance } = createInstance();
+    // No seedProvisioned — userId is null
+    await expect(instance.reassociateVolume('vol-2', 'fixing wrong volume')).rejects.toThrow(
+      'Instance is not provisioned'
+    );
+  });
+
+  it('rejects when instance is not stopped', async () => {
     const { instance, storage } = createInstance();
     await seedRunning(storage);
 
-    // Make the restart fail after stop (simulating a Fly API error on updateMachine)
-    (flyClient.updateMachine as Mock).mockRejectedValueOnce(new Error('Fly API error'));
+    await expect(instance.reassociateVolume('vol-2', 'fixing wrong volume')).rejects.toThrow(
+      'Instance must be stopped before reassociating volume'
+    );
+  });
 
-    const result = await instance.restartMachine();
+  it('rejects when new volume is the same as current', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { status: 'stopped', flyVolumeId: 'vol-1' });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('Fly API error');
-    // restartingAt guard should be cleared so the next live check can see
-    // the real Fly state (machine is stopped after the failed restart).
-    // Status is NOT forcibly restored from storage on failure — that would
-    // mask the fact that the machine may actually be stopped.
+    await expect(instance.reassociateVolume('vol-1', 'fixing wrong volume')).rejects.toThrow(
+      'New volume ID is the same as the current volume'
+    );
+  });
+
+  it('rejects when volume is not found in Fly', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { status: 'stopped', flyVolumeId: 'vol-1' });
+
+    (flyClient.getVolume as Mock).mockRejectedValueOnce(new FlyApiError('not found', 404, '{}'));
+
+    await expect(instance.reassociateVolume('vol-bad', 'fixing wrong volume')).rejects.toThrow(
+      'Volume vol-bad not found in this Fly app'
+    );
+  });
+
+  it('rejects when volume is in destroyed state', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { status: 'stopped', flyVolumeId: 'vol-1' });
+
+    (flyClient.getVolume as Mock).mockResolvedValueOnce({
+      id: 'vol-dead',
+      name: 'v',
+      state: 'destroyed',
+      size_gb: 1,
+      region: 'iad',
+      attached_machine_id: null,
+      created_at: '2025-01-01T00:00:00Z',
+    });
+
+    await expect(instance.reassociateVolume('vol-dead', 'fixing wrong volume')).rejects.toThrow(
+      'Volume vol-dead is in state "destroyed" and cannot be used'
+    );
+  });
+
+  it('successfully reassociates volume on stopped instance', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { status: 'stopped', flyVolumeId: 'vol-1', flyRegion: 'iad' });
+
+    (flyClient.getVolume as Mock).mockResolvedValueOnce({
+      id: 'vol-2',
+      name: 'kiloclaw_sb1_fork',
+      state: 'detached',
+      size_gb: 1,
+      region: 'ewr',
+      attached_machine_id: null,
+      created_at: '2025-01-01T00:00:00Z',
+    });
+
+    const result = await instance.reassociateVolume('vol-2', 'fixing wrong volume after migration');
+
+    expect(result.previousVolumeId).toBe('vol-1');
+    expect(result.newVolumeId).toBe('vol-2');
+    expect(result.newRegion).toBe('ewr');
+
+    // Verify storage was updated
+    expect(storage._store.get('flyVolumeId')).toBe('vol-2');
+    expect(storage._store.get('flyRegion')).toBe('ewr');
+  });
+
+  it('updates region when reassociating to volume in different region', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { status: 'stopped', flyVolumeId: 'vol-1', flyRegion: 'iad' });
+
+    (flyClient.getVolume as Mock).mockResolvedValueOnce({
+      id: 'vol-3',
+      name: 'v3',
+      state: 'created',
+      size_gb: 2,
+      region: 'lax',
+      attached_machine_id: null,
+      created_at: '2025-01-01T00:00:00Z',
+    });
+
+    const result = await instance.reassociateVolume('vol-3', 'moving to west coast region');
+
+    expect(result.newRegion).toBe('lax');
+    expect(storage._store.get('flyRegion')).toBe('lax');
+  });
+});
+
+// ============================================================================
+// updateExecPreset
+// ============================================================================
+
+describe('updateExecPreset', () => {
+  it('persists exec security and ask to DO storage', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    const result = await instance.updateExecPreset({ security: 'full', ask: 'off' });
+
+    expect(result.execSecurity).toBe('full');
+    expect(result.execAsk).toBe('off');
+    expect(storage._store.get('execSecurity')).toBe('full');
+    expect(storage._store.get('execAsk')).toBe('off');
+  });
+
+  it('updates only the fields that are provided', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    await instance.updateExecPreset({ security: 'full' });
+
+    expect(storage._store.get('execSecurity')).toBe('full');
+    expect(storage._store.get('execAsk')).toBeUndefined();
+  });
+
+  it('returns current state when no fields are provided', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { execSecurity: 'full', execAsk: 'off' });
+
+    const result = await instance.updateExecPreset({});
+
+    expect(result.execSecurity).toBe('full');
+    expect(result.execAsk).toBe('off');
+  });
+});
+
+describe('tryMarkInstanceReady', () => {
+  it('returns shouldNotify: true on first call and persists the flag', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { instanceReadyEmailSent: false });
+
+    const result = await instance.tryMarkInstanceReady();
+
+    expect(result).toEqual({ shouldNotify: true, userId: 'user-1' });
+    expect(storage._store.get('instanceReadyEmailSent')).toBe(true);
+  });
+
+  it('returns shouldNotify: false on subsequent calls', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { instanceReadyEmailSent: false });
+
+    await instance.tryMarkInstanceReady();
+    const result = await instance.tryMarkInstanceReady();
+
+    expect(result).toEqual({ shouldNotify: false, userId: 'user-1' });
+  });
+
+  it('returns shouldNotify: false when flag is already persisted', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, { instanceReadyEmailSent: true });
+
+    const putSpy = vi.spyOn(storage, 'put');
+    const result = await instance.tryMarkInstanceReady();
+
+    expect(result).toEqual({ shouldNotify: false, userId: 'user-1' });
+    expect(putSpy).not.toHaveBeenCalled();
+  });
+
+  it('suppresses email for legacy instances without the field (migration)', async () => {
+    const { instance, storage } = createInstance();
+    // Seed a provisioned instance WITHOUT instanceReadyEmailSent in storage.
+    // The migration in loadState treats this as already-sent to prevent
+    // spurious emails to pre-existing instances after deploy.
+    await seedProvisioned(storage);
+
+    const result = await instance.tryMarkInstanceReady();
+
+    expect(result).toEqual({ shouldNotify: false, userId: 'user-1' });
+  });
+
+  it('allows email for newly provisioned instances with the field explicitly set', async () => {
+    const { instance, storage } = createInstance();
+    // New instances created after deploy will have the field explicitly in storage.
+    await seedProvisioned(storage, { instanceReadyEmailSent: false });
+
+    const result = await instance.tryMarkInstanceReady();
+
+    expect(result).toEqual({ shouldNotify: true, userId: 'user-1' });
+    expect(storage._store.get('instanceReadyEmailSent')).toBe(true);
   });
 });

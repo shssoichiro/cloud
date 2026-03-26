@@ -7,6 +7,7 @@ import { withStatusQueryBoundary } from '@/app/(app)/claw/components';
 const baseStatus: KiloClawDashboardStatus = {
   userId: 'user-1',
   sandboxId: 'sandbox-1',
+  name: null,
   status: 'running',
   provisionedAt: 1,
   lastStartedAt: 2,
@@ -25,7 +26,8 @@ const baseStatus: KiloClawDashboardStatus = {
   trackedImageDigest: null,
   googleConnected: false,
   gmailNotificationsEnabled: false,
-  gatewayToken: 'token',
+  execSecurity: null,
+  execAsk: null,
   workerUrl: 'https://claw.kilo.ai',
 };
 

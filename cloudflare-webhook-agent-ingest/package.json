@@ -1,9 +1,9 @@
 {
   "name": "cloudflare-webhook-agent-ingest",
   "version": "1.0.0",
-  "type": "module",
   "private": true,
   "description": "Webhook ingest service for Kilo Cod agents",
+  "type": "module",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "deploy:prod": "wrangler deploy --env=\"\"",
@@ -11,15 +11,14 @@
     "dev": "wrangler dev --env dev",
     "start": "wrangler dev --env dev",
     "types": "wrangler types",
-    "lint": "eslint --config eslint.config.mjs --cache 'src/**/*.ts'",
-    "lint:fix": "eslint --config eslint.config.mjs --cache --fix 'src/**/*.ts'",
-    "format": "prettier --write 'src/**/*.ts'",
-    "format:check": "prettier --check 'src/**/*.ts'",
+    "lint": "pnpm -w exec oxlint --config .oxlintrc.json cloudflare-webhook-agent-ingest/src",
+    "format": "oxfmt src",
+    "format:check": "oxfmt --list-different src",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.workers.config.ts",
     "test:integration:watch": "vitest --config vitest.workers.config.ts",
-    "typecheck": "tsgo --noEmit --incremental false"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@kilocode/db": "workspace:*",
@@ -31,14 +30,11 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.12.8",
-    "@kilocode/eslint-config": "workspace:*",
-    "@types/node": "^22",
-    "@typescript/native-preview": "7.0.0-dev.20251019.1",
+    "@cloudflare/vitest-pool-workers": "^0.12.21",
+    "@types/node": "^22.19.15",
+    "@typescript/native-preview": "catalog:",
     "@vitest/ui": "^3.2.4",
     "drizzle-kit": "catalog:",
-    "eslint": "catalog:",
-    "prettier": "catalog:",
     "typescript": "catalog:",
     "vitest": "^3.2.4",
     "wrangler": "catalog:"

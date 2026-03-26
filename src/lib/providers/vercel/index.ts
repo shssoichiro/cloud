@@ -1,10 +1,11 @@
-import type { BYOKResult } from '@/lib/byok';
+import type { BYOKResult } from '@/lib/providers/types';
 import { kiloFreeModels } from '@/lib/models';
 import { isAnthropicModel } from '@/lib/providers/anthropic';
 import { getGatewayErrorRate } from '@/lib/providers/gateway-error-rate';
 import { isGeminiModel } from '@/lib/providers/google';
 import { isMinimaxModel } from '@/lib/providers/minimax';
 import { isMoonshotModel } from '@/lib/providers/moonshotai';
+import { isOpenAiOssModel } from '@/lib/providers/openai';
 import type { VercelUserByokInferenceProviderId } from '@/lib/providers/openrouter/inference-provider-id';
 import {
   AutocompleteUserByokProviderIdSchema,
@@ -17,10 +18,9 @@ import type {
   GatewayRequest,
   VercelInferenceProviderConfig,
   VercelProviderConfig,
-  OpenRouterChatCompletionRequest,
-  GatewayResponsesRequest,
 } from '@/lib/providers/openrouter/types';
 import { mapModelIdToVercel } from '@/lib/providers/vercel/mapModelIdToVercel';
+import { isXaiModel } from '@/lib/providers/xai';
 import { isZaiModel } from '@/lib/providers/zai';
 import * as crypto from 'crypto';
 
@@ -38,14 +38,19 @@ function getRandomNumberLessThan100(randomSeed: string) {
 
 async function getVercelRoutingPercentage() {
   const errorRate = await getGatewayErrorRate();
-  const isOpenRouterErrorRateHigh =
-    errorRate.openrouter > ERROR_RATE_THRESHOLD && errorRate.vercel < ERROR_RATE_THRESHOLD;
-  if (isOpenRouterErrorRateHigh) {
+  const isOpenRouterErrorRateHigh = errorRate.openrouter > ERROR_RATE_THRESHOLD;
+  const isVercelErrorRateHigh = errorRate.vercel > ERROR_RATE_THRESHOLD;
+  if (isOpenRouterErrorRateHigh && !isVercelErrorRateHigh) {
     console.error(
       `[getVercelRoutingPercentage] OpenRouter error rate is high: ${errorRate.openrouter}`
     );
+    return 90;
   }
-  return isOpenRouterErrorRateHigh ? 90 : 10;
+  if (!isOpenRouterErrorRateHigh && isVercelErrorRateHigh) {
+    console.error(`[getVercelRoutingPercentage] Vercel error rate is high: ${errorRate.vercel}`);
+    return 10;
+  }
+  return 10;
 }
 
 function isLikelyAvailableOnAllGateways(requestedModel: string) {
@@ -58,17 +63,17 @@ function isLikelyAvailableOnAllGateways(requestedModel: string) {
 
 export async function shouldRouteToVercel(
   requestedModel: string,
-  request: OpenRouterChatCompletionRequest | GatewayResponsesRequest,
+  request: GatewayRequest,
   randomSeed: string
 ) {
-  if (request.provider?.data_collection === 'deny') {
+  if (request.body.provider?.data_collection === 'deny') {
     console.debug(
       `[shouldRouteToVercel] not routing to Vercel because data_collection=deny is not supported`
     );
     return false;
   }
 
-  if ((request.provider?.ignore?.length ?? 0) > 0) {
+  if ((request.body.provider?.ignore?.length ?? 0) > 0) {
     console.debug(
       `[shouldRouteToVercel] not routing to Vercel because provider.ignore is not supported`
     );
@@ -91,6 +96,8 @@ export async function shouldRouteToVercel(
     !isGeminiModel(requestedModel) &&
     !isMinimaxModel(requestedModel) &&
     !isMoonshotModel(requestedModel) &&
+    !isOpenAiOssModel(requestedModel) &&
+    !isXaiModel(requestedModel) &&
     !isZaiModel(requestedModel)
   ) {
     console.debug(`[shouldRouteToVercel] model family not allowed for randomized Vercel routing`);

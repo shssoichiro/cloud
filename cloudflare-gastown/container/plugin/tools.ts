@@ -78,6 +78,38 @@ export function createTools(client: GastownClient) {
       },
     }),
 
+    gt_request_changes: tool({
+      description:
+        'Request changes on the code you are reviewing. This creates a rework task ' +
+        'for a polecat to address your feedback. After calling this, call gt_done to ' +
+        'release your session. The polecat will push fixes to the same branch, and ' +
+        'you will be re-dispatched to re-review once the rework is complete. ' +
+        'Only available to refinery agents.',
+      args: {
+        feedback: tool.schema
+          .string()
+          .describe(
+            'Detailed description of what needs to change. Be specific: ' +
+              'reference file names, function names, and the exact issues found.'
+          ),
+        files: tool.schema
+          .array(tool.schema.string())
+          .describe('Optional list of specific file paths that need changes')
+          .optional(),
+      },
+      async execute(args) {
+        const result = await client.requestChanges({
+          feedback: args.feedback,
+          files: args.files,
+        });
+        return (
+          `Rework request created (bead ${result.rework_bead_id}). ` +
+          'A polecat will be assigned to address your feedback. ' +
+          'Call gt_done now to release your session. You will be re-dispatched to re-review once the rework is complete.'
+        );
+      },
+    }),
+
     gt_mail_send: tool({
       description:
         'Send a typed message to another agent in the rig. ' +
@@ -217,7 +249,7 @@ export function createTools(client: GastownClient) {
         'Emit a plain-language status update visible on the dashboard. ' +
         'Call this when starting a new phase of work (e.g. "Installing dependencies", ' +
         '"Writing tests", "Fixing lint errors"). Write it as a brief sentence for a teammate, ' +
-        'not a log line. Do NOT call this on every tool use â only at meaningful phase transitions.',
+        'not a log line. Do NOT call this on every tool use â only at meaningful phase transitions.',
       args: {
         message: tool.schema
           .string()
@@ -226,6 +258,33 @@ export function createTools(client: GastownClient) {
       async execute(args) {
         await client.updateAgentStatusMessage(args.message);
         return 'Status updated.';
+      },
+    }),
+
+    gt_nudge: tool({
+      description:
+        'Send a real-time nudge to another agent. Unlike gt_mail_send (which queues a formal ' +
+        "persistent message), gt_nudge delivers immediately at the agent's next idle moment. " +
+        'Use this for time-sensitive coordination: wake up an agent, request a status check, ' +
+        'or notify of a blocking issue.',
+      args: {
+        target_agent_id: tool.schema.string().describe('UUID of the agent to nudge'),
+        message: tool.schema.string().describe('The message to deliver'),
+        mode: tool.schema
+          .enum(['wait-idle', 'immediate', 'queue'])
+          .describe(
+            'Delivery mode: wait-idle (default) delivers at next idle moment; ' +
+              'immediate injects mid-task; queue delivers with TTL'
+          )
+          .optional(),
+      },
+      async execute(args) {
+        const result = await client.nudge({
+          target_agent_id: args.target_agent_id,
+          message: args.message,
+          mode: args.mode ?? 'wait-idle',
+        });
+        return `Nudge queued: ${result.nudge_id} (mode: ${args.mode ?? 'wait-idle'})`;
       },
     }),
   };

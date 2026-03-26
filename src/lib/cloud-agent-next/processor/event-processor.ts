@@ -6,7 +6,7 @@
  * updates can still merge into the final message before the consumer renders it.
  *
  * Key behavior:
- * - Messages are stored internally for delta accumulation, pending parts, and late updates
+ * - Messages are stored internally for pending parts and late updates
  * - When a message completes, onMessageCompleted is called and the buffered message is retained
  *
  * Storage uses composite keys (sessionId:messageId) for unified handling of
@@ -23,6 +23,7 @@ import {
   stripPartContentIfFile,
   isUserMessage,
   isAssistantMessage,
+  isToolPart,
   type EventMessageUpdated,
   type EventMessagePartUpdated,
   type EventMessagePartRemoved,
@@ -78,7 +79,6 @@ function isKilocodePayload(data: unknown): data is KilocodePayload {
  */
 type PendingPartEntry = {
   part: Part;
-  delta?: string;
 };
 
 /**
@@ -113,7 +113,7 @@ export type EventProcessor = {
  *
  * The processor buffers in-flight (streaming) messages and handles:
  * - Message creation and updates via message.updated events
- * - Part updates with delta support for streaming text
+ * - Part updates (upsert by part id)
  * - Pending parts queue for parts that arrive before their message
  * - Session parent tracking (sessions with parentID are child sessions)
  * - Session status management (idle/busy/retry)
@@ -174,8 +174,8 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
     if (!pending?.length) return;
 
     const parentSessionId = getParentSessionId(sessionId);
-    for (const { part, delta } of pending) {
-      applyPartToMessage(message, part, delta);
+    for (const { part } of pending) {
+      applyPartToMessage(message, part);
       callbacks.onPartUpdated?.(sessionId, messageId, part.id, part, parentSessionId);
     }
 
@@ -183,30 +183,15 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
   }
 
   /**
-   * Apply a part update to a message, handling delta for streaming text.
+   * Apply a part update to a message — upsert by part id.
    */
-  function applyPartToMessage(message: ProcessedMessage, part: Part, delta?: string): void {
+  function applyPartToMessage(message: ProcessedMessage, part: Part): void {
     const existingIndex = message.parts.findIndex(p => p.id === part.id);
 
     if (existingIndex >= 0) {
-      const existingPart = message.parts[existingIndex];
-      // Apply delta to text parts if provided
-      if (delta !== undefined && existingPart.type === 'text' && part.type === 'text') {
-        const updatedPart = {
-          ...part,
-          text: (existingPart.text ?? '') + delta,
-        };
-        message.parts[existingIndex] = updatedPart;
-      } else {
-        message.parts[existingIndex] = part;
-      }
+      message.parts[existingIndex] = part;
     } else {
-      // New part - if it has delta, that's the initial text
-      if (delta !== undefined && part.type === 'text') {
-        message.parts.push({ ...part, text: delta });
-      } else {
-        message.parts.push(part);
-      }
+      message.parts.push(part);
     }
   }
 
@@ -280,7 +265,6 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
    * Completed messages stay buffered so late part updates can still merge.
    */
   function handleMessagePartUpdated(data: EventMessagePartUpdated['properties']): void {
-    const { delta } = data;
     // Strip large content from file parts immediately to reduce memory
     const part = stripPartContentIfFile(data.part);
     const sessionId = part.sessionID;
@@ -293,13 +277,12 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
     if (!message) {
       // Queue for later - message hasn't arrived yet
       const queue = pendingParts.get(key) ?? [];
-      queue.push({ part, delta });
+      queue.push({ part });
       pendingParts.set(key, queue);
       return;
     }
 
-    applyPartToMessage(message, part, delta);
-    // Pass the updated part from the message (with delta accumulated), not the raw input
+    applyPartToMessage(message, part);
     const updatedPart = message.parts.find(p => p.id === part.id) ?? part;
     callbacks.onPartUpdated?.(sessionId, messageId, part.id, updatedPart, parentSessionId);
     checkAndHandleCompletion(sessionId, messageId, message);
@@ -432,16 +415,27 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
   function forceCompleteAllMessages(skipStreamingToggle = false): void {
     const now = Date.now();
     for (const [key, message] of messagesMap) {
-      if (isAssistantMessage(message.info) && !isAssistantMessageComplete(message)) {
+      if (!isAssistantMessage(message.info)) continue;
+
+      const [sessionId, messageId] = key.split(':');
+      const parentSessionId = getParentSessionId(sessionId);
+
+      if (!isAssistantMessageComplete(message)) {
         message.info = {
           ...message.info,
           time: { ...message.info.time, completed: now },
         };
 
-        const [sessionId, messageId] = key.split(':');
-        const parentSessionId = getParentSessionId(sessionId);
+        // Force-complete any in-flight tool parts so their spinners stop
+        forceCompleteToolParts(message, now);
+
         callbacks.onMessageCompleted?.(sessionId, messageId, message, parentSessionId);
         completedMessages.add(key);
+      } else if (forceCompleteToolParts(message, now)) {
+        // Already-completed messages can still have stuck tool parts when the
+        // server sent time.completed before all part updates arrived.
+        // Notify the UI so it re-renders the cleaned-up parts.
+        callbacks.onMessageUpdated?.(sessionId, messageId, message, parentSessionId);
       }
     }
 
@@ -451,6 +445,34 @@ export function createEventProcessor(config: EventProcessorConfig = {}): EventPr
       streaming = false;
       callbacks.onStreamingChanged?.(false);
     }
+  }
+
+  /**
+   * Force-complete tool parts that are stuck in pending/running state.
+   * Transitions them to error state with a synthetic timestamp so the UI
+   * stops showing a spinner.
+   * Returns true if any parts were modified.
+   */
+  function forceCompleteToolParts(message: ProcessedMessage, now: number): boolean {
+    let modified = false;
+    for (let i = 0; i < message.parts.length; i++) {
+      const part = message.parts[i];
+      if (!isToolPart(part)) continue;
+      if (part.state.status === 'completed' || part.state.status === 'error') continue;
+
+      const start = part.state.status === 'running' ? part.state.time.start : now;
+      message.parts[i] = {
+        ...part,
+        state: {
+          status: 'error',
+          input: part.state.input,
+          error: 'Connection lost',
+          time: { start, end: now },
+        },
+      };
+      modified = true;
+    }
+    return modified;
   }
 
   /**

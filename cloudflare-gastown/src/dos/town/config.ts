@@ -55,11 +55,26 @@ export async function updateTownConfig(
     }
   }
 
+  // github_cli_pat: same mask-preservation as git_auth tokens
+  const resolvedGithubCliPat =
+    update.github_cli_pat !== undefined
+      ? MASKED_RE.test(update.github_cli_pat)
+        ? current.github_cli_pat
+        : update.github_cli_pat
+      : current.github_cli_pat;
+
+  // Normalize empty-string model fields to undefined so resolveModel()'s
+  // nullish-coalescing fallback works correctly when the user clears them.
+  const resolvedDefaultModel =
+    update.default_model !== undefined ? update.default_model || undefined : current.default_model;
+
   const merged: TownConfig = {
     ...current,
     ...update,
     env_vars: resolvedEnvVars,
     git_auth: resolvedGitAuth,
+    github_cli_pat: resolvedGithubCliPat,
+    default_model: resolvedDefaultModel,
     refinery:
       update.refinery !== undefined
         ? {
@@ -90,8 +105,9 @@ export async function updateTownConfig(
  * Resolve the primary model from town config.
  * Priority: rig override → role-specific → town default → hardcoded default.
  */
-export function resolveModel(townConfig: TownConfig, _rigId: string, _role: string): string {
-  return townConfig.default_model ?? 'anthropic/claude-sonnet-4.6';
+export function resolveModel(townConfig: TownConfig, _rigId: string, role: string): string {
+  const roleModels: Record<string, string | undefined> | undefined = townConfig.role_models;
+  return roleModels?.[role] ?? townConfig.default_model ?? 'anthropic/claude-sonnet-4.6';
 }
 
 /**
@@ -128,6 +144,10 @@ export async function buildContainerConfig(
     small_model: resolveSmallModel(config),
     git_auth: config.git_auth,
     kilocode_token: config.kilocode_token,
+    github_cli_pat: config.github_cli_pat,
+    git_author_name: config.git_author_name,
+    git_author_email: config.git_author_email,
+    disable_ai_coauthor: config.disable_ai_coauthor,
     kilo_api_url: env.KILO_API_URL ?? '',
     gastown_api_url: env.GASTOWN_API_URL ?? '',
   };

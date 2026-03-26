@@ -418,8 +418,9 @@ describe('buildEnvVars', () => {
       instanceFeatures: ['nonexistent-feature'],
     });
 
-    // No KILOCLAW_* feature vars should be set (only platform defaults)
-    const featureVars = Object.keys(result.env).filter(k => k.startsWith('KILOCLAW_'));
+    // No feature-flag env vars should be set.
+    const knownFeatureVars = new Set(Object.values(FEATURE_TO_ENV_VAR));
+    const featureVars = Object.keys(result.env).filter(k => knownFeatureVars.has(k));
     expect(featureVars).toEqual([]);
   });
 
@@ -450,5 +451,37 @@ describe('buildEnvVars', () => {
         `Missing FEATURE_TO_ENV_VAR mapping for "${feature}"`
       ).toBeDefined();
     }
+  });
+
+  // ─── Exec preset env vars ─────────────────────────────────────────────
+
+  it('passes KILOCLAW_EXEC_SECURITY and KILOCLAW_EXEC_ASK in env when set', async () => {
+    const env = createMockEnv();
+    const result = await buildEnvVars(env, SANDBOX_ID, SECRET, {
+      execSecurity: 'full',
+      execAsk: 'off',
+    });
+
+    expect(result.env.KILOCLAW_EXEC_SECURITY).toBe('full');
+    expect(result.env.KILOCLAW_EXEC_ASK).toBe('off');
+  });
+
+  it('does not set exec env vars when execSecurity and execAsk are null', async () => {
+    const env = createMockEnv();
+    const result = await buildEnvVars(env, SANDBOX_ID, SECRET, {
+      execSecurity: null,
+      execAsk: null,
+    });
+
+    expect(result.env.KILOCLAW_EXEC_SECURITY).toBeUndefined();
+    expect(result.env.KILOCLAW_EXEC_ASK).toBeUndefined();
+  });
+
+  it('does not set exec env vars when not provided in userConfig', async () => {
+    const env = createMockEnv();
+    const result = await buildEnvVars(env, SANDBOX_ID, SECRET, {});
+
+    expect(result.env.KILOCLAW_EXEC_SECURITY).toBeUndefined();
+    expect(result.env.KILOCLAW_EXEC_ASK).toBeUndefined();
   });
 });

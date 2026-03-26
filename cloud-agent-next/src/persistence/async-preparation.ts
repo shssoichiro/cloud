@@ -1,3 +1,4 @@
+import { dirname } from 'node:path';
 import { logger } from '../logger.js';
 import { SANDBOX_SLEEP_AFTER_SECONDS } from '../core/lease.js';
 import { generateSandboxId, getSandboxNamespace } from '../sandbox-id.js';
@@ -178,13 +179,14 @@ export async function executePreparationSteps(
   if (input.kiloSessionId) {
     emitProgress('kilo_session', 'Importing session…');
     const now = Date.now();
+    const defaultTitle = 'New session - ' + new Date(now).toISOString();
     const minimalSessionJson = JSON.stringify({
       info: {
         id: input.kiloSessionId,
         slug: '',
         projectID: '',
         directory: '',
-        title: '',
+        title: defaultTitle,
         version: '2',
         time: { created: now, updated: now },
       },
@@ -196,7 +198,8 @@ export async function executePreparationSteps(
     const escapedId = input.kiloSessionId.replaceAll("'", "'\\''");
     const escapedWorkspace = workspacePath.replaceAll("'", "'\\''");
     const restoreResult = await session.exec(
-      `bun /usr/local/bin/kilo-restore-session.js --file '${escapedFile}' '${escapedId}' '${escapedWorkspace}'`
+      `bun /usr/local/bin/kilo-restore-session.js --file '${escapedFile}' '${escapedId}' '${escapedWorkspace}'`,
+      { cwd: dirname(workspacePath) }
     );
     if (restoreResult.exitCode !== 0) {
       const stdout = restoreResult.stdout?.trim() ?? '';
