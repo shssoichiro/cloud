@@ -47,7 +47,7 @@ function convertModel(
     per_request_limits: null,
     supported_parameters: ['max_tokens', 'temperature', 'tools', 'reasoning', 'include_reasoning'],
     default_parameters: {},
-    preferredIndex,
+    preferredIndex: model.is_recommended ? preferredIndex : undefined,
   };
 }
 

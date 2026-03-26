@@ -12,6 +12,7 @@ export default [
         name: 'Seed Code',
         description:
           "ByteDance's latest code model has been deeply optimized for agentic programming tasks.",
+        is_recommended: true,
         context_length: 262144,
         max_completion_tokens: 32768,
         extra_body: {
@@ -31,6 +32,7 @@ export default [
         name: 'GLM-5',
         description:
           'GLM-5 is Z.ai’s flagship open-source foundation model engineered for complex systems design and long-horizon agent workflows. Built for expert developers, it delivers production-grade performance on large-scale programming tasks, rivaling leading closed-source models. With advanced agentic planning, deep backend reasoning, and iterative self-correction, GLM-5 moves beyond code generation to full-system construction and autonomous execution.',
+        is_recommended: true,
         context_length: 202752,
         max_completion_tokens: 131072,
         extra_body: {

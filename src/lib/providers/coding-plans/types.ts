@@ -4,6 +4,7 @@ import type { CustomLlmExtraBody, CustomLlmProvider } from '@kilocode/db';
 export type CodingPlanModel = {
   id: string;
   name: string;
+  is_recommended: boolean;
   description: string;
   context_length: number;
   max_completion_tokens: number;
