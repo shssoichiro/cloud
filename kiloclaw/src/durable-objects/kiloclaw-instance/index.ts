@@ -349,6 +349,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
           pendingDestroyMachineId: null,
           pendingDestroyVolumeId: null,
           pendingPostgresMarkOnFinalize: false,
+          instanceReadyEmailSent: false,
         })
       : storageUpdate({
           ...configFields,
@@ -1296,9 +1297,6 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
    */
   async tryMarkInstanceReady(): Promise<{ shouldNotify: boolean; userId: string | null }> {
     await this.loadState();
-
-    console.info(`[tryMarkInstanceReady] instanceReadyEmailSent=${this.s.instanceReadyEmailSent}`);
-
     if (this.s.instanceReadyEmailSent) {
       return { shouldNotify: false, userId: this.s.userId };
     }
