@@ -516,19 +516,23 @@ export async function handleKiloClawSubscriptionCreated(params: {
           },
         });
     } else {
-      // No active instance — insert without conflict handling. This is an
-      // edge case (user destroyed their instance between checkout and webhook).
-      await tx.insert(kiloclaw_subscriptions).values({
-        user_id: kiloUserId,
-        instance_id: null,
-        stripe_subscription_id: subscription.id,
-        plan,
-        status,
-        cancel_at_period_end: subscription.cancel_at_period_end,
-        current_period_start: periods.current_period_start,
-        current_period_end: periods.current_period_end,
-        commit_ends_at: commitEndsAt,
-      });
+      // No active instance — edge case where user destroyed their instance
+      // between checkout and webhook delivery. Use ON CONFLICT on
+      // stripe_subscription_id so Stripe webhook retries are idempotent.
+      await tx
+        .insert(kiloclaw_subscriptions)
+        .values({
+          user_id: kiloUserId,
+          instance_id: null,
+          stripe_subscription_id: subscription.id,
+          plan,
+          status,
+          cancel_at_period_end: subscription.cancel_at_period_end,
+          current_period_start: periods.current_period_start,
+          current_period_end: periods.current_period_end,
+          commit_ends_at: commitEndsAt,
+        })
+        .onConflictDoNothing({ target: kiloclaw_subscriptions.stripe_subscription_id });
     }
 
     didProcess = true;
