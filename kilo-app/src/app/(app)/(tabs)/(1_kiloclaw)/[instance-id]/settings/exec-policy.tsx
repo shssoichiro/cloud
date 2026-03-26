@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 
 type ExecPreset = 'always-ask' | 'never-ask';
 
-interface PolicyOption {
+type PolicyOption = {
   id: ExecPreset;
   icon: LucideIcon;
   iconColor: string;
@@ -19,7 +19,7 @@ interface PolicyOption {
   description: string;
   security: string;
   ask: string;
-}
+};
 
 const POLICY_OPTIONS: PolicyOption[] = [
   {

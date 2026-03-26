@@ -8,13 +8,13 @@ import { GoogleIcon } from '@/components/icons';
 import { Text } from '@/components/ui/text';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
-interface SettingsItem {
+type SettingsItem = {
   icon: LucideIcon | React.ComponentType<{ size?: number; color?: string }>;
   iconColor: string;
   label: string;
   description: string;
   path: string;
-}
+};
 
 const SETTINGS_ITEMS: SettingsItem[] = [
   {

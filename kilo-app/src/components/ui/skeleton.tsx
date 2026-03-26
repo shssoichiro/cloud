@@ -8,9 +8,9 @@ import Animated, {
 
 import { cn } from '@/lib/utils';
 
-interface SkeletonProps {
+type SkeletonProps = {
   className?: string;
-}
+};
 
 export function Skeleton({ className }: Readonly<SkeletonProps>) {
   const opacity = useSharedValue(0.4);

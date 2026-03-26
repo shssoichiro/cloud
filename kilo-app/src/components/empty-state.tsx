@@ -6,13 +6,13 @@ import { Text } from '@/components/ui/text';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
 
-interface EmptyStateProps {
+type EmptyStateProps = {
   icon: LucideIcon;
   title: string;
   description: string;
   className?: string;
   action?: ReactNode;
-}
+};
 
 export function EmptyState({
   icon: Icon,

@@ -18,7 +18,7 @@ import { Text } from '@/components/ui/text';
 import { type GatewayState, type InstanceStatus } from '@/lib/hooks/use-kiloclaw';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
-interface StatusCardProps {
+type StatusCardProps = {
   status: InstanceStatus | null | undefined;
   name: string | null | undefined;
   sandboxId: string | null | undefined;
@@ -32,7 +32,7 @@ interface StatusCardProps {
   lastExitCode: number | null | undefined;
   lastExitSignal: string | null | undefined;
   gatewayLoading?: boolean;
-}
+};
 
 function formatUptime(seconds: number): string {
   if (seconds < 60) return `${String(seconds)}s`;
@@ -42,12 +42,12 @@ function formatUptime(seconds: number): string {
   return `${String(h)}h ${String(m)}m`;
 }
 
-interface DetailRowProps {
+type DetailRowProps = {
   icon: LucideIcon;
   label: string;
   value: string;
   loading?: boolean;
-}
+};
 
 function DetailRow({ icon: Icon, label, value, loading }: Readonly<DetailRowProps>) {
   const colors = useThemeColors();

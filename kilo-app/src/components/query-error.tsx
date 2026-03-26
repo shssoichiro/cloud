@@ -6,11 +6,11 @@ import { Text } from '@/components/ui/text';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 import { cn } from '@/lib/utils';
 
-interface QueryErrorProps {
+type QueryErrorProps = {
   message?: string;
   onRetry?: () => void;
   className?: string;
-}
+};
 
 export function QueryError({
   message = 'Something went wrong',

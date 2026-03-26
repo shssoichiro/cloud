@@ -5,13 +5,13 @@ import { API_BASE_URL } from '@/lib/config';
 
 type DeviceAuthStatus = 'idle' | 'pending' | 'approved' | 'denied' | 'expired' | 'error';
 
-interface DeviceAuthState {
+type DeviceAuthState = {
   status: DeviceAuthStatus;
   code: string | undefined;
   token: string | undefined;
   error: string | undefined;
   verificationUrl: string | undefined;
-}
+};
 
 type DeviceAuthResult = DeviceAuthState & {
   start: () => Promise<void>;

@@ -6,10 +6,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui/text';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
-interface ScreenHeaderProps {
+type ScreenHeaderProps = {
   title: string;
   headerRight?: React.ReactNode;
-}
+};
 
 export function ScreenHeader({ title, headerRight }: Readonly<ScreenHeaderProps>) {
   const insets = useSafeAreaInsets();

@@ -6,13 +6,13 @@ import { Text } from '@/components/ui/text';
 import { type InstanceStatus } from '@/lib/hooks/use-kiloclaw';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
-interface InstanceRowProps {
+type InstanceRowProps = {
   name: string | null | undefined;
   sandboxId: string | null | undefined;
   status: InstanceStatus | null | undefined;
   onPress: () => void;
   onSettingsPress: () => void;
-}
+};
 
 export function InstanceRow({
   name,

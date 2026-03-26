@@ -138,6 +138,7 @@ module.exports = defineConfig([
           objectLiteralTypeAssertions: 'never',
         },
       ],
+      '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
     },
   },
 

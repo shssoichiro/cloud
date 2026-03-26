@@ -6,10 +6,10 @@ import { Text } from '@/components/ui/text';
 import { type InstanceStatus, type useKiloClawMutations } from '@/lib/hooks/use-kiloclaw';
 import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
-interface InstanceControlsProps {
+type InstanceControlsProps = {
   status: InstanceStatus | null | undefined;
   mutations: ReturnType<typeof useKiloClawMutations>;
-}
+};
 
 export function InstanceControls({ status, mutations }: Readonly<InstanceControlsProps>) {
   const colors = useThemeColors();
