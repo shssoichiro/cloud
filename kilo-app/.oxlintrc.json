@@ -1,13 +1,21 @@
 {
   "$schema": "../node_modules/oxlint/configuration_schema.json",
   "plugins": ["oxc", "typescript", "unicorn", "react", "import", "promise"],
-  "jsPlugins": [{ "name": "react-native", "specifier": "oxlint-plugin-react-native" }],
+  "jsPlugins": [
+    { "name": "react-native", "specifier": "oxlint-plugin-react-native" },
+    { "name": "sonarjs", "specifier": "eslint-plugin-sonarjs" }
+  ],
   "options": {
     "typeAware": true
   },
   "categories": {
     "correctness": "error",
-    "suspicious": "error"
+    "suspicious": "error",
+    "pedantic": "error",
+    "style": "error",
+    "perf": "error",
+    "restriction": "error",
+    "nursery": "error"
   },
   "ignorePatterns": ["dist/*", "node_modules/**"],
   "rules": {
@@ -41,6 +49,7 @@
     "promise/prefer-await-to-then": "error",
     "promise/prefer-await-to-callbacks": "error",
     "promise/no-return-wrap": "error",
+    "promise/no-return-in-finally": "error",
     "react-native/no-unused-styles": "error",
     "react-native/no-inline-styles": "error",
     "react-native/no-raw-text": "error",
@@ -89,16 +98,69 @@
     ],
     "react/no-is-mounted": "off",
     "react/jsx-no-useless-fragment": "off",
+    "react/jsx-max-depth": ["error", { "max": 10 }],
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
     "react/react-in-jsx-scope": "off",
-    "import/no-unassigned-import": "off"
+    "react/no-unescaped-entities": "off",
+    "react/jsx-filename-extension": "off",
+    "react/jsx-props-no-spreading": "off",
+    "react/no-multi-comp": "off",
+    "react/no-array-index-key": "off",
+    "import/no-unassigned-import": "off",
+    "import/no-named-export": "off",
+    "import/prefer-default-export": "off",
+    "import/group-exports": "off",
+    "import/exports-last": "off",
+    "import/no-relative-parent-imports": "off",
+    "no-magic-numbers": "off",
+    "no-ternary": "off",
+    "no-undefined": "off",
+    "no-void": "off",
+    "no-null": "off",
+    "no-undef": "off",
+    "no-eq-null": "off",
+    "sort-keys": "off",
+    "sort-imports": ["error", { "ignoreCase": true, "ignoreDeclarationSort": true }],
+    "func-style": "off",
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "curly": "error",
+    "no-promise-executor-return": "off",
+    "capitalized-comments": "off",
+    "id-length": "off",
+    "max-lines-per-function": "off",
+    "max-statements": "off",
+    "import/max-dependencies": "off",
+    "no-negated-condition": "off",
+    "no-use-before-define": "off",
+    "complexity": "off",
+    "prefer-destructuring": "off",
+    "promise/avoid-new": "off",
+    "unicorn/no-useless-undefined": "off",
+    "no-async-await": "off",
+    "@typescript-eslint/explicit-function-return-type": "off",
+    "@typescript-eslint/explicit-module-boundary-types": "off",
+    "@typescript-eslint/prefer-readonly-parameter-types": "off",
+    "oxc/no-optional-chaining": "off",
+    "@typescript-eslint/strict-boolean-expressions": "off",
+    "@typescript-eslint/no-import-type-side-effects": "off",
+    "@typescript-eslint/consistent-type-definitions": ["error", "type"],
+    "@typescript-eslint/no-namespace": "off",
+    "import/no-namespace": "off",
+    "oxc/no-rest-spread-properties": "off",
+    "react/only-export-components": "off"
   },
   "overrides": [
     {
       "files": ["src/components/ui/image.tsx"],
       "rules": {
         "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["src/components/ui/**/*.tsx"],
+      "rules": {
+        "react/jsx-no-constructed-context-values": "off"
       }
     },
     {

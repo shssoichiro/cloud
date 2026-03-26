@@ -6,39 +6,65 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { Toaster } from 'sonner-native';
 
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
+import { ContextProvider, useAppContext } from '@/lib/context/context-context';
 import { queryClient } from '@/lib/query-client';
-import { TRPCProvider, trpcClient } from '@/lib/trpc';
+import { trpcClient, TRPCProvider } from '@/lib/trpc';
 
 void SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
-  const { token, isLoading } = useAuth();
+  const { token, isLoading: authLoading } = useAuth();
+  const { context, isLoading: contextLoading } = useAppContext();
   const segments = useSegments();
   const router = useRouter();
 
+  const isLoading = authLoading || contextLoading;
   const inAuthGroup = segments[0] === '(auth)';
-  const needsRedirect = !isLoading && ((!token && !inAuthGroup) || (token && inAuthGroup));
+  const inContextGroup = segments[0] === '(context)';
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading) {
+      return;
+    }
 
-    if (!token && !inAuthGroup) {
-      router.replace('/(auth)/login');
-    } else if (token && inAuthGroup) {
+    if (!token) {
+      if (inAuthGroup) {
+        void SplashScreen.hideAsync();
+      } else {
+        router.replace('/(auth)/login');
+      }
+    } else if (!context) {
+      if (inContextGroup) {
+        void SplashScreen.hideAsync();
+      } else {
+        router.replace('/(context)/select');
+      }
+    } else if (inAuthGroup || inContextGroup) {
       router.replace('/(app)');
     } else {
       void SplashScreen.hideAsync();
     }
-  }, [token, isLoading, inAuthGroup, router]);
+  }, [token, context, isLoading, inAuthGroup, inContextGroup, router]);
+
+  const needsRedirect =
+    !isLoading &&
+    ((!token && !inAuthGroup) ||
+      (token != null && !context && !inContextGroup) ||
+      (token != null && context != null && (inAuthGroup || inContextGroup)));
 
   if (isLoading || needsRedirect) {
-    return;
+    return null;
   }
 
-  return <Slot />;
+  return (
+    <Animated.View className="flex-1" entering={FadeIn.duration(300)}>
+      <Slot />
+    </Animated.View>
+  );
 }
 
 export default function RootLayout() {
@@ -47,9 +73,11 @@ export default function RootLayout() {
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <RootLayoutNav />
-            <Toaster />
-            <PortalHost />
+            <ContextProvider>
+              <RootLayoutNav />
+              <Toaster />
+              <PortalHost />
+            </ContextProvider>
           </AuthProvider>
         </QueryClientProvider>
       </TRPCProvider>

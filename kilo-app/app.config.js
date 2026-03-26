@@ -1,6 +1,5 @@
-import type { ExpoConfig } from 'expo/config';
-
-const config: ExpoConfig = {
+/** @type {import('expo/config').ExpoConfig} */
+const config = {
   name: 'Kilo',
   owner: 'kilocode',
   slug: 'kilo-app',
@@ -50,6 +49,7 @@ const config: ExpoConfig = {
   },
   extra: {
     apiBaseUrl: process.env.API_BASE_URL,
+    webBaseUrl: process.env.WEB_BASE_URL,
     router: {},
     eas: {
       projectId: '2cf05e39-90b5-48a5-a8a5-e0b3423cf3f4',
@@ -57,4 +57,4 @@ const config: ExpoConfig = {
   },
 };
 
-export default config;
+module.exports = config;
