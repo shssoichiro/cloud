@@ -674,14 +674,24 @@ export async function updateAgentModelInContainer(
   townId: string,
   agentId: string,
   model: string,
-  smallModel?: string
+  smallModel?: string,
+  conversationHistory?: string,
+  containerConfig?: Record<string, unknown>
 ): Promise<boolean> {
   try {
     const container = getTownContainerStub(env, townId);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (containerConfig) {
+      headers['X-Town-Config'] = JSON.stringify(containerConfig);
+    }
     const response = await container.fetch(`http://container/agents/${agentId}/model`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, ...(smallModel ? { smallModel } : {}) }),
+      headers,
+      body: JSON.stringify({
+        model,
+        ...(smallModel ? { smallModel } : {}),
+        ...(conversationHistory ? { conversationHistory } : {}),
+      }),
     });
     return response.ok;
   } catch {

@@ -86,6 +86,8 @@
     "PROACTIVE_REFRESH_THRESHOLD_HOURS": "72",
     // Defaults to "production". For local dev, override to "development" in .dev.vars.
     "WORKER_ENV": "production",
+    // PostHog product telemetry (public project token, safe to commit).
+    "NEXT_PUBLIC_POSTHOG_KEY": "phc_GK2Pxl0HPj5ZPfwhLRjXrtdz8eD7e9MKnXiFrOqnB6z",
   },
   // Secrets (set via wrangler secret put):
   // FLY_API_TOKEN,

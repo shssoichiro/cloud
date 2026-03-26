@@ -137,6 +137,8 @@ export type PlatformStatusResponse = {
   trackedImageDigest: string | null;
   googleConnected: boolean;
   gmailNotificationsEnabled: boolean;
+  execSecurity: string | null;
+  execAsk: string | null;
 };
 
 /** Response from GET /api/platform/debug-status (internal/admin only). */
@@ -219,6 +221,9 @@ export type ConfigRestoreResponse = {
   signaled: boolean;
 };
 
+/** Response from GET /api/platform/gateway/ready (opaque — shape depends on OpenClaw version) */
+export type GatewayReadyResponse = Record<string, unknown>;
+
 /** Response from GET /api/platform/controller-version. Null fields = old controller. */
 export type ControllerVersionResponse = {
   version: string | null;
@@ -294,4 +299,5 @@ export type UpdateRegionsResponse = {
 export type KiloClawDashboardStatus = PlatformStatusResponse & {
   /** Worker base URL for constructing the "Open" link. Falls back to claw.kilo.ai. */
   workerUrl: string;
+  name: string | null;
 };

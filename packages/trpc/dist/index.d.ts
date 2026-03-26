@@ -8,6 +8,15 @@ import { SecretFieldKey } from '@kilocode/kiloclaw-secret-catalog';
 import * as _workos_inc_node from '@workos-inc/node';
 import * as stripe from 'stripe';
 
+type ChangelogCategory = 'feature' | 'bugfix';
+type ChangelogDeployHint = 'redeploy_suggested' | 'redeploy_required' | 'upgrade_required' | null;
+type ChangelogEntry = {
+    date: string;
+    description: string;
+    category: ChangelogCategory;
+    deployHint: ChangelogDeployHint;
+};
+
 declare enum KiloPassTier {
     Tier19 = "tier_19",
     Tier49 = "tier_49",
@@ -3291,6 +3300,8 @@ type PlatformStatusResponse = {
     trackedImageDigest: string | null;
     googleConnected: boolean;
     gmailNotificationsEnabled: boolean;
+    execSecurity: string | null;
+    execAsk: string | null;
 };
 /** Response from GET /api/platform/debug-status (internal/admin only). */
 type PlatformDebugStatusResponse = PlatformStatusResponse & {
@@ -3359,6 +3370,8 @@ type ConfigRestoreResponse = {
     ok: boolean;
     signaled: boolean;
 };
+/** Response from GET /api/platform/gateway/ready (opaque — shape depends on OpenClaw version) */
+type GatewayReadyResponse = Record<string, unknown>;
 /** Response from GET /api/platform/controller-version. Null fields = old controller. */
 type ControllerVersionResponse = {
     version: string | null;
@@ -3395,6 +3408,18 @@ type ReassociateVolumeResponse = {
     previousVolumeId: string | null;
     newVolumeId: string;
     newRegion: string;
+};
+/** Response from GET /api/platform/regions */
+type RegionsResponse = {
+    regions: string[];
+    source: 'kv' | 'env' | 'default';
+    raw: string;
+};
+/** Response from PUT /api/platform/regions */
+type UpdateRegionsResponse = {
+    ok: true;
+    regions: string[];
+    raw: string;
 };
 
 /** Keep in sync with: kiloclaw/controller/src/routes/files.ts, kiloclaw/src/.../gateway.ts (Zod) */
@@ -3513,6 +3538,7 @@ type ExternalOpenPullRequest = {
     number: number;
     title: string;
     url: string;
+    repo: string;
     authorLogin: string;
     createdAt: string;
     ageDays: number;
@@ -3537,6 +3563,7 @@ type ExternalClosedPullRequest = {
     number: number;
     title: string;
     url: string;
+    repo: string;
     authorLogin: string;
     closedAt: string;
     mergedAt: string | null;
@@ -7610,6 +7637,24 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
             };
             meta: object;
         }>;
+        getBalance: _trpc_server.TRPCQueryProcedure<{
+            input: void;
+            output: {
+                balance: number;
+                isDepleted: boolean;
+            };
+            meta: object;
+        }>;
+        getContextBalance: _trpc_server.TRPCQueryProcedure<{
+            input: {
+                organizationId?: string | undefined;
+            };
+            output: {
+                balance: number;
+                isDepleted: boolean;
+            };
+            meta: object;
+        }>;
         getAutocompleteMetrics: _trpc_server.TRPCQueryProcedure<{
             input: {
                 viewType?: string | undefined;
@@ -7863,6 +7908,7 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
             getKilocodeOpenPullRequestsSummary: _trpc_server.TRPCQueryProcedure<{
                 input: {
                     includeDrafts?: boolean | undefined;
+                    repos?: ("cloud" | "kilocode" | "kilo-marketplace" | "kilocode-legacy")[] | undefined;
                 } | undefined;
                 output: OpenPullRequestsSummary;
                 meta: object;
@@ -7873,7 +7919,9 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                 meta: object;
             }>;
             getKilocodeRecentlyClosedExternalPRs: _trpc_server.TRPCQueryProcedure<{
-                input: void;
+                input: {
+                    repos?: ("cloud" | "kilocode" | "kilo-marketplace" | "kilocode-legacy")[] | undefined;
+                } | undefined;
                 output: ExternalClosedPullRequestsWithWeekStats;
                 meta: object;
             }>;
@@ -9946,6 +9994,15 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                 };
                 meta: object;
             }>;
+            forceRetryRecovery: _trpc_server.TRPCMutationProcedure<{
+                input: {
+                    userId: string;
+                };
+                output: {
+                    ok: true;
+                };
+                meta: object;
+            }>;
             machineStop: _trpc_server.TRPCMutationProcedure<{
                 input: {
                     userId: string;
@@ -10187,6 +10244,39 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                     email: string;
                     name: string;
                 }[];
+                meta: object;
+            }>;
+        }>>;
+        kiloclawRegions: _trpc_server.TRPCBuiltRouter<{
+            ctx: TRPCContext;
+            meta: object;
+            errorShape: {
+                data: {
+                    zodError: {
+                        formErrors: string[];
+                        fieldErrors: {};
+                    } | null;
+                    upstreamCode: string | undefined;
+                    code: _trpc_server.TRPC_ERROR_CODE_KEY;
+                    httpStatus: number;
+                    path?: string;
+                    stack?: string;
+                };
+                message: string;
+                code: _trpc_server.TRPC_ERROR_CODE_NUMBER;
+            };
+            transformer: false;
+        }, _trpc_server.TRPCDecorateCreateRouterOptions<{
+            getRegions: _trpc_server.TRPCQueryProcedure<{
+                input: void;
+                output: RegionsResponse;
+                meta: object;
+            }>;
+            updateRegions: _trpc_server.TRPCMutationProcedure<{
+                input: {
+                    regions: string[];
+                };
+                output: UpdateRegionsResponse;
                 meta: object;
             }>;
         }>>;
@@ -10471,47 +10561,27 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
             getTemplates: _trpc_server.TRPCQueryProcedure<{
                 input: void;
                 output: {
-                    name: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow";
-                    subject: string;
+                    name: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceReady";
+                    subject: "Welcome to Kilo for Teams!" | "Kilo: Your Teams Subscription Renewal" | "Kilo: Your Teams Subscription is Cancelled" | "Kilo: New SSO User Joined Your Organization" | "Kilo: Teams Invitation" | "Sign in to Kilo Code" | "Kilo: Low Balance Alert" | "Kilo: Auto Top-Up Failed" | "Kilo: OSS Sponsorship Offer" | "Kilo: Your Deployment Failed" | "Your KiloClaw Trial Ends in 2 Days" | "Your KiloClaw Trial Expires Tomorrow" | "Your KiloClaw Trial Has Ended" | "Your KiloClaw Subscription Has Ended" | "Action Required: KiloClaw Payment Overdue" | "Your KiloClaw Instance Will Be Deleted in 2 Days" | "Your KiloClaw Instance Has Been Deleted" | "Your KiloClaw Earlybird Access Ends Soon" | "Your KiloClaw Earlybird Access Expires Tomorrow" | "Your KiloClaw Instance Is Ready";
                 }[];
-                meta: object;
-            }>;
-            getProviders: _trpc_server.TRPCQueryProcedure<{
-                input: void;
-                output: ("customerio" | "mailgun")[];
                 meta: object;
             }>;
             getPreview: _trpc_server.TRPCQueryProcedure<{
                 input: {
-                    template: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow";
-                    provider: "customerio" | "mailgun";
+                    template: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceReady";
                 };
                 output: {
-                    type: "mailgun";
-                    subject: string;
+                    subject: "Welcome to Kilo for Teams!" | "Kilo: Your Teams Subscription Renewal" | "Kilo: Your Teams Subscription is Cancelled" | "Kilo: New SSO User Joined Your Organization" | "Kilo: Teams Invitation" | "Sign in to Kilo Code" | "Kilo: Low Balance Alert" | "Kilo: Auto Top-Up Failed" | "Kilo: OSS Sponsorship Offer" | "Kilo: Your Deployment Failed" | "Your KiloClaw Trial Ends in 2 Days" | "Your KiloClaw Trial Expires Tomorrow" | "Your KiloClaw Trial Has Ended" | "Your KiloClaw Subscription Has Ended" | "Action Required: KiloClaw Payment Overdue" | "Your KiloClaw Instance Will Be Deleted in 2 Days" | "Your KiloClaw Instance Has Been Deleted" | "Your KiloClaw Earlybird Access Ends Soon" | "Your KiloClaw Earlybird Access Expires Tomorrow" | "Your KiloClaw Instance Is Ready";
                     html: string;
-                    transactional_message_id?: undefined;
-                    message_data?: undefined;
-                } | {
-                    type: "customerio";
-                    transactional_message_id: "6" | "10" | "11" | "12" | "13" | "14" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" | "25" | "26" | "27" | "28" | "29" | "30";
-                    subject: string;
-                    message_data: Record<string, string>;
-                    html?: undefined;
                 };
                 meta: object;
             }>;
             sendTest: _trpc_server.TRPCMutationProcedure<{
                 input: {
-                    template: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow";
-                    provider: "customerio" | "mailgun";
+                    template: "orgSubscription" | "orgRenewed" | "orgCancelled" | "orgSSOUserJoined" | "orgInvitation" | "magicLink" | "balanceAlert" | "autoTopUpFailed" | "ossInviteNewUser" | "ossInviteExistingUser" | "ossExistingOrgProvisioned" | "deployFailed" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "clawSuspendedTrial" | "clawSuspendedSubscription" | "clawSuspendedPayment" | "clawDestructionWarning" | "clawInstanceDestroyed" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceReady";
                     recipient: string;
                 };
                 output: {
-                    provider: "customerio";
-                    recipient: string;
-                } | {
-                    provider: "mailgun";
                     recipient: string;
                 };
                 meta: object;
@@ -10880,6 +10950,11 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                     owner_user_id?: string | undefined;
                     kilocode_token?: string | undefined;
                     default_model?: string | null | undefined;
+                    role_models?: {
+                        mayor?: string | null | undefined;
+                        refinery?: string | null | undefined;
+                        polecat?: string | null | undefined;
+                    } | null | undefined;
                     small_model?: string | null | undefined;
                     max_polecats_per_rig?: number | undefined;
                     refinery?: {
@@ -11016,6 +11091,11 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                         owner_user_id?: string | undefined;
                         kilocode_token?: string | undefined;
                         default_model?: string | null | undefined;
+                        role_models?: {
+                            mayor?: string | null | undefined;
+                            refinery?: string | null | undefined;
+                            polecat?: string | null | undefined;
+                        } | null | undefined;
                         small_model?: string | null | undefined;
                         max_polecats_per_rig?: number | undefined;
                         merge_strategy?: "direct" | "pr" | undefined;
@@ -11044,6 +11124,11 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                     owner_user_id?: string | undefined;
                     kilocode_token?: string | undefined;
                     default_model?: string | null | undefined;
+                    role_models?: {
+                        mayor?: string | null | undefined;
+                        refinery?: string | null | undefined;
+                        polecat?: string | null | undefined;
+                    } | null | undefined;
                     small_model?: string | null | undefined;
                     max_polecats_per_rig?: number | undefined;
                     refinery?: {
@@ -15347,6 +15432,11 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
         };
         transformer: false;
     }, _trpc_server.TRPCDecorateCreateRouterOptions<{
+        getChangelog: _trpc_server.TRPCQueryProcedure<{
+            input: void;
+            output: ChangelogEntry[];
+            meta: object;
+        }>;
         serviceDegraded: _trpc_server.TRPCQueryProcedure<{
             input: void;
             output: boolean;
@@ -15360,6 +15450,7 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
         getStatus: _trpc_server.TRPCQueryProcedure<{
             input: void;
             output: {
+                name: string | null;
                 workerUrl: string;
                 userId: string | null;
                 sandboxId: string | null;
@@ -15381,7 +15472,16 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                 trackedImageDigest: string | null;
                 googleConnected: boolean;
                 gmailNotificationsEnabled: boolean;
+                execSecurity: string | null;
+                execAsk: string | null;
             };
+            meta: object;
+        }>;
+        renameInstance: _trpc_server.TRPCMutationProcedure<{
+            input: {
+                name: string | null;
+            };
+            output: void;
             meta: object;
         }>;
         start: _trpc_server.TRPCMutationProcedure<{
@@ -15492,6 +15592,46 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
             output: UserConfigResponse;
             meta: object;
         }>;
+        getChannelCatalog: _trpc_server.TRPCQueryProcedure<{
+            input: void;
+            output: {
+                id: string;
+                label: string;
+                configured: boolean;
+                fields: {
+                    key: string;
+                    label: string;
+                    placeholder: string;
+                    placeholderConfigured: string;
+                    validationPattern: string | undefined;
+                    validationMessage: string | undefined;
+                }[];
+                helpText: string | undefined;
+                helpUrl: string | undefined;
+                allFieldsRequired: boolean;
+            }[];
+            meta: object;
+        }>;
+        getSecretCatalog: _trpc_server.TRPCQueryProcedure<{
+            input: void;
+            output: {
+                id: string;
+                label: string;
+                configured: boolean;
+                fields: {
+                    key: string;
+                    label: string;
+                    placeholder: string;
+                    placeholderConfigured: string;
+                    validationPattern: string | undefined;
+                    validationMessage: string | undefined;
+                }[];
+                helpText: string | undefined;
+                helpUrl: string | undefined;
+                allFieldsRequired: boolean;
+            }[];
+            meta: object;
+        }>;
         restartMachine: _trpc_server.TRPCMutationProcedure<{
             input: {
                 imageTag?: string | undefined;
@@ -15531,6 +15671,11 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
         gatewayStatus: _trpc_server.TRPCQueryProcedure<{
             input: void;
             output: GatewayProcessStatusResponse;
+            meta: object;
+        }>;
+        gatewayReady: _trpc_server.TRPCQueryProcedure<{
+            input: void;
+            output: GatewayReadyResponse;
             meta: object;
         }>;
         controllerVersion: _trpc_server.TRPCQueryProcedure<{

@@ -5,6 +5,21 @@ import { timingSafeEqual } from '@kilocode/encryption';
 import type { AppEnv } from '../types';
 import { userIdFromSandboxId } from '../auth/sandbox-id';
 import { deriveGatewayToken } from '../auth/gateway-token';
+import { waitUntil } from 'cloudflare:workers';
+import { getWorkerDb, findEmailByUserId } from '../db';
+import { capturePostHogEvent } from '../lib/posthog';
+
+const ProductTelemetrySchema = z.object({
+  openclawVersion: z.string().nullable(),
+  defaultModel: z.string().nullable(),
+  channelCount: z.number().int().min(0),
+  enabledChannels: z.array(z.string()),
+  toolsProfile: z.string().nullable(),
+  execSecurity: z.string().nullable(),
+  browserEnabled: z.boolean(),
+});
+
+const INSTANCE_READY_LOAD_THRESHOLD = 0.1;
 
 const CheckinSchema = z.object({
   sandboxId: z.string().min(1),
@@ -21,7 +36,41 @@ const CheckinSchema = z.object({
   bandwidthBytesIn: z.number().min(0),
   bandwidthBytesOut: z.number().min(0),
   lastExitReason: z.string().optional(),
+  productTelemetry: ProductTelemetrySchema.optional(),
 });
+
+/**
+ * Derive the Next.js app origin for internal API calls.
+ */
+function nextApiOrigin(kilocodeApiBaseUrl: string | undefined): string {
+  if (!kilocodeApiBaseUrl) {
+    throw new Error('KILOCODE_API_BASE_URL not defined');
+  }
+  return new URL(kilocodeApiBaseUrl).origin;
+}
+
+/**
+ * Fire-and-forget HTTP POST to the Next.js internal API to trigger
+ * the "instance ready" transactional email.
+ */
+async function notifyInstanceReady(
+  nextApiUrl: string,
+  internalSecret: string,
+  userId: string,
+  sandboxId: string
+): Promise<void> {
+  const res = await fetch(`${nextApiUrl}/api/internal/kiloclaw/instance-ready`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Internal-Secret': internalSecret,
+    },
+    body: JSON.stringify({ userId, sandboxId }),
+  });
+  if (!res.ok) {
+    console.error('[controller] instance-ready notification failed:', res.status, await res.text());
+  }
+}
 
 const controller = new Hono<AppEnv>();
 
@@ -92,6 +141,62 @@ controller.post('/checkin', async (c: Context<AppEnv>) => {
     });
   } catch {
     // Best-effort: never fail checkin on AE write errors
+  }
+
+  // Forward product telemetry to PostHog (~every 24h). Skip in development.
+  // Runs in background via waitUntil so it never delays the checkin response.
+  if (data.productTelemetry && c.env.NEXT_PUBLIC_POSTHOG_KEY && c.env.WORKER_ENV === 'production') {
+    const posthogKey = c.env.NEXT_PUBLIC_POSTHOG_KEY;
+    const connectionString = c.env.HYPERDRIVE?.connectionString;
+    const telemetryPayload = data.productTelemetry;
+    const telemetryMeta = {
+      sandboxId: data.sandboxId,
+      machineId: data.machineId ?? '',
+      flyRegion: c.req.header('fly-region') ?? '',
+      userId,
+    };
+
+    const telemetryPromise = (async () => {
+      try {
+        let distinctId = userId;
+        if (connectionString) {
+          const email = await findEmailByUserId(getWorkerDb(connectionString), userId);
+          if (email) distinctId = email;
+        }
+
+        await capturePostHogEvent({
+          apiKey: posthogKey,
+          distinctId,
+          event: 'kc_instance_product_telemetry',
+          properties: { ...telemetryPayload, ...telemetryMeta },
+        });
+      } catch (err) {
+        console.warn('[controller] PostHog capture failed (non-fatal):', err);
+      }
+    })();
+
+    waitUntil(telemetryPromise);
+  }
+
+  // Instance readiness detection: when load drops below threshold, send a
+  // one-time "instance ready" email to the user via the Next.js internal API.
+  if (data.loadAvg5m <= INSTANCE_READY_LOAD_THRESHOLD) {
+    try {
+      const { shouldNotify } = await stub.tryMarkInstanceReady();
+
+      if (shouldNotify && c.env.INTERNAL_API_SECRET) {
+        const apiOrigin = nextApiOrigin(c.env.KILOCODE_API_BASE_URL);
+        waitUntil(
+          notifyInstanceReady(apiOrigin, c.env.INTERNAL_API_SECRET, userId, data.sandboxId).catch(
+            err => {
+              console.error('[controller] instance-ready notification error:', err);
+            }
+          )
+        );
+      }
+    } catch {
+      // Best-effort: never fail checkin on readiness notification errors
+    }
   }
 
   return c.body(null, 204);

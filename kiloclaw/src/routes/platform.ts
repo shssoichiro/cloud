@@ -621,6 +621,28 @@ platform.get('/gateway/status', async c => {
   }
 });
 
+// GET /api/platform/gateway/ready?userId=...
+// Non-fatal polling endpoint — always returns 200 so the frontend poll
+// doesn't generate a wall of errors during startup.
+platform.get('/gateway/ready', async c => {
+  const userId = setValidatedQueryUserId(c);
+  if (!userId) {
+    return c.json({ error: 'userId query parameter is required' }, 400);
+  }
+
+  try {
+    const result = await withDORetry(
+      instanceStubFactory(c.env, userId),
+      stub => stub.getGatewayReady(),
+      'getGatewayReady'
+    );
+    return c.json(result ?? { ready: false, error: 'controller too old' }, 200);
+  } catch (err) {
+    const { message } = sanitizeError(err, 'gateway ready');
+    return c.json({ ready: false, error: message }, 200);
+  }
+});
+
 // GET /api/platform/controller-version?userId=...
 platform.get('/controller-version', async c => {
   const userId = setValidatedQueryUserId(c);
