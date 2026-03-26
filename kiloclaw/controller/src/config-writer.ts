@@ -349,6 +349,19 @@ export function writeMcporterConfig(
     }
   }
 
+  if (env.LINEAR_API_KEY) {
+    existingServers['linear'] = {
+      baseUrl: 'https://mcp.linear.app/mcp',
+      headers: { Authorization: 'Bearer ${LINEAR_API_KEY}' },
+    };
+    console.log('Linear MCP server configured (via mcporter)');
+  } else {
+    if ('linear' in existingServers) {
+      delete existingServers['linear'];
+      console.log('Linear MCP server removed from mcporter config');
+    }
+  }
+
   // Only write if there are servers to configure or we need to clean up
   if (Object.keys(existingServers).length === 0 && !deps.existsSync(configPath)) {
     return;

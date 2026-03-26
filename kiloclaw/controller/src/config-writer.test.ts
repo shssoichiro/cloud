@@ -3,6 +3,7 @@ import {
   backupConfigFile,
   generateBaseConfig,
   writeBaseConfig,
+  writeMcporterConfig,
   MAX_CONFIG_BACKUPS,
 } from './config-writer';
 
@@ -754,5 +755,108 @@ describe('writeBaseConfig', () => {
     // From our patches
     expect(config.gateway.auth.token).toBe('test-gw-token');
     expect(config.tools.exec.host).toBe('gateway');
+  });
+});
+
+function mcporterFakeDeps(existingMcporterConfig?: string) {
+  const written: { path: string; data: string }[] = [];
+  return {
+    deps: {
+      readFileSync: vi.fn((filePath: string) => {
+        if (existingMcporterConfig !== undefined) return existingMcporterConfig;
+        throw new Error(`ENOENT: no such file: ${filePath}`);
+      }),
+      writeFileSync: vi.fn((filePath: string, data: string) => {
+        written.push({ path: filePath, data });
+      }),
+      renameSync: vi.fn(),
+      copyFileSync: vi.fn(),
+      readdirSync: vi.fn(() => []),
+      unlinkSync: vi.fn(),
+      existsSync: vi.fn((filePath: string) => {
+        if (existingMcporterConfig !== undefined && filePath.endsWith('mcporter.json')) return true;
+        return false;
+      }),
+      execFileSync: vi.fn(),
+    },
+    written,
+  };
+}
+
+describe('writeMcporterConfig', () => {
+  it('adds Linear MCP server when LINEAR_API_KEY is set', () => {
+    const { deps, written } = mcporterFakeDeps();
+    const env = { LINEAR_API_KEY: 'lin_api_test123' };
+
+    writeMcporterConfig(env, '/tmp/mcporter.json', deps);
+
+    expect(written).toHaveLength(1);
+    const config = JSON.parse(written[0].data);
+    expect(config.mcpServers.linear).toEqual({
+      baseUrl: 'https://mcp.linear.app/mcp',
+      headers: { Authorization: 'Bearer ${LINEAR_API_KEY}' },
+    });
+  });
+
+  it('removes Linear MCP server when LINEAR_API_KEY is absent', () => {
+    const existing = JSON.stringify({
+      mcpServers: {
+        linear: {
+          baseUrl: 'https://mcp.linear.app/mcp',
+          headers: { Authorization: 'Bearer ${LINEAR_API_KEY}' },
+        },
+      },
+    });
+    const { deps, written } = mcporterFakeDeps(existing);
+    const env: Record<string, string | undefined> = {};
+
+    writeMcporterConfig(env, '/tmp/mcporter.json', deps);
+
+    expect(written).toHaveLength(1);
+    const config = JSON.parse(written[0].data);
+    expect(config.mcpServers.linear).toBeUndefined();
+  });
+
+  it('preserves user-added servers when adding Linear', () => {
+    const existing = JSON.stringify({
+      mcpServers: {
+        custom: { url: 'https://custom.example.com/mcp' },
+      },
+    });
+    const { deps, written } = mcporterFakeDeps(existing);
+    const env = { LINEAR_API_KEY: 'lin_api_test123' };
+
+    writeMcporterConfig(env, '/tmp/mcporter.json', deps);
+
+    expect(written).toHaveLength(1);
+    const config = JSON.parse(written[0].data);
+    expect(config.mcpServers.custom).toEqual({ url: 'https://custom.example.com/mcp' });
+    expect(config.mcpServers.linear).toBeDefined();
+  });
+
+  it('adds both AgentCard and Linear when both keys are set', () => {
+    const { deps, written } = mcporterFakeDeps();
+    const env = {
+      AGENTCARD_API_KEY: 'ac_test123',
+      LINEAR_API_KEY: 'lin_api_test123',
+    };
+
+    writeMcporterConfig(env, '/tmp/mcporter.json', deps);
+
+    expect(written).toHaveLength(1);
+    const config = JSON.parse(written[0].data);
+    expect(config.mcpServers.agentcard).toBeDefined();
+    expect(config.mcpServers.linear).toBeDefined();
+  });
+
+  it('uses literal ${LINEAR_API_KEY} in authorization header (not interpolated)', () => {
+    const { deps, written } = mcporterFakeDeps();
+    const env = { LINEAR_API_KEY: 'lin_api_test123' };
+
+    writeMcporterConfig(env, '/tmp/mcporter.json', deps);
+
+    const config = JSON.parse(written[0].data);
+    // The header should contain the literal string ${LINEAR_API_KEY}, not the actual value
+    expect(config.mcpServers.linear.headers.Authorization).toBe('Bearer ${LINEAR_API_KEY}');
   });
 });
