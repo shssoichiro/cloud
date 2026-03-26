@@ -567,9 +567,20 @@ ${LINEAR_MARKER_BEGIN}
 
 The \`linear\` CLI is configured with your Linear API key. Use it to read and manage issues.
 
-- List your assigned issues: \`linear issue list --assignee me\`
-- View an issue: \`linear issue view <issue-id>\`
-- Run \`linear --help\` for all available commands.
+- Run \`linear --help\` for full command reference.
+
+### Best practices
+- **Markdown content**: Use \`--description-file\` for \`issue create/update\` and \`--body-file\` for \`comment add/update\` — avoids shell escaping issues with newlines/special characters
+- **Config file**: Create \`.linear.toml\` in project for defaults (team, sort order, etc.)
+
+### Gotchas
+- \`issue list\` requires \`--sort manual|priority\` and \`--team <key>\` (or infer from directory)
+- \`--no-pager\` only works on \`issue list\` — errors on other commands
+- GraphQL queries with non-null type markers (\`String!\`) must use heredoc: \`linear api --variable key=val <<'GRAPHQL'\`
+
+### Advanced
+- Get API token: \`linear auth token\` (for direct curl requests)
+- Direct GraphQL: \`curl -s -X POST https://api.linear.app/graphql -H "Authorization: $(linear auth token)" -d '{"query":"..."}'\`
 ${LINEAR_MARKER_END}`;
 
 /**
