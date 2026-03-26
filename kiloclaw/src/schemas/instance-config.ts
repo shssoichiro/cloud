@@ -196,10 +196,13 @@ export const PersistedStateSchema = z.object({
   execAsk: z.string().nullable().default(null),
   // Snapshot restore: tracks the volume before the most recent restore for admin revert path.
   previousVolumeId: z.string().nullable().default(null),
-  // Snapshot restore: timestamp when restore was enqueued. Used by alarm for stuck-restore detection.
+  // Snapshot restore: timestamp set at enqueue time. Used by alarm for stuck-restore detection
+  // (>30 min) and by admin UI to show "Restoring... (started X ago)".
   restoreStartedAt: z.string().nullable().default(null),
   // Snapshot restore: status before entering 'restoring'. Used by failSnapshotRestore() to
   // restore the correct status if the restore fails without the queue worker ever running.
+  // Only 'running', 'stopped', or 'provisioned' are reachable in practice — enqueueSnapshotRestore
+  // blocks starting/restarting/destroying/restoring. Uses the full enum for forward compat.
   preRestoreStatus: z
     .enum([
       'provisioned',
