@@ -36,15 +36,10 @@ export type OpenRouterReasoningConfig = {
   enabled?: boolean;
 };
 
-type OpenCodeSpecificRequestProperties = {
+// OpenCode sometimes adds these non-standard properties
+export type OpenCodeSpecificProperties = {
   description?: string;
-  usage?: { include: boolean };
-
-  /**
-   * @deprecated
-   * Probably a typo, standard is reasoning_effort,
-   * which is still not what we use which is reasoning: { effort }
-   * */
+  usage?: { include?: boolean };
   reasoningEffort?: string;
 };
 
@@ -75,7 +70,6 @@ export type GatewayMessagesRequest = SharedGatewayRequestProperties &
  * Approximately OpenRouter API request type. Actually based on OpenAI's, but the differences aren't huge.
  */
 export type OpenRouterChatCompletionRequest = OpenAI.Chat.ChatCompletionCreateParams &
-  OpenCodeSpecificRequestProperties &
   SharedGatewayRequestProperties & {
     max_tokens?: number;
     transforms?: string[];

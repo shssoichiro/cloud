@@ -1,6 +1,4 @@
 import type { KiloFreeModel } from '@/lib/providers/kilo-free-model';
-import { addCacheBreakpoints } from '@/lib/providers/openrouter/request-helpers';
-import type { GatewayRequest } from '@/lib/providers/openrouter/types';
 
 export const qwen35_plus_free_model: KiloFreeModel = {
   public_id: 'qwen/qwen3.5-plus:free',
@@ -15,14 +13,3 @@ export const qwen35_plus_free_model: KiloFreeModel = {
   internal_id: 'qwen3.5-plus',
   inference_provider: 'alibaba',
 };
-
-export function isQwenModel(requestedModelId: string) {
-  return requestedModelId.startsWith('qwen/');
-}
-
-export function applyAlibabaProviderSettings(requestToMutate: GatewayRequest) {
-  if (requestToMutate.kind === 'chat_completions' || requestToMutate.kind === 'responses') {
-    requestToMutate.body.enable_thinking = true;
-  }
-  addCacheBreakpoints(requestToMutate);
-}

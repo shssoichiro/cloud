@@ -8,44 +8,32 @@ import type {
   GatewayRequest,
   GatewayMessagesRequest,
 } from '@/lib/providers/openrouter/types';
-import {
-  applyMistralModelSettings,
-  applyMistralProviderSettings,
-  isMistralModel,
-} from '@/lib/providers/mistral';
+import { applyMistralModelSettings, isMistralModel } from '@/lib/providers/mistral';
 import { applyXaiModelSettings, isXaiModel } from '@/lib/providers/xai';
-import { applyVercelSettings, shouldRouteToVercel } from '@/lib/providers/vercel';
+import { shouldRouteToVercel } from '@/lib/providers/vercel';
 import { kiloFreeModels } from '@/lib/models';
 import {
   applyAnthropicModelSettings,
   isAnthropicModel,
   isHaikuModel,
 } from '@/lib/providers/anthropic';
-import {
-  getBYOKforOrganization,
-  getBYOKforUser,
-  getModelUserByokProviders,
-  type BYOKResult,
-} from '@/lib/byok';
+import { getBYOKforOrganization, getBYOKforUser, getModelUserByokProviders } from '@/lib/byok';
 import type { CustomLlm } from '@kilocode/db/schema';
 import { custom_llm, type User } from '@kilocode/db/schema';
 import { OpenRouterInferenceProviderIdSchema } from '@/lib/providers/openrouter/inference-provider-id';
-import { applyCoreThinkProviderSettings } from '@/lib/providers/corethink';
 import { hasAttemptCompletionTool } from '@/lib/tool-calling';
 import { applyGoogleModelSettings, isGeminiModel } from '@/lib/providers/google';
 import { db } from '@/lib/drizzle';
 import { eq } from 'drizzle-orm';
-import { applyMoonshotProviderSettings, isMoonshotModel } from '@/lib/providers/moonshotai';
+import { applyMoonshotModelSettings, isMoonshotModel } from '@/lib/providers/moonshotai';
 import type { AnonymousUserContext } from '@/lib/anonymous';
 import { isAnonymousContext } from '@/lib/anonymous';
 import { isOpenAiModel, isOpenAiOssModel } from '@/lib/providers/openai';
-import { applyAlibabaProviderSettings } from '@/lib/providers/qwen';
 import { isZaiModel } from '@/lib/providers/zai';
 import { isMinimaxModel } from '@/lib/providers/minimax';
 import { isXiaomiModel } from '@/lib/providers/xiaomi';
-import type { Provider } from '@/lib/providers/types';
+import type { BYOKResult, Provider } from '@/lib/providers/types';
 import PROVIDERS from '@/lib/providers/provider-definitions';
-import { applyByteDanceProviderSettings } from '@/lib/providers/bytedance';
 
 async function checkBYOK(
   user: User | AnonymousUserContext,
@@ -87,6 +75,12 @@ export async function getProvider(
           id: 'custom',
           apiUrl: customLlm.base_url,
           apiKey: customLlm.api_key,
+          transformRequest(context) {
+            Object.assign(context.request.body, customLlm?.extra_body ?? {});
+            for (const [key, value] of Object.entries(customLlm.extra_headers ?? {})) {
+              context.extraHeaders[key] = value;
+            }
+          },
         },
         userByok: null,
         customLlm,
@@ -263,30 +257,19 @@ export function applyProviderSpecificLogic(
   }
 
   if (isMoonshotModel(requestedModel)) {
-    applyMoonshotProviderSettings(requestToMutate);
+    applyMoonshotModelSettings(requestToMutate);
   }
 
-  if (provider.id === 'alibaba') {
-    applyAlibabaProviderSettings(requestToMutate);
-  }
-
-  if (provider.id === 'bytedance') {
-    applyByteDanceProviderSettings(requestToMutate);
-  }
-
-  if (provider.id === 'corethink') {
-    applyCoreThinkProviderSettings(requestToMutate);
-  }
-
-  if (provider.id === 'mistral') {
-    applyMistralProviderSettings(requestToMutate, extraHeaders);
-  } else if (isMistralModel(requestedModel)) {
+  if (isMistralModel(requestedModel)) {
     applyMistralModelSettings(requestToMutate);
   }
 
-  if (provider.id === 'vercel') {
-    applyVercelSettings(requestedModel, requestToMutate, userByok);
-  }
+  provider.transformRequest({
+    model: requestedModel,
+    request: requestToMutate,
+    extraHeaders,
+    userByok,
+  });
 }
 
 export async function openRouterRequest({

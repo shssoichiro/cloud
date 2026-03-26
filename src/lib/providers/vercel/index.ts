@@ -1,4 +1,4 @@
-import type { BYOKResult } from '@/lib/byok';
+import type { BYOKResult } from '@/lib/providers/types';
 import { kiloFreeModels } from '@/lib/models';
 import { isAnthropicModel } from '@/lib/providers/anthropic';
 import { getGatewayErrorRate } from '@/lib/providers/gateway-error-rate';
