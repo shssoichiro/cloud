@@ -33,6 +33,10 @@ function makeEnv(overrides: Record<string, unknown> = {}) {
   };
 }
 
+async function jsonBody(res: Response): Promise<Record<string, unknown>> {
+  return res.json();
+}
+
 function postJson(path: string, body: Record<string, unknown>) {
   return {
     path,
@@ -45,10 +49,14 @@ function postJson(path: string, body: Record<string, unknown>) {
 }
 
 describe('POST /destroy-fly-machine', () => {
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: ReturnType<typeof vi.fn<() => Promise<Response>>>;
 
   beforeEach(() => {
-    fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
+    fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 200 })) as ReturnType<
+      typeof vi.fn<() => Promise<Response>>
+    >;
   });
 
   afterEach(() => {
@@ -65,7 +73,7 @@ describe('POST /destroy-fly-machine', () => {
     const resp = await platform.request(path, init, env);
 
     expect(resp.status).toBe(200);
-    const json = await resp.json();
+    const json = await jsonBody(resp);
     expect(json).toEqual({ ok: true });
 
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -132,7 +140,7 @@ describe('POST /destroy-fly-machine', () => {
     const resp = await platform.request(path, init, env);
 
     expect(resp.status).toBe(503);
-    const json = await resp.json();
+    const json = await jsonBody(resp);
     expect(json.error).toContain('FLY_API_TOKEN');
   });
 
@@ -147,7 +155,7 @@ describe('POST /destroy-fly-machine', () => {
     const resp = await platform.request(path, init, env);
 
     expect(resp.status).toBe(404);
-    const json = await resp.json();
+    const json = await jsonBody(resp);
     // Implementation wraps the Fly response body: "Fly API error (${status}): ${body}"
     expect(json.error).toBe('Fly API error (404): machine not found');
   });
@@ -206,7 +214,7 @@ describe('POST /destroy-fly-machine', () => {
     const resp = await platform.request(path, init, env);
 
     expect(resp.status).toBe(200);
-    const json = await resp.json();
+    const json = await jsonBody(resp);
     expect(json).toEqual({ ok: true });
     expect(forceRetryRecovery).toHaveBeenCalled();
   });
