@@ -19,6 +19,78 @@ export default [
           thinking: { type: 'enabled' },
         },
       },
+      {
+        id: 'kimi-k2.5',
+        name: 'Kimi-K2.5',
+        description:
+          'Open-source SoTA native multimodal model with text-only input (for now), stronger code/UI generation.',
+        flags: ['recommended', 'vision'],
+        context_length: 262144,
+        max_completion_tokens: 32768,
+        extra_body: {
+          thinking: { type: 'enabled' },
+        },
+      },
+      {
+        id: 'glm-4.7',
+        name: 'GLM-4.7',
+        description:
+          "Z.AI's latest flagship model, enhanced programming capabilities and more stable multi-step reasoning/execution.",
+        flags: ['recommended'],
+        context_length: 204800,
+        max_completion_tokens: 131072,
+        extra_body: {
+          thinking: { type: 'enabled' },
+        },
+      },
+      {
+        id: 'deepseek-v3.2',
+        name: 'DeepSeek-V3.2',
+        description:
+          'Designed to harmonize high computational efficiency with strong reasoning and agentic tool-use performance.',
+        flags: [],
+        context_length: 131072,
+        max_completion_tokens: 32768,
+        extra_body: {
+          thinking: { type: 'enabled' },
+        },
+      },
+      {
+        id: 'gpt-oss-120b',
+        name: 'GPT-OSS-120B',
+        description:
+          "OpenAI's open-weight model, 117B parameters with 5.1B active parameters for production, general purpose, high reasoning use cases.",
+        flags: [],
+        context_length: 131072,
+        max_completion_tokens: 65536,
+        extra_body: {
+          thinking: { type: 'enabled' },
+        },
+      },
+      {
+        id: 'dola-seed-2.0-pro',
+        name: 'Dola-Seed-2.0-Pro',
+        description:
+          'Focused on long-chain reasoning and stability in complex task execution, designed for complex real-world business scenarios.',
+        flags: ['vision'],
+        context_length: 262144,
+        max_completion_tokens: 131072,
+        extra_body: {
+          thinking: { type: 'enabled' },
+        },
+      },
+      {
+        id: 'dola-seed-2.0-lite',
+        name: 'Dola-Seed-2.0-Lite',
+        description:
+          'Balances generation quality and response speed, making it a strong general-purpose production model.',
+        flags: ['vision'],
+        context_length: 262144,
+        max_completion_tokens: 131072,
+        extra_body: {
+          thinking: { type: 'enabled' },
+        },
+      },
     ],
   },
   {
