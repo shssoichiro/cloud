@@ -95,30 +95,6 @@ export async function getProvider(
   const kiloFreeModel = kiloFreeModels.find(m => m.public_id === requestedModel);
   const freeModelProvider = Object.values(PROVIDERS).find(p => p.id === kiloFreeModel?.gateway);
 
-  if (kiloFreeModel && freeModelProvider?.id === 'martian') {
-    return {
-      provider: { ...freeModelProvider, id: 'custom' },
-      userByok: null,
-      customLlm: {
-        public_id: kiloFreeModel.public_id,
-        internal_id: kiloFreeModel.internal_id,
-        display_name: kiloFreeModel.display_name,
-        context_length: kiloFreeModel.context_length,
-        max_completion_tokens: kiloFreeModel.max_completion_tokens,
-        provider: 'openai', // xai doesn't support preserved reasoning currently: https://github.com/vercel/ai/issues/10542
-        organization_ids: [],
-        base_url: freeModelProvider.apiUrl,
-        api_key: freeModelProvider.apiKey,
-        supports_image_input: kiloFreeModel.flags.includes('vision'),
-        force_reasoning: true,
-        opencode_settings: null,
-        extra_body: null,
-        extra_headers: null,
-        interleaved_format: null,
-      },
-    };
-  }
-
   return {
     provider: freeModelProvider ?? PROVIDERS.OPENROUTER,
     userByok: null,
