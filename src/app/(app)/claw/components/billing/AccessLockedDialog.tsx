@@ -74,13 +74,15 @@ function getLockContent(reason: ClawLockReason, billing: ClawBillingStatus) {
       };
     case 'past_due_grace_exceeded':
       if (isCreditFunded) {
-        const hasCredits = (billing.creditBalanceMicrodollars ?? 0) > 0;
+        const balance = billing.creditBalanceMicrodollars ?? 0;
+        const renewalCost = billing.subscription?.renewalCostMicrodollars ?? Infinity;
+        const canAffordRenewal = balance >= renewalCost;
         return {
           title: 'Insufficient Credits',
           description:
             'Your subscription is suspended because your credit balance was insufficient for renewal.',
-          cta: hasCredits ? 'Reactivate with Credits' : 'Add Credits',
-          action: (hasCredits ? 'subscribe' : 'add_credits') as
+          cta: canAffordRenewal ? 'Reactivate with Credits' : 'Add Credits',
+          action: (canAffordRenewal ? 'subscribe' : 'add_credits') as
             | 'subscribe'
             | 'add_credits'
             | 'update_payment',

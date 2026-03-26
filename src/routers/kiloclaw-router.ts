@@ -1531,11 +1531,20 @@ export const kiloclawRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Missing Stripe customer for user.' });
       }
 
-      // Reject if user already has a non-ended KiloClaw subscription
+      // Get the user's active instance first — needed for both the guard and callback URL
+      const instance = await getActiveInstance(ctx.user.id);
+      if (!instance) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'No active instance found. Provision an instance first.',
+        });
+      }
+
+      // Reject if this instance already has a non-ended KiloClaw subscription
       const [existing] = await db
         .select({ status: kiloclaw_subscriptions.status })
         .from(kiloclaw_subscriptions)
-        .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id))
+        .where(eq(kiloclaw_subscriptions.instance_id, instance.id))
         .limit(1);
 
       if (existing && existing.status !== 'canceled' && existing.status !== 'trialing') {
@@ -1551,15 +1560,6 @@ export const kiloclawRouter = createTRPCRouter({
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'You already have an active Kilo Pass subscription.',
-        });
-      }
-
-      // Get the user's active instance ID for the callback URL
-      const instance = await getActiveInstance(ctx.user.id);
-      if (!instance) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'No active instance found. Provision an instance first.',
         });
       }
 
@@ -1670,7 +1670,7 @@ export const kiloclawRouter = createTRPCRouter({
             ? { stripe_schedule_id: null, scheduled_plan: null, scheduled_by: null }
             : {}),
         })
-        .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+        .where(eq(kiloclaw_subscriptions.id, sub.id));
     } else if (sub.payment_source === 'credits') {
       // Pure credit path — local DB only, no Stripe API call
       await db
@@ -1684,7 +1684,7 @@ export const kiloclawRouter = createTRPCRouter({
           scheduled_plan: null,
           scheduled_by: null,
         })
-        .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+        .where(eq(kiloclaw_subscriptions.id, sub.id));
     } else {
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
@@ -1718,7 +1718,7 @@ export const kiloclawRouter = createTRPCRouter({
       await db
         .update(kiloclaw_subscriptions)
         .set({ cancel_at_period_end: false })
-        .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+        .where(eq(kiloclaw_subscriptions.id, sub.id));
 
       // Best-effort: restore the auto intro→regular schedule if on an intro price
       try {
@@ -1734,7 +1734,7 @@ export const kiloclawRouter = createTRPCRouter({
       await db
         .update(kiloclaw_subscriptions)
         .set({ cancel_at_period_end: false })
-        .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+        .where(eq(kiloclaw_subscriptions.id, sub.id));
     } else {
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
@@ -1839,7 +1839,7 @@ export const kiloclawRouter = createTRPCRouter({
                 scheduled_plan: input.toPlan,
                 scheduled_by: 'user',
               })
-              .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+              .where(eq(kiloclaw_subscriptions.id, sub.id));
 
             return { success: true };
           } catch (err) {
@@ -1849,7 +1849,7 @@ export const kiloclawRouter = createTRPCRouter({
             await db
               .update(kiloclaw_subscriptions)
               .set({ stripe_schedule_id: null, scheduled_plan: null, scheduled_by: null })
-              .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+              .where(eq(kiloclaw_subscriptions.id, sub.id));
           }
         }
 
@@ -1903,7 +1903,7 @@ export const kiloclawRouter = createTRPCRouter({
             })
             .where(
               and(
-                eq(kiloclaw_subscriptions.user_id, ctx.user.id),
+                eq(kiloclaw_subscriptions.id, sub.id),
                 isNull(kiloclaw_subscriptions.stripe_schedule_id)
               )
             )
@@ -1946,7 +1946,7 @@ export const kiloclawRouter = createTRPCRouter({
         await db
           .update(kiloclaw_subscriptions)
           .set({ scheduled_plan: input.toPlan, scheduled_by: 'user' })
-          .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+          .where(eq(kiloclaw_subscriptions.id, sub.id));
 
         return { success: true };
       } else {
@@ -1989,7 +1989,7 @@ export const kiloclawRouter = createTRPCRouter({
       await db
         .update(kiloclaw_subscriptions)
         .set({ stripe_schedule_id: null, scheduled_plan: null, scheduled_by: null })
-        .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+        .where(eq(kiloclaw_subscriptions.id, sub.id));
 
       // Best-effort: restore the auto intro→regular schedule if on an intro price
       try {
@@ -2007,7 +2007,7 @@ export const kiloclawRouter = createTRPCRouter({
       await db
         .update(kiloclaw_subscriptions)
         .set({ scheduled_plan: null, scheduled_by: null })
-        .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id));
+        .where(eq(kiloclaw_subscriptions.id, sub.id));
     }
 
     return { success: true };
