@@ -37,7 +37,12 @@ export default function KiloClawInstanceList() {
   const chatPath = `/(app)/(tabs)/(1_kiloclaw)/${instanceId}` as const;
   const dashboardPath = `/(app)/(tabs)/(1_kiloclaw)/${instanceId}/dashboard` as const;
 
+  const isDestroying = status?.status === 'destroying';
+
   const handlePress = () => {
+    if (isDestroying) {
+      return;
+    }
     if (lockReason) {
       router.push(billingPath);
     } else {
@@ -46,6 +51,9 @@ export default function KiloClawInstanceList() {
   };
 
   const handleSettingsPress = () => {
+    if (isDestroying) {
+      return;
+    }
     if (lockReason) {
       router.push(billingPath);
     } else {
@@ -108,6 +116,7 @@ export default function KiloClawInstanceList() {
           name={status.name}
           sandboxId={status.sandboxId}
           status={status.status}
+          disabled={isDestroying}
           onPress={handlePress}
           onSettingsPress={handleSettingsPress}
         />
