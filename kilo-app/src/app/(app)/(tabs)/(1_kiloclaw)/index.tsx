@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
-import { Server } from 'lucide-react-native';
-import { Linking, View } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { Plus, Server } from 'lucide-react-native';
+import { View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { EmptyState } from '@/components/empty-state';
@@ -14,9 +15,11 @@ import { Text } from '@/components/ui/text';
 import { useAppContext } from '@/lib/context/context-context';
 import { useKiloClawBillingStatus, useKiloClawStatus } from '@/lib/hooks/use-kiloclaw';
 import { deriveLockReason } from '@/lib/hooks/use-kiloclaw-billing';
+import { useThemeColors } from '@/lib/hooks/use-theme-colors';
 
 export default function KiloClawInstanceList() {
   const router = useRouter();
+  const colors = useThemeColors();
   const { context, clearContext } = useAppContext();
   const isPersonal = context?.type === 'personal' || context == null;
 
@@ -34,7 +37,12 @@ export default function KiloClawInstanceList() {
   const chatPath = `/(app)/(tabs)/(1_kiloclaw)/${instanceId}` as const;
   const dashboardPath = `/(app)/(tabs)/(1_kiloclaw)/${instanceId}/dashboard` as const;
 
+  const isDestroying = status?.status === 'destroying';
+
   const handlePress = () => {
+    if (isDestroying) {
+      return;
+    }
     if (lockReason) {
       router.push(billingPath);
     } else {
@@ -43,6 +51,9 @@ export default function KiloClawInstanceList() {
   };
 
   const handleSettingsPress = () => {
+    if (isDestroying) {
+      return;
+    }
     if (lockReason) {
       router.push(billingPath);
     } else {
@@ -88,10 +99,11 @@ export default function KiloClawInstanceList() {
               <Button
                 variant="outline"
                 onPress={() => {
-                  void Linking.openURL('https://kilo.ai/claw');
+                  void WebBrowser.openBrowserAsync('https://app.kilo.ai/claw');
                 }}
               >
-                <Text>Create on Web</Text>
+                <Plus size={16} color={colors.foreground} />
+                <Text>Create</Text>
               </Button>
             }
           />
@@ -104,6 +116,7 @@ export default function KiloClawInstanceList() {
           name={status.name}
           sandboxId={status.sandboxId}
           status={status.status}
+          disabled={isDestroying}
           onPress={handlePress}
           onSettingsPress={handleSettingsPress}
         />

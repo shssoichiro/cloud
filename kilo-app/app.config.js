@@ -21,6 +21,7 @@ const config = {
     backgroundColor: '#FAF74F',
   },
   android: {
+    package: 'com.kilocode.kiloapp',
     adaptiveIcon: {
       backgroundColor: '#FAF74F',
       foregroundImage: './assets/images/android-icon-foreground.png',
@@ -30,10 +31,26 @@ const config = {
     predictiveBackGestureEnabled: false,
   },
   plugins: [
+    [
+      'expo-build-properties',
+      {
+        android: {
+          enableProguardInReleaseBuilds: true,
+        },
+      },
+    ],
     'expo-router',
     'expo-image',
     'expo-secure-store',
     'expo-web-browser',
+    [
+      '@sentry/react-native/expo',
+      {
+        url: 'https://sentry.io/',
+        project: 'kilo-app',
+        organization: 'kilo-code',
+      },
+    ],
     [
       'expo-splash-screen',
       {

@@ -50,7 +50,7 @@ async function getVercelRoutingPercentage() {
     console.error(`[getVercelRoutingPercentage] Vercel error rate is high: ${errorRate.vercel}`);
     return 10;
   }
-  return 30;
+  return 10;
 }
 
 function isLikelyAvailableOnAllGateways(requestedModel: string) {

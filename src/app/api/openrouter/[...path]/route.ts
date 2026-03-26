@@ -20,6 +20,7 @@ import {
   isDataCollectionRequiredOnKiloCodeOnly,
   isDeadFreeModel,
   isKiloFreeModel,
+  isKiloStealthModel,
 } from '@/lib/models';
 import {
   accountForMicrodollarUsage,
@@ -65,7 +66,7 @@ import {
   getToolsUsed,
 } from '@/lib/o11y/api-metrics.server';
 import { handleRequestLogging } from '@/lib/handleRequestLogging';
-import { customLlmRequest } from '@/lib/custom-llm/customLlmRequest';
+import { grokCodeFastOptimizedRequest } from '@/lib/custom-llm/customLlmRequest';
 import { normalizeModelId } from '@/lib/model-utils';
 import { isForbiddenFreeModel } from '@/lib/forbidden-free-models';
 import { isActiveReviewPromo } from '@/lib/code-reviews/core/constants';
@@ -453,9 +454,8 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   );
 
   let response: Response;
-  if (customLlm && requestBodyParsed.kind === 'chat_completions') {
-    response = await customLlmRequest(
-      customLlm,
+  if (requestBodyParsed.kind === 'chat_completions' && provider.id === 'martian') {
+    response = await grokCodeFastOptimizedRequest(
       requestBodyParsed.body,
       isRooCodeBasedClient(fraudHeaders)
     );
@@ -569,10 +569,17 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     }
   }
 
-  if (
-    provider.id !== 'custom' &&
+  const isFreeModelRequiringCostRemoval =
+    (provider.id === 'openrouter' || provider.id === 'vercel') &&
     (isKiloFreeModel(originalModelIdLowerCased) ||
-      isActiveReviewPromo(botId, originalModelIdLowerCased))
+      isActiveReviewPromo(botId, originalModelIdLowerCased));
+  const isStealthModelRequiringNameRemoval = isKiloStealthModel(originalModelIdLowerCased);
+  const isProviderRequiringResponseFixes = provider.id === 'corethink';
+
+  if (
+    isFreeModelRequiringCostRemoval ||
+    isStealthModelRequiringNameRemoval ||
+    isProviderRequiringResponseFixes
   ) {
     if (requestBodyParsed.kind === 'chat_completions') {
       return rewriteFreeModelResponse_ChatCompletions(response, originalModelIdLowerCased);

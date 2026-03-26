@@ -9,6 +9,9 @@
     "build": "pnpx eas-cli build --profile development",
     "build:ios": "pnpx eas-cli build -p ios --profile development",
     "build:android": "pnpx eas-cli build -p android --profile development",
+    "release:internal": "pnpx eas-cli build --profile production --submit",
+    "release:internal:ios": "pnpx eas-cli build -p ios --profile production --submit",
+    "release:internal:android": "pnpx eas-cli build -p android --profile production --submit",
     "typecheck": "tsgo --noEmit",
     "lint": "pnpm -w exec oxlint --config kilo-app/.oxlintrc.json kilo-app/src",
     "format": "oxfmt src",
@@ -19,6 +22,7 @@
     "@kilocode/trpc": "workspace:*",
     "@rn-primitives/portal": "^1.3.0",
     "@rn-primitives/slot": "^1.2.0",
+    "@sentry/react-native": "~7.11.0",
     "@tailwindcss/postcss": "^4.2.1",
     "@tanstack/react-query": "catalog:",
     "@trpc/client": "catalog:",
@@ -26,6 +30,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "expo": "~55.0.8",
+    "expo-build-properties": "~55.0.10",
     "expo-clipboard": "~55.0.9",
     "expo-constants": "~55.0.9",
     "expo-dev-client": "~55.0.18",
@@ -52,6 +57,7 @@
     "tailwindcss": "^4.2.1"
   },
   "devDependencies": {
+    "@sentry/cli": "^3.3.3",
     "@types/react": "~19.2.2",
     "@typescript/native-preview": "catalog:",
     "eslint-plugin-sonarjs": "^4.0.2",
