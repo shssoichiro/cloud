@@ -774,9 +774,12 @@ export async function handleKiloClawSubscriptionDeleted(params: {
     // Conversion path: clear Stripe subscription ID, set payment_source to
     // credits, and set credit_renewal_at to the existing period end so the
     // credit renewal sweep picks up the next renewal.
+    // Restore status to 'active' because subscription.updated may have already
+    // propagated 'canceled' for non-hybrid rows before this event fires.
     await db
       .update(kiloclaw_subscriptions)
       .set({
+        status: 'active',
         stripe_subscription_id: null,
         payment_source: 'credits',
         credit_renewal_at: preRead.current_period_end,

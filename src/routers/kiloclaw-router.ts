@@ -1697,11 +1697,22 @@ export const kiloclawRouter = createTRPCRouter({
   }),
 
   acceptConversion: baseProcedure.mutation(async ({ ctx }) => {
-    // Validate: user must have an active Stripe-funded subscription
+    // Resolve the active instance so we read the correct subscription row
+    const instance = await getActiveInstance(ctx.user.id);
+    if (!instance) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'No active instance found.' });
+    }
+
+    // Validate: user must have an active Stripe-funded subscription for this instance
     const [sub] = await db
       .select()
       .from(kiloclaw_subscriptions)
-      .where(eq(kiloclaw_subscriptions.user_id, ctx.user.id))
+      .where(
+        and(
+          eq(kiloclaw_subscriptions.user_id, ctx.user.id),
+          eq(kiloclaw_subscriptions.instance_id, instance.id)
+        )
+      )
       .limit(1);
 
     if (!sub || sub.status !== 'active') {
