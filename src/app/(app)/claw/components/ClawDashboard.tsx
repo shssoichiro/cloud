@@ -170,7 +170,7 @@ export function ClawDashboard({
             href="https://kilo.ai/kiloclaw/config-service"
             target="_blank"
             rel="noopener noreferrer"
-            className="bg-violet-500 text-primary-foreground hover:bg-violet-500/90 inline-flex shrink-0 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors"
+            className="bg-violet-500 text-white hover:bg-violet-500/90 inline-flex shrink-0 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors"
           >
             Book your session
           </a>
