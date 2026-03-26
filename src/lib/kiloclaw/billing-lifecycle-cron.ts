@@ -174,6 +174,15 @@ async function processCreditRenewalRow(
   const { user_id: userId, credit_renewal_at: renewalAt } = row;
   if (!renewalAt) return;
 
+  // Scope all subscription mutations to the specific instance row when available.
+  // Legacy rows without instance_id fall back to user-scoped matching.
+  const subscriptionWhere = row.instance_id
+    ? and(
+        eq(kiloclaw_subscriptions.user_id, userId),
+        eq(kiloclaw_subscriptions.instance_id, row.instance_id)
+      )
+    : eq(kiloclaw_subscriptions.user_id, userId);
+
   // Rule 5: Cancel-at-period-end — skip deduction, set status to canceled.
   if (row.cancel_at_period_end) {
     await database
@@ -183,7 +192,7 @@ async function processCreditRenewalRow(
         cancel_at_period_end: false,
         auto_top_up_triggered_for_period: null,
       })
-      .where(eq(kiloclaw_subscriptions.user_id, userId));
+      .where(subscriptionWhere);
     summary.credit_renewals_canceled++;
     logInfo('Credit renewal: canceled at period end', { user_id: userId });
     return;
@@ -295,10 +304,7 @@ async function processCreditRenewalRow(
         updateSet.past_due_since = null;
       }
 
-      await tx
-        .update(kiloclaw_subscriptions)
-        .set(updateSet)
-        .where(eq(kiloclaw_subscriptions.user_id, userId));
+      await tx.update(kiloclaw_subscriptions).set(updateSet).where(subscriptionWhere);
     });
 
     if (!deductionIsNew) {
@@ -359,7 +365,7 @@ async function processCreditRenewalRow(
       await database
         .update(kiloclaw_subscriptions)
         .set({ auto_top_up_triggered_for_period: renewalAt })
-        .where(eq(kiloclaw_subscriptions.user_id, userId));
+        .where(subscriptionWhere);
 
       // Fire-and-skip: trigger auto top-up, then skip row.
       // maybePerformAutoTopUp handles lock acquisition, invoice creation,
@@ -392,7 +398,7 @@ async function processCreditRenewalRow(
         status: 'past_due',
         past_due_since: sql`COALESCE(${kiloclaw_subscriptions.past_due_since}, now())`,
       })
-      .where(eq(kiloclaw_subscriptions.user_id, userId));
+      .where(subscriptionWhere);
 
     // Rule 13: Send credit-renewal-failed notification.
     await trySendEmail(

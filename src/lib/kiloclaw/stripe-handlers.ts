@@ -464,6 +464,24 @@ export async function handleKiloClawSubscriptionCreated(params: {
           ).toISOString()
         : null;
 
+    // Clean up orphaned rows: if a prior delivery inserted a row with
+    // instance_id = NULL (no active instance at the time), delete it so
+    // the upsert below can link the subscription to the now-available
+    // instance without hitting the unique stripe_subscription_id constraint.
+    // We delete rather than update-in-place because the instance may
+    // already have its own row (e.g. trial), and reattaching would collide
+    // with UQ_kiloclaw_subscriptions_instance.
+    if (resolvedInstanceId) {
+      await tx
+        .delete(kiloclaw_subscriptions)
+        .where(
+          and(
+            eq(kiloclaw_subscriptions.stripe_subscription_id, subscription.id),
+            isNull(kiloclaw_subscriptions.instance_id)
+          )
+        );
+    }
+
     // Upsert: if trial/canceled row exists for this instance, upgrade it; otherwise insert.
     // Always use the freshly computed commitEndsAt — the stale-subscription
     // guard above already rejects replays for superseded subscriptions, so
