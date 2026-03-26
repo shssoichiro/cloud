@@ -5,13 +5,20 @@ import type { OpenRouterModelsResponse } from '@/lib/organizations/organization-
 import { getEnhancedOpenRouterModels } from '@/lib/providers/openrouter';
 import { getUserFromAuth } from '@/lib/user.server';
 import { getCodingPlanModelsForUser } from '@/lib/providers/coding-plans';
+import { unstable_cache } from 'next/cache';
+
+const getCodingPlanModelsForUser_cached = unstable_cache(
+  (userId: string) => getCodingPlanModelsForUser(userId),
+  undefined,
+  { revalidate: 60 }
+);
 
 async function getCodingPlanModels() {
   try {
     const { user } = await getUserFromAuth({ adminOnly: false });
     if (user) {
       console.debug('[getCodingPlanModels] authenticated request, fetching coding plan models');
-      return await getCodingPlanModelsForUser(user.id);
+      return await getCodingPlanModelsForUser_cached(user.id);
     } else {
       console.debug('[getCodingPlanModels] anonymous request, no coding plan models');
       return [];
