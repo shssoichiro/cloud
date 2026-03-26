@@ -36,7 +36,37 @@ import type { BYOKResult, Provider } from '@/lib/providers/types';
 import PROVIDERS from '@/lib/providers/provider-definitions';
 import { getCodingPlanModel } from '@/lib/providers/coding-plans';
 
-async function checkBYOK(
+async function checkCodingPlanBYOK(
+  user: User | AnonymousUserContext,
+  requestedModel: string,
+  organizationId: string | undefined
+) {
+  const { provider: codingPlan, model: codingPlanModel } = getCodingPlanModel(requestedModel);
+  if (!codingPlan || !codingPlanModel) {
+    return null;
+  }
+  const userByok = organizationId
+    ? await getBYOKforOrganization(db, organizationId, [codingPlan.id])
+    : await getBYOKforUser(db, user.id, [codingPlan.id]);
+  if (!userByok) {
+    return null;
+  }
+  return {
+    provider: {
+      id: 'coding-plan',
+      apiUrl: codingPlan.base_url,
+      apiKey: userByok[0].decryptedAPIKey,
+      transformRequest(context) {
+        Object.assign(context.request.body, codingPlanModel.extra_body);
+        context.request.body.model = codingPlanModel.id;
+      },
+    } satisfies Provider,
+    userByok,
+    customLlm: null,
+  };
+}
+
+async function checkVercelBYOK(
   user: User | AnonymousUserContext,
   requestedModel: string,
   organizationId: string | undefined
@@ -56,33 +86,16 @@ export async function getProvider(
   organizationId: string | undefined,
   taskId: string | undefined
 ): Promise<{ provider: Provider; userByok: BYOKResult[] | null; customLlm: CustomLlm | null }> {
-  const { provider: codingPlan, model: codingPlanModel } = getCodingPlanModel(requestedModel);
-  if (codingPlan && codingPlanModel) {
-    const userByok = organizationId
-      ? await getBYOKforOrganization(db, organizationId, [codingPlan.id])
-      : await getBYOKforUser(db, user.id, [codingPlan.id]);
-    if (userByok) {
-      return {
-        provider: {
-          id: 'coding-plan',
-          apiUrl: codingPlan.base_url,
-          apiKey: userByok[0].decryptedAPIKey,
-          transformRequest(context) {
-            Object.assign(context.request.body, codingPlanModel.extra_body);
-            context.request.body.model = codingPlanModel.id;
-          },
-        },
-        userByok,
-        customLlm: null,
-      };
-    }
+  const codingPlanByok = await checkCodingPlanBYOK(user, requestedModel, organizationId);
+  if (codingPlanByok) {
+    return codingPlanByok;
   }
 
-  const userByokFromByokCheck = await checkBYOK(user, requestedModel, organizationId);
-  if (userByokFromByokCheck) {
+  const vercelByok = await checkVercelBYOK(user, requestedModel, organizationId);
+  if (vercelByok) {
     return {
       provider: PROVIDERS.VERCEL_AI_GATEWAY,
-      userByok: userByokFromByokCheck,
+      userByok: vercelByok,
       customLlm: null,
     };
   }
@@ -132,7 +145,7 @@ export async function getEmbeddingProvider(
   organizationId: string | undefined
 ): Promise<{ provider: Provider; userByok: BYOKResult[] | null }> {
   // 1. BYOK check — route through Vercel AI Gateway when user has their own key
-  const userByok = await checkBYOK(user, requestedModel, organizationId);
+  const userByok = await checkVercelBYOK(user, requestedModel, organizationId);
   if (userByok) {
     return { provider: PROVIDERS.VERCEL_AI_GATEWAY, userByok };
   }
