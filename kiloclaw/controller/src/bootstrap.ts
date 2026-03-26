@@ -327,44 +327,17 @@ export function configureGitHub(env: EnvLike, deps: BootstrapDeps = defaultDeps)
 // ---- Step 6: Linear config ----
 
 /**
- * Configure or clean up Linear CLI access.
- * When LINEAR_API_KEY is present the CLI reads it natively.
- * When absent, clean up any on-disk credentials left by a previous
- * `linear auth login --plaintext` on the persistent volume.
- * Best-effort: logs warnings on failure, does not throw.
- *
- * The CLI stores two files under ~/.config/linear/:
- *   - credentials.toml  — workspace list + inline API keys (plaintext mode)
- *   - linear.toml        — global config that can also carry an api_key field
- * It may also create ~/.linear.toml (a project-level or legacy config file).
- * The system keyring is not available in this container (no libsecret-tools),
- * so these files are the only persistence locations.
+ * Configure or clean up Linear MCP access.
+ * Linear access is provided via the Linear MCP server configured in mcporter.
+ * When LINEAR_API_KEY is present, mcporter uses it to authenticate.
+ * When absent, we just clean up the env var. No on-disk artifacts to clean.
  */
-export function configureLinear(env: EnvLike, deps: BootstrapDeps = defaultDeps): void {
+export function configureLinear(env: EnvLike): void {
   if (env.LINEAR_API_KEY) {
-    console.log('Linear CLI configured via LINEAR_API_KEY');
+    console.log('Linear MCP configured via LINEAR_API_KEY');
   } else {
-    // Clean up env var if explicitly set to empty
     delete env.LINEAR_API_KEY;
-    // Remove any previously stored credentials from the persistent volume.
-    // The CLI recreates ~/.config/linear/ via ensureDir on next auth login.
-    // rm -rf/-f exit 0 when the target is absent, so errors here are
-    // genuine failures (permissions, I/O) worth surfacing.
-    try {
-      deps.execFileSync('rm', ['-rf', '/root/.config/linear'], { stdio: 'pipe' });
-    } catch (err) {
-      console.warn(
-        `WARNING: failed to remove /root/.config/linear: ${err instanceof Error ? err.message : err}`
-      );
-    }
-    try {
-      deps.execFileSync('rm', ['-f', '/root/.linear.toml'], { stdio: 'pipe' });
-    } catch (err) {
-      console.warn(
-        `WARNING: failed to remove /root/.linear.toml: ${err instanceof Error ? err.message : err}`
-      );
-    }
-    console.log('Linear: not configured (credentials cleared)');
+    console.log('Linear: not configured');
   }
 }
 
@@ -590,50 +563,22 @@ const LINEAR_MARKER_END = '<!-- END:linear -->';
 
 const LINEAR_TOOLS_SECTION = `
 ${LINEAR_MARKER_BEGIN}
-  ## Linear
+## Linear
 
-  The \`linear\` CLI is configured with your Linear API key. Use it to read and manage issues.
+Linear is configured as your project management tool. Use it  to track issues, plan projects, and manage product roadmaps.
+You can interact with Linear using the \`Linear MCP\` via \`mcporter\` — your MCP management tool.
 
-  - Run \`linear --help\` for full command reference; \`--help\` after any subcommand for details.
-  - If you don't know the team key, run \`linear team list\`.
-
-  ### Listing issues
-
-  Example — list all issues by priority:
-  \`\`\`
-  linear issue list --team <key> --sort priority --all-states --all-assignees
-  \`\`\`
-
-  **Flags that silently filter results when omitted:**
-  - \`--state\` defaults to \`backlog\`. Use \`--all-states\` for all, or \`--state <value>\` to filter to one: triage, backlog, unstarted, started, completed, canceled
-  - \`--assignee\` defaults to \`me\`. Use \`--all-assignees\` for all, or \`--assignee <user>\` to filter to one
-
-  ### Writing issue content
-  Use file flags for markdown with newlines or special characters:
-  - \`--description-file <path>\` for \`issue create/update\`
-  - \`--body-file <path>\` for \`comment add/update\`
-
-  ### Config file
-  Avoid repeated \`--team\` and \`--sort\` flags with \`.linear.toml\` in the project directory:
-  \`\`\`toml
-  team = "TEAM_KEY"
-  sort = "priority"
-  \`\`\`
-
-  ### Gotchas
-  - \`--no-pager\` only works on \`issue list\` — errors on other commands
-  - GraphQL non-null types (\`String!\`) require heredoc: \`linear api --variable key=val <<'GRAPHQL'\`
-
-  ### Advanced
-  - Get API token: \`linear auth token\`
-  - Direct GraphQL: \`curl -s -X POST https://api.linear.app/graphql -H "Authorization: $(linear auth token)" -d '{"query":"..."}'\`
+Here's an example of how to list 3 issues:
+\`\`\`bash
+mcporter call linear.list_issues limit:3
+\`\`\`
   ${LINEAR_MARKER_END}`;
 
 /**
  * Manage the Linear section in TOOLS.md.
  *
  * When LINEAR_API_KEY is present, append a bounded section so the agent
- * knows the linear CLI is available. When absent, remove any stale section.
+ * knows Linear MCP is available. When absent, remove any stale section.
  * Idempotent: skips if the marker is already present.
  */
 export function updateToolsMdLinearSection(env: EnvLike, deps: BootstrapDeps): void {
@@ -718,7 +663,7 @@ export async function bootstrap(
   await yieldToEventLoop();
 
   setPhase('linear');
-  configureLinear(env, deps);
+  configureLinear(env);
   await yieldToEventLoop();
 
   const configExists = deps.existsSync(CONFIG_PATH);

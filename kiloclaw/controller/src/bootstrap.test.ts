@@ -494,174 +494,38 @@ describe('configureGitHub', () => {
 describe('configureLinear', () => {
   it('logs configured when LINEAR_API_KEY is set', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const { deps } = fakeDeps();
     const env: Record<string, string | undefined> = {
       LINEAR_API_KEY: 'lin_api_test123',
     };
 
-    configureLinear(env, deps);
+    configureLinear(env);
 
     expect(env.LINEAR_API_KEY).toBe('lin_api_test123');
-    expect(logSpy).toHaveBeenCalledWith('Linear CLI configured via LINEAR_API_KEY');
+    expect(logSpy).toHaveBeenCalledWith('Linear MCP configured via LINEAR_API_KEY');
     logSpy.mockRestore();
   });
 
-  it('removes persisted config directory when no LINEAR_API_KEY', () => {
+  it('cleans up empty LINEAR_API_KEY and logs not configured', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const { deps, execCalls } = fakeDeps();
-    const env: Record<string, string | undefined> = {};
-
-    configureLinear(env, deps);
-
-    expect(env.LINEAR_API_KEY).toBeUndefined();
-    expect(execCalls).toContainEqual({
-      cmd: 'rm',
-      args: ['-rf', '/root/.config/linear'],
-      input: undefined,
-    });
-    expect(execCalls).toContainEqual({
-      cmd: 'rm',
-      args: ['-f', '/root/.linear.toml'],
-      input: undefined,
-    });
-    expect(logSpy).toHaveBeenCalledWith('Linear: not configured (credentials cleared)');
-    logSpy.mockRestore();
-  });
-
-  it('still removes ~/.linear.toml when /root/.config/linear removal fails', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { deps } = fakeDeps();
-    const env: Record<string, string | undefined> = {};
-
-    // Make the first rm call throw, second should still succeed
-    const origExec = deps.execFileSync;
-    deps.execFileSync = vi.fn(
-      (cmd: string, args: string[], opts?: Parameters<BootstrapDeps['execFileSync']>[2]) => {
-        if (cmd === 'rm' && args.includes('/root/.config/linear')) {
-          throw new Error('permission denied');
-        }
-        return origExec(cmd, args, opts);
-      }
-    ) as typeof deps.execFileSync;
-
-    configureLinear(env, deps);
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      'WARNING: failed to remove /root/.config/linear: permission denied'
-    );
-    // Second rm should still have been attempted
-    expect(deps.execFileSync).toHaveBeenCalledWith('rm', ['-f', '/root/.linear.toml'], {
-      stdio: 'pipe',
-    });
-    logSpy.mockRestore();
-    warnSpy.mockRestore();
-  });
-
-  it('warns when /root/.config/linear removal fails', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { deps } = fakeDeps();
-    const env: Record<string, string | undefined> = {};
-
-    const origExec = deps.execFileSync;
-    deps.execFileSync = vi.fn(
-      (cmd: string, args: string[], opts?: Parameters<BootstrapDeps['execFileSync']>[2]) => {
-        if (cmd === 'rm' && args.includes('/root/.config/linear')) {
-          throw new Error('permission denied');
-        }
-        return origExec(cmd, args, opts);
-      }
-    ) as typeof deps.execFileSync;
-
-    configureLinear(env, deps);
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      'WARNING: failed to remove /root/.config/linear: permission denied'
-    );
-    expect(logSpy).toHaveBeenCalledWith('Linear: not configured (credentials cleared)');
-    logSpy.mockRestore();
-    warnSpy.mockRestore();
-  });
-
-  it('warns when ~/.linear.toml removal fails', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { deps } = fakeDeps();
-    const env: Record<string, string | undefined> = {};
-
-    const origExec = deps.execFileSync;
-    deps.execFileSync = vi.fn(
-      (cmd: string, args: string[], opts?: Parameters<BootstrapDeps['execFileSync']>[2]) => {
-        if (cmd === 'rm' && args.includes('/root/.linear.toml')) {
-          throw new Error('read-only filesystem');
-        }
-        return origExec(cmd, args, opts);
-      }
-    ) as typeof deps.execFileSync;
-
-    configureLinear(env, deps);
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      'WARNING: failed to remove /root/.linear.toml: read-only filesystem'
-    );
-    expect(logSpy).toHaveBeenCalledWith('Linear: not configured (credentials cleared)');
-    logSpy.mockRestore();
-    warnSpy.mockRestore();
-  });
-
-  it('warns for both when both rm calls fail', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { deps } = fakeDeps();
-    const env: Record<string, string | undefined> = {};
-
-    deps.execFileSync = vi.fn((cmd: string) => {
-      if (cmd === 'rm') throw new Error('disk full');
-      return '';
-    }) as typeof deps.execFileSync;
-
-    configureLinear(env, deps);
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      'WARNING: failed to remove /root/.config/linear: disk full'
-    );
-    expect(warnSpy).toHaveBeenCalledWith('WARNING: failed to remove /root/.linear.toml: disk full');
-    expect(logSpy).toHaveBeenCalledWith('Linear: not configured (credentials cleared)');
-    logSpy.mockRestore();
-    warnSpy.mockRestore();
-  });
-
-  it('formats non-Error thrown values in warning', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { deps } = fakeDeps();
-    const env: Record<string, string | undefined> = {};
-
-    deps.execFileSync = vi.fn((cmd: string) => {
-      if (cmd === 'rm') throw 'unexpected string error';
-      return '';
-    }) as typeof deps.execFileSync;
-
-    configureLinear(env, deps);
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      'WARNING: failed to remove /root/.config/linear: unexpected string error'
-    );
-    logSpy.mockRestore();
-    warnSpy.mockRestore();
-  });
-
-  it('cleans up empty LINEAR_API_KEY', () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const { deps } = fakeDeps();
     const env: Record<string, string | undefined> = {
       LINEAR_API_KEY: '',
     };
 
-    configureLinear(env, deps);
+    configureLinear(env);
 
     expect(env.LINEAR_API_KEY).toBeUndefined();
+    expect(logSpy).toHaveBeenCalledWith('Linear: not configured');
+    logSpy.mockRestore();
+  });
+
+  it('logs not configured when LINEAR_API_KEY is absent', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const env: Record<string, string | undefined> = {};
+
+    configureLinear(env);
+
+    expect(env.LINEAR_API_KEY).toBeUndefined();
+    expect(logSpy).toHaveBeenCalledWith('Linear: not configured');
     logSpy.mockRestore();
   });
 });
@@ -878,7 +742,7 @@ describe('updateToolsMdLinearSection', () => {
 
     expect(harness.writeCalls).toHaveLength(1);
     expect(harness.writeCalls[0]!.data).toContain('<!-- BEGIN:linear -->');
-    expect(harness.writeCalls[0]!.data).toContain('linear issue list');
+    expect(harness.writeCalls[0]!.data).toContain('Linear MCP');
     expect(harness.writeCalls[0]!.data).toContain('<!-- END:linear -->');
   });
 
