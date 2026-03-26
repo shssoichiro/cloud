@@ -353,12 +353,16 @@ export function configureLinear(env: EnvLike, deps: BootstrapDeps = defaultDeps)
     try {
       deps.execFileSync('rm', ['-rf', '/root/.config/linear'], { stdio: 'pipe' });
     } catch (err) {
-      console.warn(`WARNING: failed to remove /root/.config/linear: ${err instanceof Error ? err.message : err}`);
+      console.warn(
+        `WARNING: failed to remove /root/.config/linear: ${err instanceof Error ? err.message : err}`
+      );
     }
     try {
       deps.execFileSync('rm', ['-f', '/root/.linear.toml'], { stdio: 'pipe' });
     } catch (err) {
-      console.warn(`WARNING: failed to remove /root/.linear.toml: ${err instanceof Error ? err.message : err}`);
+      console.warn(
+        `WARNING: failed to remove /root/.linear.toml: ${err instanceof Error ? err.message : err}`
+      );
     }
     console.log('Linear: not configured (credentials cleared)');
   }

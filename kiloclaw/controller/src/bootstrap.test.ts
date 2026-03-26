@@ -536,12 +536,14 @@ describe('configureLinear', () => {
 
     // Make the first rm call throw, second should still succeed
     const origExec = deps.execFileSync;
-    deps.execFileSync = vi.fn((cmd: string, args: string[], opts?: Parameters<BootstrapDeps['execFileSync']>[2]) => {
-      if (cmd === 'rm' && args.includes('/root/.config/linear')) {
-        throw new Error('permission denied');
+    deps.execFileSync = vi.fn(
+      (cmd: string, args: string[], opts?: Parameters<BootstrapDeps['execFileSync']>[2]) => {
+        if (cmd === 'rm' && args.includes('/root/.config/linear')) {
+          throw new Error('permission denied');
+        }
+        return origExec(cmd, args, opts);
       }
-      return origExec(cmd, args, opts);
-    }) as typeof deps.execFileSync;
+    ) as typeof deps.execFileSync;
 
     configureLinear(env, deps);
 
@@ -549,11 +551,9 @@ describe('configureLinear', () => {
       'WARNING: failed to remove /root/.config/linear: permission denied'
     );
     // Second rm should still have been attempted
-    expect(deps.execFileSync).toHaveBeenCalledWith(
-      'rm',
-      ['-f', '/root/.linear.toml'],
-      { stdio: 'pipe' }
-    );
+    expect(deps.execFileSync).toHaveBeenCalledWith('rm', ['-f', '/root/.linear.toml'], {
+      stdio: 'pipe',
+    });
     logSpy.mockRestore();
     warnSpy.mockRestore();
   });
@@ -565,12 +565,14 @@ describe('configureLinear', () => {
     const env: Record<string, string | undefined> = {};
 
     const origExec = deps.execFileSync;
-    deps.execFileSync = vi.fn((cmd: string, args: string[], opts?: Parameters<BootstrapDeps['execFileSync']>[2]) => {
-      if (cmd === 'rm' && args.includes('/root/.linear.toml')) {
-        throw new Error('read-only filesystem');
+    deps.execFileSync = vi.fn(
+      (cmd: string, args: string[], opts?: Parameters<BootstrapDeps['execFileSync']>[2]) => {
+        if (cmd === 'rm' && args.includes('/root/.linear.toml')) {
+          throw new Error('read-only filesystem');
+        }
+        return origExec(cmd, args, opts);
       }
-      return origExec(cmd, args, opts);
-    }) as typeof deps.execFileSync;
+    ) as typeof deps.execFileSync;
 
     configureLinear(env, deps);
 
@@ -595,7 +597,9 @@ describe('configureLinear', () => {
 
     configureLinear(env, deps);
 
-    expect(warnSpy).toHaveBeenCalledWith('WARNING: failed to remove /root/.config/linear: disk full');
+    expect(warnSpy).toHaveBeenCalledWith(
+      'WARNING: failed to remove /root/.config/linear: disk full'
+    );
     expect(warnSpy).toHaveBeenCalledWith('WARNING: failed to remove /root/.linear.toml: disk full');
     expect(logSpy).toHaveBeenCalledWith('Linear: not configured (credentials cleared)');
     logSpy.mockRestore();
