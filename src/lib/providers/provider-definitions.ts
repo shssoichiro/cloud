@@ -1,7 +1,6 @@
 import { getEnvVariable } from '@/lib/dotenvx';
 import { applyByteDanceProviderSettings } from '@/lib/providers/bytedance';
 import { applyCoreThinkProviderSettings } from '@/lib/providers/corethink';
-import { applyMistralProviderSettings } from '@/lib/providers/mistral';
 import { applyAlibabaProviderSettings } from '@/lib/providers/qwen';
 import type { Provider } from '@/lib/providers/types';
 import { applyVercelSettings } from '@/lib/providers/vercel';
@@ -47,9 +46,7 @@ export default {
     id: 'mistral',
     apiUrl: 'https://api.mistral.ai/v1',
     apiKey: getEnvVariable('MISTRAL_API_KEY'),
-    transformRequest(context) {
-      applyMistralProviderSettings(context.request, context.extraHeaders);
-    },
+    transformRequest() {},
   },
   MORPH: {
     id: 'morph',
