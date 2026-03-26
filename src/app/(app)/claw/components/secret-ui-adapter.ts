@@ -31,7 +31,7 @@ const DESCRIPTION_MAP: Record<string, string> = {
   discord: 'Connect your Discord bot',
   slack: 'Connect your Slack workspace',
   github: 'Connect a GitHub account for code operations',
-  linear: 'Connect Linear to manage issues from the CLI',
+  linear: 'Connect your Linear account for issue tracking',
   agentcard: 'Give your bot virtual debit cards for spending',
   onepassword: 'Look up credentials and manage vault items via the op CLI',
   'brave-search': 'Add a Brave Search API key for web search',

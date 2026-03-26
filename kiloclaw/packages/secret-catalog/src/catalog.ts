@@ -210,9 +210,9 @@ const SECRET_CATALOG_RAW = [
         placeholder: 'lin_api_...',
         placeholderConfigured: 'Enter new API key to replace',
         envVar: 'LINEAR_API_KEY',
-        validationPattern: '^lin_api_[a-zA-Z0-9_-]{40}$',
+        validationPattern: '^lin_api_[a-zA-Z0-9]{40}$',
         validationMessage:
-          'Linear API keys start with lin_api_ followed by 40 alphanumeric, underscore, or hyphen characters.',
+          'Linear API keys start with lin_api_ followed by 40 alphanumeric characters.',
         maxLength: 100,
       },
     ],
