@@ -30,7 +30,7 @@ import { hasAttemptCompletionTool } from '@/lib/tool-calling';
 import { applyGoogleModelSettings, isGeminiModel } from '@/lib/providers/google';
 import { db } from '@/lib/drizzle';
 import { eq } from 'drizzle-orm';
-import { applyMoonshotProviderSettings, isMoonshotModel } from '@/lib/providers/moonshotai';
+import { applyMoonshotModelSettings, isMoonshotModel } from '@/lib/providers/moonshotai';
 import type { AnonymousUserContext } from '@/lib/anonymous';
 import { isAnonymousContext } from '@/lib/anonymous';
 import { isOpenAiModel, isOpenAiOssModel } from '@/lib/providers/openai';
@@ -262,7 +262,7 @@ export function applyProviderSpecificLogic(
   }
 
   if (isMoonshotModel(requestedModel)) {
-    applyMoonshotProviderSettings(requestToMutate);
+    applyMoonshotModelSettings(requestToMutate);
   }
 
   if (isMistralModel(requestedModel)) {
