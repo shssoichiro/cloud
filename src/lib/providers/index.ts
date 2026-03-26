@@ -17,12 +17,7 @@ import {
   isAnthropicModel,
   isHaikuModel,
 } from '@/lib/providers/anthropic';
-import {
-  getBYOKforOrganization,
-  getBYOKforUser,
-  getModelUserByokProviders,
-  type BYOKResult,
-} from '@/lib/byok';
+import { getBYOKforOrganization, getBYOKforUser, getModelUserByokProviders } from '@/lib/byok';
 import type { CustomLlm } from '@kilocode/db/schema';
 import { custom_llm, type User } from '@kilocode/db/schema';
 import { OpenRouterInferenceProviderIdSchema } from '@/lib/providers/openrouter/inference-provider-id';
@@ -37,7 +32,7 @@ import { isOpenAiModel, isOpenAiOssModel } from '@/lib/providers/openai';
 import { isZaiModel } from '@/lib/providers/zai';
 import { isMinimaxModel } from '@/lib/providers/minimax';
 import { isXiaomiModel } from '@/lib/providers/xiaomi';
-import type { Provider } from '@/lib/providers/types';
+import type { BYOKResult, Provider } from '@/lib/providers/types';
 import PROVIDERS from '@/lib/providers/provider-definitions';
 
 async function checkBYOK(

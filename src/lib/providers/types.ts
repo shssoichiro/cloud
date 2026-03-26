@@ -1,4 +1,4 @@
-import type { BYOKResult } from '@/lib/byok';
+import type { UserByokProviderId } from '@/lib/providers/openrouter/inference-provider-id';
 import type { GatewayRequest } from '@/lib/providers/openrouter/types';
 
 export type ProviderId =
@@ -12,6 +12,11 @@ export type ProviderId =
   | 'vercel'
   | 'custom'
   | 'dev-tools';
+
+export type BYOKResult = {
+  decryptedAPIKey: string;
+  providerId: UserByokProviderId;
+};
 
 export type TransformRequestContext = {
   model: string;
