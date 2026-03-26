@@ -190,6 +190,9 @@ export function useKiloClawMutations() {
           await queryClient.invalidateQueries({
             queryKey: trpc.kiloclaw.getSecretCatalog.queryKey(),
           });
+          await queryClient.invalidateQueries({
+            queryKey: trpc.kiloclaw.getChannelCatalog.queryKey(),
+          });
         },
         onError: onMutationError,
       })
