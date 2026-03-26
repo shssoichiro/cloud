@@ -1363,8 +1363,15 @@ platform.put('/regions', async c => {
 // This bypasses the DO's normal destroy flow — use for admin cleanup.
 const DestroyFlyMachineSchema = z.object({
   userId: z.string().min(1),
-  appName: z.string().min(1).max(63).regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Invalid Fly app name'),
-  machineId: z.string().min(1).regex(/^[a-z0-9]+$/, 'Invalid Fly machine ID'),
+  appName: z
+    .string()
+    .min(1)
+    .max(63)
+    .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Invalid Fly app name'),
+  machineId: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9]+$/, 'Invalid Fly machine ID'),
 });
 
 platform.post('/destroy-fly-machine', async c => {
@@ -1390,10 +1397,7 @@ platform.post('/destroy-fly-machine', async c => {
         `[platform] destroy-fly-machine failed (${resp.status}) app=${appName} machine=${machineId}:`,
         body
       );
-      return jsonError(
-        `Fly API error (${resp.status}): ${body}`,
-        resp.status
-      );
+      return jsonError(`Fly API error (${resp.status}): ${body}`, resp.status);
     }
 
     console.log(`[platform] destroy-fly-machine ok: app=${appName} machine=${machineId}`);
