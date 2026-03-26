@@ -121,6 +121,19 @@ export async function markActiveInstanceDestroyed(
 }
 
 /**
+ * Soft-delete a specific instance row by its primary key.
+ * Unlike {@link markActiveInstanceDestroyed} (which targets the user's
+ * current active row), this targets exactly one row and is safe to use
+ * for rollback when the caller knows which row it created.
+ */
+export async function markInstanceDestroyedById(instanceId: string): Promise<void> {
+  await db
+    .update(kiloclaw_instances)
+    .set({ destroyed_at: new Date().toISOString() })
+    .where(and(eq(kiloclaw_instances.id, instanceId), isNull(kiloclaw_instances.destroyed_at)));
+}
+
+/**
  * Revert a prior soft-delete (used when downstream destroy fails).
  * Note: `instanceId` here refers to the DB row UUID (kiloclaw_instances.id),
  * not the 12-char hex instance_id.
