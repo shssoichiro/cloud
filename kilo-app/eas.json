@@ -9,10 +9,6 @@
       "distribution": "internal",
       "credentialsSource": "remote"
     },
-    "preview": {
-      "distribution": "internal",
-      "credentialsSource": "remote"
-    },
     "production": {
       "autoIncrement": true,
       "credentialsSource": "remote"
