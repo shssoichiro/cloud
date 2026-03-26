@@ -19,12 +19,13 @@ PORT=$(node -e "
         }
       });
       server.once('listening', () => {
-        server.close(() => resolve(server.address().port));
+        const assignedPort = server.address().port;
+        server.close(() => resolve(assignedPort));
       });
       server.listen(port);
     });
   }
-  tryPort(${TARGET_PORT}, 10).then(p => console.log(p));
+  tryPort(${TARGET_PORT}, 1).then(p => console.log(p));
 ")
 
 echo "$PORT" > .dev-port
