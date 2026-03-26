@@ -1,7 +1,9 @@
 import { getEnvVariable } from '@/lib/dotenvx';
-import { applyByteDanceProviderSettings } from '@/lib/providers/bytedance';
-import { applyCoreThinkProviderSettings } from '@/lib/providers/corethink';
-import { applyAlibabaProviderSettings } from '@/lib/providers/qwen';
+import {
+  addCacheBreakpoints,
+  removeChatCompletionsReasoning,
+  scrubOpenCodeSpecificProperties,
+} from '@/lib/providers/openrouter/request-helpers';
 import type { Provider } from '@/lib/providers/types';
 import { applyVercelSettings } from '@/lib/providers/vercel';
 
@@ -17,7 +19,10 @@ export default {
     apiUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
     apiKey: getEnvVariable('ALIBABA_API_KEY'),
     transformRequest(context) {
-      applyAlibabaProviderSettings(context.request);
+      if (context.request.kind === 'chat_completions' || context.request.kind === 'responses') {
+        context.request.body.enable_thinking = true;
+      }
+      addCacheBreakpoints(context.request);
     },
   },
   BYTEDANCE: {
@@ -25,7 +30,15 @@ export default {
     apiUrl: 'https://ark.ap-southeast.bytepluses.com/api/v3',
     apiKey: getEnvVariable('BYTEDANCE_API_KEY'),
     transformRequest(context) {
-      applyByteDanceProviderSettings(context.request);
+      if (context.request.kind === 'chat_completions' || context.request.kind === 'responses') {
+        context.request.body.thinking = { type: 'enabled' };
+      }
+      if (context.request.kind === 'responses') {
+        delete context.request.body.prompt_cache_key;
+        delete context.request.body.safety_identifier;
+        delete context.request.body.user;
+        delete context.request.body.provider;
+      }
     },
   },
   CORETHINK: {
@@ -33,7 +46,14 @@ export default {
     apiUrl: 'https://api.corethink.ai/v1/code',
     apiKey: getEnvVariable('CORETHINK_API_KEY'),
     transformRequest(context) {
-      applyCoreThinkProviderSettings(context.request);
+      if (context.request.kind !== 'chat_completions') {
+        return;
+      }
+      delete context.request.body.transforms;
+      delete context.request.body.prompt_cache_key;
+      delete context.request.body.safety_identifier;
+      scrubOpenCodeSpecificProperties(context.request.body);
+      removeChatCompletionsReasoning(context.request.body);
     },
   },
   MARTIAN: {
