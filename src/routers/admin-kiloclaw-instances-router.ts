@@ -634,8 +634,15 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
     .input(
       z.object({
         userId: z.string().min(1),
-        appName: z.string().min(1),
-        machineId: z.string().min(1),
+        appName: z
+          .string()
+          .min(1)
+          .max(63)
+          .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Invalid Fly app name'),
+        machineId: z
+          .string()
+          .min(1)
+          .regex(/^[a-z0-9]+$/, 'Invalid Fly machine ID'),
       })
     )
     .mutation(async ({ input, ctx }) => {

@@ -1811,27 +1811,29 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
           open={destroyMachineDialogOpen}
           onOpenChange={isDestroyingFlyMachine ? () => {} : setDestroyMachineDialogOpen}
         >
-          <DialogContent>
+          <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
-              <DialogTitle>Destroy Fly Machine</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-destructive flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Destroy Fly Machine
+              </DialogTitle>
+              <DialogDescription className="pt-3">
                 This will force-destroy the Fly machine via the Machines API. Only the Fly machine
                 is deleted — the KiloClaw instance and Fly volume will remain intact.
+                <span className="text-foreground mt-2 block font-medium">
+                  User: {data?.user_email ?? data?.user_id}
+                </span>
+                <span className="mt-2 block">
+                  Machine ID: <code className="text-xs">{data?.workerStatus?.flyMachineId}</code>
+                </span>
+                <span className="block">
+                  App: <code className="text-xs">{data?.workerStatus?.flyAppName}</code>
+                </span>
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-2 text-sm">
-              <div>
-                <span className="text-muted-foreground">Machine ID:</span>{' '}
-                <code className="text-xs">{data?.workerStatus?.flyMachineId}</code>
-              </div>
-              <div>
-                <span className="text-muted-foreground">App:</span>{' '}
-                <code className="text-xs">{data?.workerStatus?.flyAppName}</code>
-              </div>
-            </div>
-            <DialogFooter>
+            <DialogFooter className="gap-2 sm:gap-0">
               <DialogClose asChild>
-                <Button variant="outline" disabled={isDestroyingFlyMachine}>
+                <Button variant="secondary" disabled={isDestroyingFlyMachine}>
                   Cancel
                 </Button>
               </DialogClose>
