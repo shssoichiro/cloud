@@ -115,6 +115,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build trpc types
+        run: pnpm --filter @kilocode/trpc run build
+
       - name: Lint
         run: scripts/lint-all.sh
 

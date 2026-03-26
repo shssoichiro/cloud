@@ -19,7 +19,7 @@
     "typecheck": "pnpm --filter @kilocode/trpc run build && tsgo --noEmit",
     "dependency-cycle-check": "madge --circular --warning --extensions ts,tsx --ts-config tsconfig.json --basedir . src",
     "validate": "pnpm run typecheck && pnpm run lint && pnpm run format:changed && pnpm run test && pnpm run dependency-cycle-check",
-    "prepare": "husky",
+    "prepare": "bash scripts/prepare.sh",
     "preinstall": "npx only-allow pnpm",
     "node": "node",
     "script": "IS_SCRIPT=true tsx --tsconfig tsconfig.scripts.json",
