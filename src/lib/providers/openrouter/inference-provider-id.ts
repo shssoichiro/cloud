@@ -72,9 +72,9 @@ export const UserByokTestModels = {
   [VercelUserByokInferenceProviderIdSchema.enum.openai]: 'openai/gpt-5-nano',
   [VercelUserByokInferenceProviderIdSchema.enum.xai]: 'xai/grok-4.1-fast-non-reasoning',
   [VercelUserByokInferenceProviderIdSchema.enum.zai]: 'zai/glm-4.7-flash',
-  [DirectUserByokInferenceProviderIdSchema.enum['bytelabs-coding']]: 'bytedance-seed-code',
+  [DirectUserByokInferenceProviderIdSchema.enum['byteplus-coding']]: 'bytedance-seed-code',
   [DirectUserByokInferenceProviderIdSchema.enum.codestral]: 'mistral/codestral',
-  [DirectUserByokInferenceProviderIdSchema.enum['zai-coding']]: 'glm-4.7-flash',
+  [DirectUserByokInferenceProviderIdSchema.enum['zai-coding']]: 'glm-4.7',
 } satisfies Record<UserByokProviderId, string>;
 
 export const VercelNonUserByokInferenceProviderIdSchema = z.enum([
