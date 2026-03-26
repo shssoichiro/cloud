@@ -7903,7 +7903,7 @@
           ],
           "isUnique": true,
           "where": "\"kiloclaw_subscriptions\".\"instance_id\" is not null",
-          "concurrently": false,
+          "concurrently": true,
           "method": "btree",
           "with": {}
         }

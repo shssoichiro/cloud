@@ -1760,10 +1760,10 @@ export const kiloclawRouter = createTRPCRouter({
       }
     }
 
-    await stripe.subscriptions.update(sub.stripe_subscription_id, {
-      cancel_at_period_end: true,
-    });
-
+    // Persist conversion intent BEFORE the Stripe API call so that if the
+    // process crashes after Stripe schedules cancellation, the
+    // subscription.deleted handler still sees pending_conversion = true
+    // and converts to pure credit instead of treating it as a plain cancel.
     await db
       .update(kiloclaw_subscriptions)
       .set({
@@ -1774,6 +1774,33 @@ export const kiloclawRouter = createTRPCRouter({
           : {}),
       })
       .where(eq(kiloclaw_subscriptions.id, sub.id));
+
+    try {
+      await stripe.subscriptions.update(sub.stripe_subscription_id, {
+        cancel_at_period_end: true,
+      });
+    } catch (err) {
+      // Roll back conversion intent since Stripe didn't accept the cancel
+      await db
+        .update(kiloclaw_subscriptions)
+        .set({
+          cancel_at_period_end: false,
+          pending_conversion: false,
+          ...(scheduleIdToRelease
+            ? {
+                stripe_schedule_id: scheduleIdToRelease,
+                scheduled_plan: sub.scheduled_plan,
+                scheduled_by: sub.scheduled_by,
+              }
+            : {}),
+        })
+        .where(eq(kiloclaw_subscriptions.id, sub.id));
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to schedule Stripe cancellation. Please try again.',
+        cause: err,
+      });
+    }
 
     return { success: true };
   }),
