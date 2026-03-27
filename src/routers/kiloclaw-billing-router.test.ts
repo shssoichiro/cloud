@@ -2455,4 +2455,74 @@ describe('acceptConversion', () => {
     const caller = await createCallerForUser(user.id);
     await expect(caller.kiloclaw.acceptConversion()).rejects.toThrow('already set to cancel');
   });
+
+  it('rolls back pending_conversion when Stripe definitively rejects the update', async () => {
+    const [instance] = await db
+      .insert(kiloclaw_instances)
+      .values({ user_id: user.id, sandbox_id: sandboxIdFromUserId(user.id) })
+      .returning();
+
+    await db.insert(kiloclaw_subscriptions).values({
+      user_id: user.id,
+      instance_id: instance.id,
+      stripe_subscription_id: 'sub_stripe_reject',
+      plan: 'standard',
+      status: 'active',
+    });
+    await createActiveKiloPass(user.id);
+
+    stripeMock.subscriptions.retrieve.mockResolvedValueOnce({ schedule: null });
+    stripeMock.subscriptions.update.mockRejectedValue(new Error('Stripe API error'));
+    // Re-fetch confirms Stripe did NOT apply cancel_at_period_end
+    stripeMock.subscriptions.retrieve.mockResolvedValueOnce({ cancel_at_period_end: false });
+
+    const caller = await createCallerForUser(user.id);
+    await expect(caller.kiloclaw.acceptConversion()).rejects.toThrow(
+      'Failed to schedule Stripe cancellation'
+    );
+
+    const [row] = await db
+      .select()
+      .from(kiloclaw_subscriptions)
+      .where(eq(kiloclaw_subscriptions.user_id, user.id))
+      .limit(1);
+
+    expect(row.pending_conversion).toBe(false);
+    expect(row.cancel_at_period_end).toBe(false);
+  });
+
+  it('keeps pending_conversion when Stripe update throws but re-fetch confirms cancellation applied', async () => {
+    const [instance] = await db
+      .insert(kiloclaw_instances)
+      .values({ user_id: user.id, sandbox_id: sandboxIdFromUserId(user.id) })
+      .returning();
+
+    await db.insert(kiloclaw_subscriptions).values({
+      user_id: user.id,
+      instance_id: instance.id,
+      stripe_subscription_id: 'sub_stripe_timeout',
+      plan: 'standard',
+      status: 'active',
+    });
+    await createActiveKiloPass(user.id);
+
+    stripeMock.subscriptions.retrieve.mockResolvedValueOnce({ schedule: null });
+    stripeMock.subscriptions.update.mockRejectedValue(new Error('Stripe timeout'));
+    // Re-fetch confirms Stripe DID apply cancel_at_period_end (timeout-after-commit)
+    stripeMock.subscriptions.retrieve.mockResolvedValueOnce({ cancel_at_period_end: true });
+
+    const caller = await createCallerForUser(user.id);
+    const result = await caller.kiloclaw.acceptConversion();
+
+    expect(result).toEqual({ success: true });
+
+    const [row] = await db
+      .select()
+      .from(kiloclaw_subscriptions)
+      .where(eq(kiloclaw_subscriptions.user_id, user.id))
+      .limit(1);
+
+    expect(row.pending_conversion).toBe(true);
+    expect(row.cancel_at_period_end).toBe(true);
+  });
 });

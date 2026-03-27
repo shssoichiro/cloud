@@ -1808,12 +1808,55 @@ export const kiloclawRouter = createTRPCRouter({
       .where(eq(kiloclaw_subscriptions.id, sub.id));
 
     // Phase 2: Tell Stripe to cancel at period end, then record locally.
-    // If this throws (including timeout-after-commit), the user can retry
-    // safely. If Stripe did commit despite the error, subscription.deleted
-    // will see pending_conversion=true and convert to pure credit.
-    await stripe.subscriptions.update(sub.stripe_subscription_id, {
-      cancel_at_period_end: true,
-    });
+    // If the Stripe call fails we reconcile by re-fetching the subscription
+    // to check whether cancel_at_period_end was actually applied. This
+    // prevents leaving pending_conversion armed after a definite rejection
+    // while still handling timeout-after-commit safely.
+    try {
+      await stripe.subscriptions.update(sub.stripe_subscription_id, {
+        cancel_at_period_end: true,
+      });
+    } catch (stripeError) {
+      // Reconcile: did Stripe actually apply cancel_at_period_end?
+      let stripeApplied: boolean | undefined;
+      try {
+        const refreshed = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
+        stripeApplied = refreshed.cancel_at_period_end === true;
+      } catch {
+        // Re-fetch failed — ambiguous. Leave pending_conversion armed so
+        // subscription.deleted converts correctly if Stripe did commit.
+        stripeApplied = undefined;
+      }
+
+      if (stripeApplied === false) {
+        // Stripe definitively did NOT apply the change. Roll back the
+        // conversion intent so an unrelated subscription.deleted event
+        // won't incorrectly trigger the conversion path.
+        await db
+          .update(kiloclaw_subscriptions)
+          .set({ pending_conversion: false })
+          .where(eq(kiloclaw_subscriptions.id, sub.id));
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to schedule Stripe cancellation. Please try again.',
+          cause: stripeError,
+        });
+      }
+
+      // stripeApplied === true or undefined: Stripe committed (or we can't
+      // tell). Fall through to persist cancel_at_period_end locally.
+      if (stripeApplied === undefined) {
+        logBillingError(
+          'acceptConversion: Stripe update threw but re-fetch also failed — assuming committed',
+          {
+            user_id: ctx.user.id,
+            stripe_subscription_id: sub.stripe_subscription_id,
+            error: stripeError instanceof Error ? stripeError.message : String(stripeError),
+          }
+        );
+      }
+    }
 
     await db
       .update(kiloclaw_subscriptions)
