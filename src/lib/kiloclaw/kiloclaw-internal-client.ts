@@ -183,6 +183,22 @@ export class KiloClawInternalClient {
     });
   }
 
+  async getStreamChatCredentials(
+    userId: string,
+    instanceId?: string
+  ): Promise<{
+    apiKey: string;
+    userId: string;
+    userToken: string;
+    channelId: string;
+  } | null> {
+    const params = new URLSearchParams({ userId });
+    if (instanceId) params.set('instanceId', instanceId);
+    return this.request(`/api/platform/stream-chat-credentials?${params.toString()}`, undefined, {
+      userId,
+    });
+  }
+
   async getDebugStatus(userId: string, instanceId?: string): Promise<PlatformDebugStatusResponse> {
     const params = new URLSearchParams({ userId });
     if (instanceId) params.set('instanceId', instanceId);
