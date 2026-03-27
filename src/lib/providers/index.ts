@@ -18,7 +18,6 @@ import {
   isHaikuModel,
 } from '@/lib/providers/anthropic';
 import { getBYOKforOrganization, getBYOKforUser, getModelUserByokProviders } from '@/lib/byok';
-import type { CustomLlm } from '@kilocode/db/schema';
 import { custom_llm, type User } from '@kilocode/db/schema';
 import { OpenRouterInferenceProviderIdSchema } from '@/lib/providers/openrouter/inference-provider-id';
 import { hasAttemptCompletionTool } from '@/lib/tool-calling';
@@ -62,7 +61,7 @@ async function checkCodingPlanBYOK(
       },
     } satisfies Provider,
     userByok,
-    customLlm: null,
+    bypassAccessCheck: false,
   };
 }
 
@@ -85,7 +84,7 @@ export async function getProvider(
   user: User | AnonymousUserContext,
   organizationId: string | undefined,
   taskId: string | undefined
-): Promise<{ provider: Provider; userByok: BYOKResult[] | null; customLlm: CustomLlm | null }> {
+): Promise<{ provider: Provider; userByok: BYOKResult[] | null; bypassAccessCheck: boolean }> {
   const codingPlanByok = await checkCodingPlanBYOK(user, requestedModel, organizationId);
   if (codingPlanByok) {
     return codingPlanByok;
@@ -96,7 +95,7 @@ export async function getProvider(
     return {
       provider: PROVIDERS.VERCEL_AI_GATEWAY,
       userByok: vercelByok,
-      customLlm: null,
+      bypassAccessCheck: false,
     };
   }
 
@@ -120,13 +119,13 @@ export async function getProvider(
           },
         },
         userByok: null,
-        customLlm,
+        bypassAccessCheck: true,
       };
     }
   }
 
   if (await shouldRouteToVercel(requestedModel, request, taskId || user.id)) {
-    return { provider: PROVIDERS.VERCEL_AI_GATEWAY, userByok: null, customLlm: null };
+    return { provider: PROVIDERS.VERCEL_AI_GATEWAY, userByok: null, bypassAccessCheck: false };
   }
 
   const kiloFreeModel = kiloFreeModels.find(m => m.public_id === requestedModel);
@@ -135,7 +134,7 @@ export async function getProvider(
   return {
     provider: freeModelProvider ?? PROVIDERS.OPENROUTER,
     userByok: null,
-    customLlm: null,
+    bypassAccessCheck: false,
   };
 }
 

@@ -302,7 +302,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   // Use new shared helper for fraud & project headers
   const { fraudHeaders, projectId } = extractFraudAndProjectHeaders(request);
   const taskId = extractHeaderAndLimitLength(request, 'x-kilocode-taskid') ?? undefined;
-  const { provider, userByok, customLlm } = await getProvider(
+  const { provider, userByok, bypassAccessCheck } = await getProvider(
     originalModelIdLowerCased,
     requestBodyParsed,
     user,
@@ -377,9 +377,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   setTag('ui.ai_model', requestBodyParsed.body.model);
 
   // Skip balance/org checks for anonymous users - they can only use free models
-  const bypassAccessCheckForCustomLlm =
-    !!customLlm && !!organizationId && customLlm.organization_ids.includes(organizationId);
-  if (!isAnonymousContext(user) && !bypassAccessCheckForCustomLlm) {
+  if (!isAnonymousContext(user) && !bypassAccessCheck) {
     const { balance, settings, plan } = await balanceAndSettingsPromise;
 
     if (
