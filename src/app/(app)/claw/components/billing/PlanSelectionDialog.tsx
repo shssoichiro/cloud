@@ -17,6 +17,7 @@ import {
   PLAN_DISPLAY,
   planPriceLabel,
   STANDARD_FIRST_MONTH_DOLLARS,
+  STANDARD_FIRST_MONTH_MICRODOLLARS,
   type ClawPlan,
 } from './billing-types';
 
@@ -317,19 +318,26 @@ function CreditsHowItWorks() {
 function CreditEnrollmentSection({
   selectedPlan,
   creditBalanceMicrodollars,
+  creditIntroEligible,
   onEnroll,
   isPending,
 }: {
   selectedPlan: ClawPlan;
   creditBalanceMicrodollars: number;
+  creditIntroEligible: boolean;
   onEnroll: () => void;
   isPending: boolean;
 }) {
-  const planCost = PLAN_COST_MICRODOLLARS[selectedPlan];
+  const isIntro = selectedPlan === 'standard' && creditIntroEligible;
+  const planCost = isIntro
+    ? STANDARD_FIRST_MONTH_MICRODOLLARS
+    : PLAN_COST_MICRODOLLARS[selectedPlan];
   const hasSufficientBalance = creditBalanceMicrodollars >= planCost;
   const shortfall = planCost - creditBalanceMicrodollars;
   const planLabel = selectedPlan === 'commit' ? 'Commit' : 'Standard';
-  const priceLabel = planPriceLabel(selectedPlan);
+  const priceLabel = isIntro
+    ? `$${STANDARD_FIRST_MONTH_DOLLARS} first month, then ${planPriceLabel(selectedPlan)}`
+    : planPriceLabel(selectedPlan);
 
   if (hasSufficientBalance) {
     return (
@@ -368,7 +376,9 @@ function CreditEnrollmentSection({
           <span className="text-foreground">{formatMicrodollars(creditBalanceMicrodollars)}</span>
         </div>
         <div className="flex justify-between">
-          <span>{planLabel} plan cost</span>
+          <span>
+            {planLabel} plan cost{isIntro ? ' (first month)' : ''}
+          </span>
           <span className="text-foreground">{formatMicrodollars(planCost)}</span>
         </div>
         <div className="flex justify-between border-t border-amber-500/20 pt-1 font-medium text-amber-400">
@@ -424,6 +434,7 @@ export function PlanSelectionDialog({ open, onOpenChange }: PlanSelectionDialogP
 
   const creditBalance = billing?.creditBalanceMicrodollars ?? null;
   const hasCredits = creditBalance !== null && creditBalance > 0;
+  const creditIntroEligible = billing?.creditIntroEligible ?? false;
 
   const hostingOnlyActive = hostingOnlyPlan !== null;
   const commitDisabled = !isCommitAvailable(selectedTier, cadence);
@@ -632,6 +643,7 @@ export function PlanSelectionDialog({ open, onOpenChange }: PlanSelectionDialogP
                 <CreditEnrollmentSection
                   selectedPlan={hostingOnlyPlan}
                   creditBalanceMicrodollars={creditBalance}
+                  creditIntroEligible={creditIntroEligible}
                   onEnroll={handleEnrollWithCredits}
                   isPending={enrollWithCredits.isPending}
                 />

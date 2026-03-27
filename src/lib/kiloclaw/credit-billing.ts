@@ -36,6 +36,10 @@ export const KILOCLAW_PLAN_COST_MICRODOLLARS = {
   commit: 48_000_000, // $48/6 months
 } as const;
 
+// First-month discount for new standard-plan credit enrollments (matches
+// the Stripe-configured intro price). See spec Credit Enrollment rule 3.
+export const KILOCLAW_STANDARD_FIRST_MONTH_MICRODOLLARS = 4_000_000; // $4
+
 /**
  * Project the pending Kilo Pass bonus microdollars that would be awarded
  * by the next call to maybeIssueKiloPassBonusFromUsageThreshold.
@@ -294,9 +298,17 @@ export async function enrollWithCredits(params: {
   userId: string;
   instanceId: string;
   plan: 'commit' | 'standard';
+  hadPaidSubscription: boolean;
 }): Promise<void> {
-  const { userId, instanceId, plan } = params;
-  const costMicrodollars = KILOCLAW_PLAN_COST_MICRODOLLARS[plan];
+  const { userId, instanceId, plan, hadPaidSubscription } = params;
+
+  // First-time standard-plan subscribers get the intro price ($4).
+  // Returning subscribers (had a prior paid, non-trial subscription) pay full price ($9).
+  // Commit plan has no intro discount. See spec Credit Enrollment rule 3.
+  const costMicrodollars =
+    plan === 'standard' && !hadPaidSubscription
+      ? KILOCLAW_STANDARD_FIRST_MONTH_MICRODOLLARS
+      : KILOCLAW_PLAN_COST_MICRODOLLARS[plan];
 
   // Step 1: Read current state
   const [user] = await db

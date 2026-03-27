@@ -1906,11 +1906,12 @@ describe('enrollWithCredits', () => {
     return instance;
   }
 
-  it('enrolls with credits for standard plan when balance sufficient', async () => {
+  it('enrolls with credits for standard plan at intro price for first-time subscriber', async () => {
     const instance = await createInstance(user.id);
     await giveUserCredits(user.id, 50_000_000); // $50
 
-    // Create a trialing subscription so enrollment is allowed
+    // Create a trialing subscription — trial does not count as a prior paid sub,
+    // so the user qualifies for the $4 first-month discount.
     await db.insert(kiloclaw_subscriptions).values({
       user_id: user.id,
       instance_id: instance.id,
@@ -1938,7 +1939,7 @@ describe('enrollWithCredits', () => {
     expect(sub.credit_renewal_at).not.toBeNull();
     expect(sub.cancel_at_period_end).toBe(false);
 
-    // Verify credit deduction exists
+    // Verify credit deduction at intro price ($4, not $9)
     const txns = await db
       .select()
       .from(credit_transactions)
@@ -1946,10 +1947,10 @@ describe('enrollWithCredits', () => {
 
     const deduction = txns.find(t => t.amount_microdollars < 0);
     expect(deduction).toBeDefined();
-    expect(deduction!.amount_microdollars).toBe(-9_000_000);
+    expect(deduction!.amount_microdollars).toBe(-4_000_000);
     expect(deduction!.credit_category).toContain('kiloclaw-subscription:');
 
-    // Verify credit spend recorded (microdollars_used incremented, acquired unchanged)
+    // Verify credit spend recorded at intro amount
     const [updatedUser] = await db
       .select({
         acquired: kilocode_users.total_microdollars_acquired,
@@ -1960,7 +1961,7 @@ describe('enrollWithCredits', () => {
       .limit(1);
 
     expect(updatedUser.acquired).toBe(50_000_000);
-    expect(updatedUser.used).toBe(9_000_000);
+    expect(updatedUser.used).toBe(4_000_000);
   });
 
   it('enrolls with credits for commit plan when balance sufficient', async () => {
@@ -2022,10 +2023,12 @@ describe('enrollWithCredits', () => {
     );
   });
 
-  it('allows enrollment when subscription is canceled', async () => {
+  it('enrolls returning subscriber at full price for standard plan', async () => {
     const instance = await createInstance(user.id);
     await giveUserCredits(user.id, 50_000_000);
 
+    // A canceled non-trial subscription means this is a returning subscriber
+    // who should pay the full $9 price, not the $4 intro price.
     await db.insert(kiloclaw_subscriptions).values({
       user_id: user.id,
       instance_id: instance.id,
@@ -2048,6 +2051,24 @@ describe('enrollWithCredits', () => {
 
     expect(sub.status).toBe('active');
     expect(sub.payment_source).toBe('credits');
+
+    // Verify full price deduction ($9, not $4)
+    const txns = await db
+      .select()
+      .from(credit_transactions)
+      .where(eq(credit_transactions.kilo_user_id, user.id));
+
+    const deduction = txns.find(t => t.amount_microdollars < 0);
+    expect(deduction).toBeDefined();
+    expect(deduction!.amount_microdollars).toBe(-9_000_000);
+
+    const [updatedUser] = await db
+      .select({ used: kilocode_users.microdollars_used })
+      .from(kilocode_users)
+      .where(eq(kilocode_users.id, user.id))
+      .limit(1);
+
+    expect(updatedUser.used).toBe(9_000_000);
   });
 
   it('allows enrollment when subscription is trialing', async () => {
@@ -2076,6 +2097,61 @@ describe('enrollWithCredits', () => {
 
     expect(sub.status).toBe('active');
     expect(sub.plan).toBe('standard');
+  });
+
+  it('applies intro price for canceled-trial subscriber', async () => {
+    const instance = await createInstance(user.id);
+    await giveUserCredits(user.id, 50_000_000);
+
+    // Canceled trial does not count as a prior paid subscription
+    await db.insert(kiloclaw_subscriptions).values({
+      user_id: user.id,
+      instance_id: instance.id,
+      plan: 'trial',
+      status: 'canceled',
+      cancel_at_period_end: false,
+    });
+
+    const caller = await createCallerForUser(user.id);
+    const result = await caller.kiloclaw.enrollWithCredits({ plan: 'standard' });
+
+    expect(result).toEqual({ success: true });
+
+    const txns = await db
+      .select()
+      .from(credit_transactions)
+      .where(eq(credit_transactions.kilo_user_id, user.id));
+
+    const deduction = txns.find(t => t.amount_microdollars < 0);
+    expect(deduction!.amount_microdollars).toBe(-4_000_000);
+  });
+
+  it('succeeds with balance between intro and full price for first-time subscriber', async () => {
+    await createInstance(user.id);
+    await giveUserCredits(user.id, 5_000_000); // $5 — enough for $4 intro, not enough for $9
+
+    const caller = await createCallerForUser(user.id);
+    const result = await caller.kiloclaw.enrollWithCredits({ plan: 'standard' });
+
+    expect(result).toEqual({ success: true });
+
+    const txns = await db
+      .select()
+      .from(credit_transactions)
+      .where(eq(credit_transactions.kilo_user_id, user.id));
+
+    const deduction = txns.find(t => t.amount_microdollars < 0);
+    expect(deduction!.amount_microdollars).toBe(-4_000_000);
+  });
+
+  it('rejects first-time standard enrollment when balance insufficient for intro price', async () => {
+    await createInstance(user.id);
+    await giveUserCredits(user.id, 3_000_000); // $3 — not enough for $4 intro
+
+    const caller = await createCallerForUser(user.id);
+    await expect(caller.kiloclaw.enrollWithCredits({ plan: 'standard' })).rejects.toThrow(
+      'Insufficient credit balance'
+    );
   });
 
   it('deduction is idempotent via credit_category uniqueness', async () => {
@@ -2178,6 +2254,55 @@ describe('getBillingStatus with credits', () => {
     expect(result.subscription!.paymentSource).toBe('credits');
     expect(result.subscription!.creditRenewalAt).not.toBeNull();
     expect(result.subscription!.renewalCostMicrodollars).toBe(9_000_000);
+  });
+
+  it('reports creditIntroEligible=true for new user with no subscription', async () => {
+    const caller = await createCallerForUser(user.id);
+    const result = await caller.kiloclaw.getBillingStatus();
+
+    expect(result.creditIntroEligible).toBe(true);
+  });
+
+  it('reports creditIntroEligible=true for trialing user', async () => {
+    const [instance] = await db
+      .insert(kiloclaw_instances)
+      .values({ user_id: user.id, sandbox_id: `test-sandbox-${Math.random()}` })
+      .returning();
+
+    await db.insert(kiloclaw_subscriptions).values({
+      user_id: user.id,
+      instance_id: instance.id,
+      plan: 'trial',
+      status: 'trialing',
+      trial_started_at: new Date().toISOString(),
+      trial_ends_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+    });
+
+    const caller = await createCallerForUser(user.id);
+    const result = await caller.kiloclaw.getBillingStatus();
+
+    expect(result.creditIntroEligible).toBe(true);
+  });
+
+  it('reports creditIntroEligible=false for returning subscriber', async () => {
+    const [instance] = await db
+      .insert(kiloclaw_instances)
+      .values({ user_id: user.id, sandbox_id: `test-sandbox-${Math.random()}` })
+      .returning();
+
+    await db.insert(kiloclaw_subscriptions).values({
+      user_id: user.id,
+      instance_id: instance.id,
+      payment_source: 'credits',
+      plan: 'standard',
+      status: 'canceled',
+      cancel_at_period_end: false,
+    });
+
+    const caller = await createCallerForUser(user.id);
+    const result = await caller.kiloclaw.getBillingStatus();
+
+    expect(result.creditIntroEligible).toBe(false);
   });
 });
 
@@ -2524,5 +2649,42 @@ describe('acceptConversion', () => {
 
     expect(row.pending_conversion).toBe(true);
     expect(row.cancel_at_period_end).toBe(true);
+  });
+
+  it('throws on ambiguous failure but leaves pending_conversion armed for retry safety', async () => {
+    const [instance] = await db
+      .insert(kiloclaw_instances)
+      .values({ user_id: user.id, sandbox_id: sandboxIdFromUserId(user.id) })
+      .returning();
+
+    await db.insert(kiloclaw_subscriptions).values({
+      user_id: user.id,
+      instance_id: instance.id,
+      stripe_subscription_id: 'sub_stripe_double_fail',
+      plan: 'standard',
+      status: 'active',
+    });
+    await createActiveKiloPass(user.id);
+
+    stripeMock.subscriptions.retrieve.mockResolvedValueOnce({ schedule: null });
+    stripeMock.subscriptions.update.mockRejectedValue(new Error('Stripe timeout'));
+    // Re-fetch also fails — ambiguous state
+    stripeMock.subscriptions.retrieve.mockRejectedValueOnce(new Error('Stripe unavailable'));
+
+    const caller = await createCallerForUser(user.id);
+    await expect(caller.kiloclaw.acceptConversion()).rejects.toThrow(
+      'Unable to confirm Stripe cancellation'
+    );
+
+    const [row] = await db
+      .select()
+      .from(kiloclaw_subscriptions)
+      .where(eq(kiloclaw_subscriptions.user_id, user.id))
+      .limit(1);
+
+    // pending_conversion stays armed (Stripe may have committed)
+    expect(row.pending_conversion).toBe(true);
+    // cancel_at_period_end is NOT set — allows retry
+    expect(row.cancel_at_period_end).toBe(false);
   });
 });

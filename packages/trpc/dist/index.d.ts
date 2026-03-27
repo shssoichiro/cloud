@@ -15922,6 +15922,7 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                 accessReason: "earlybird" | "subscription" | "trial" | null;
                 trialEligible: false;
                 creditBalanceMicrodollars: number;
+                creditIntroEligible: boolean;
                 trial: {
                     startedAt: string;
                     endsAt: string;

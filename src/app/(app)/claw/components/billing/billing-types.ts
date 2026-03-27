@@ -34,6 +34,7 @@ export const PLAN_DISPLAY = {
 
 // Must match the Stripe-configured first-month coupon for the standard plan.
 export const STANDARD_FIRST_MONTH_DOLLARS = 4;
+export const STANDARD_FIRST_MONTH_MICRODOLLARS = STANDARD_FIRST_MONTH_DOLLARS * 1_000_000;
 
 /** e.g. "Commit ($8/mo)" or "Standard ($9/mo)" */
 export function planLabel(plan: ClawPlan): string {
@@ -58,6 +59,9 @@ export type ClawBillingStatus = {
 
   /** User's credit balance in microdollars (null when not fetched). */
   creditBalanceMicrodollars: number | null;
+
+  /** True when the user qualifies for the $4 first-month discount on standard credit enrollment. */
+  creditIntroEligible: boolean;
 
   trial: {
     startedAt: string;

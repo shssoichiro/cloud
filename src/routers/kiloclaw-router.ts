@@ -1423,11 +1423,17 @@ export const kiloclawRouter = createTRPCRouter({
     const creditBalanceMicrodollars =
       ctx.user.total_microdollars_acquired - ctx.user.microdollars_used;
 
+    // First-month credit discount eligibility: true when no prior paid
+    // (non-trial) subscription exists. Mirrors Stripe checkout logic
+    // (see spec Credit Enrollment rule 3).
+    const creditIntroEligible = !sub || sub.plan === 'trial' || sub.status === 'trialing';
+
     return {
       hasAccess,
       accessReason,
       trialEligible: !activeInstance && !sub && !earlybird,
       creditBalanceMicrodollars,
+      creditIntroEligible,
       trial: trialData,
       subscription: subscriptionData,
       earlybird: earlybirdData,
@@ -1538,10 +1544,24 @@ export const kiloclawRouter = createTRPCRouter({
         });
       }
 
+      // Determine first-month discount eligibility (spec Credit Enrollment rule 3).
+      // Same logic as Stripe checkout: a canceled trial doesn't count as paid.
+      const [existing] = await db
+        .select({
+          status: kiloclaw_subscriptions.status,
+          plan: kiloclaw_subscriptions.plan,
+        })
+        .from(kiloclaw_subscriptions)
+        .where(eq(kiloclaw_subscriptions.instance_id, instance.id))
+        .limit(1);
+
+      const hadPaidSubscription = existing?.status === 'canceled' && existing.plan !== 'trial';
+
       await enrollWithCreditsImpl({
         userId: ctx.user.id,
         instanceId: instance.id,
         plan: input.plan,
+        hadPaidSubscription,
       });
 
       return { success: true };
@@ -1844,18 +1864,31 @@ export const kiloclawRouter = createTRPCRouter({
         });
       }
 
-      // stripeApplied === true or undefined: Stripe committed (or we can't
-      // tell). Fall through to persist cancel_at_period_end locally.
       if (stripeApplied === undefined) {
+        // Both calls failed — we cannot confirm Stripe's state. Leave
+        // pending_conversion armed (safe: if Stripe did commit, the
+        // subscription.deleted handler will convert correctly). But do
+        // NOT set cancel_at_period_end locally or return success —
+        // doing so would block retries and could permanently desync
+        // local state if Stripe never applied the change.
         logBillingError(
-          'acceptConversion: Stripe update threw but re-fetch also failed — assuming committed',
+          'acceptConversion: Stripe update threw and re-fetch also failed — state ambiguous, will retry',
           {
             user_id: ctx.user.id,
             stripe_subscription_id: sub.stripe_subscription_id,
             error: stripeError instanceof Error ? stripeError.message : String(stripeError),
           }
         );
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Unable to confirm Stripe cancellation. Please try again.',
+          cause: stripeError,
+        });
       }
+
+      // stripeApplied === true: timeout-after-commit case. Stripe
+      // confirmed cancel_at_period_end — fall through to persist locally.
     }
 
     await db
