@@ -46,14 +46,15 @@ export function userIdFromSandboxId(sandboxId: string): string {
 // ─── Instance-scoped identity ───────────────────────────────────────
 
 /**
- * 12-char lowercase hex string used as the primary instance identity.
- * Generated from crypto.randomUUID() prefix — NOT reversible to userId.
+ * 32-char lowercase hex string (full UUID without dashes) used as the
+ * primary instance identity. 128 bits of entropy — effectively zero
+ * collision risk at any scale.
  */
-export const INSTANCE_ID_LENGTH = 12;
-const INSTANCE_ID_RE = /^[0-9a-f]{12}$/;
+export const INSTANCE_ID_LENGTH = 32;
+const INSTANCE_ID_RE = /^[0-9a-f]{32}$/;
 
 export function generateInstanceId(): string {
-  return crypto.randomUUID().replace(/-/g, '').slice(0, INSTANCE_ID_LENGTH);
+  return crypto.randomUUID().replace(/-/g, '');
 }
 
 export function isValidInstanceId(id: string): boolean {
