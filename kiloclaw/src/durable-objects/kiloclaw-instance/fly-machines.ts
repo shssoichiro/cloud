@@ -7,7 +7,12 @@ import {
   STARTUP_TIMEOUT_SECONDS,
   STALE_PROVISION_THRESHOLD_MS,
 } from '../../config';
-import { parseRegions, deprioritizeRegion, resolveRegions, evictCapacityRegionFromKV } from '../regions';
+import {
+  parseRegions,
+  deprioritizeRegion,
+  resolveRegions,
+  evictCapacityRegionFromKV,
+} from '../regions';
 import { guestFromSize, volumeNameFromSandboxId } from '../machine-config';
 import type { InstanceMutableState } from './types';
 import { storageUpdate } from './state';
@@ -38,7 +43,7 @@ export async function ensureVolume(
     },
     regions,
     {
-      onCapacityError: (failedRegion) => {
+      onCapacityError: failedRegion => {
         void evictCapacityRegionFromKV(env.KV_CLAW_CACHE, env, failedRegion);
       },
     }

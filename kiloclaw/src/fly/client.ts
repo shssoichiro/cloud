@@ -227,7 +227,7 @@ export async function createVolumeWithFallback(
       lastError = err;
       if (!isFlyInsufficientResources(err)) throw err;
       console.warn(`[fly] Volume creation failed in ${region} (capacity), trying next region`);
-      options?.onCapacityError?.(region);
+      void options?.onCapacityError?.(region);
     }
   }
 
