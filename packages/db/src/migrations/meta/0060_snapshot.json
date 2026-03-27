@@ -1,5 +1,5 @@
 {
-  "id": "e5272ce7-5408-48b1-b6ce-a81870e0d43d",
+  "id": "8549692e-0544-402d-87e7-a05230a4ee33",
   "prevId": "1939c85c-a8df-42d5-a17b-eeda39905369",
   "version": "7",
   "dialect": "postgresql",
@@ -5933,6 +5933,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "idx_free_model_usage_user_created_at": {
+          "name": "idx_free_model_usage_user_created_at",
+          "columns": [
+            {
+              "expression": "kilo_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"free_model_usage\".\"kilo_user_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -7735,18 +7757,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "instance_id": {
-          "name": "instance_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "payment_source": {
-          "name": "payment_source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "plan": {
           "name": "plan",
           "type": "text",
@@ -7778,13 +7788,6 @@
           "notNull": true,
           "default": false
         },
-        "pending_conversion": {
-          "name": "pending_conversion",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "trial_started_at": {
           "name": "trial_started_at",
           "type": "timestamp with time zone",
@@ -7809,12 +7812,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "credit_renewal_at": {
-          "name": "credit_renewal_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "commit_ends_at": {
           "name": "commit_ends_at",
           "type": "timestamp with time zone",
@@ -7835,12 +7832,6 @@
         },
         "destruction_deadline": {
           "name": "destruction_deadline",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "auto_top_up_triggered_for_period": {
-          "name": "auto_top_up_triggered_for_period",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -7890,22 +7881,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "UQ_kiloclaw_subscriptions_instance": {
-          "name": "UQ_kiloclaw_subscriptions_instance",
-          "columns": [
-            {
-              "expression": "instance_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"kiloclaw_subscriptions\".\"instance_id\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -7921,23 +7896,17 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "kiloclaw_subscriptions_instance_id_kiloclaw_instances_id_fk": {
-          "name": "kiloclaw_subscriptions_instance_id_kiloclaw_instances_id_fk",
-          "tableFrom": "kiloclaw_subscriptions",
-          "tableTo": "kiloclaw_instances",
-          "columnsFrom": [
-            "instance_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
+        "kiloclaw_subscriptions_user_id_unique": {
+          "name": "kiloclaw_subscriptions_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id"
+          ]
+        },
         "kiloclaw_subscriptions_stripe_subscription_id_unique": {
           "name": "kiloclaw_subscriptions_stripe_subscription_id_unique",
           "nullsNotDistinct": false,
@@ -7963,10 +7932,6 @@
         "kiloclaw_subscriptions_status_check": {
           "name": "kiloclaw_subscriptions_status_check",
           "value": "\"kiloclaw_subscriptions\".\"status\" IN ('trialing', 'active', 'past_due', 'canceled', 'unpaid')"
-        },
-        "kiloclaw_subscriptions_payment_source_check": {
-          "name": "kiloclaw_subscriptions_payment_source_check",
-          "value": "\"kiloclaw_subscriptions\".\"payment_source\" IN ('stripe', 'credits')"
         }
       },
       "isRLSEnabled": false
