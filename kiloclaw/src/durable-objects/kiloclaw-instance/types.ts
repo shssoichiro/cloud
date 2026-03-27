@@ -91,6 +91,11 @@ export type InstanceMutableState = {
   pendingRestoreVolumeId: string | null;
   instanceReadyEmailSent: boolean;
   customSecretMeta: PersistedState['customSecretMeta'];
+  // Stream Chat default channel (auto-provisioned)
+  streamChatApiKey: string | null;
+  streamChatBotUserId: string | null;
+  streamChatBotUserToken: string | null;
+  streamChatChannelId: string | null;
   /** In-memory only — throttles live Fly checks in getStatus(). */
   lastLiveCheckAt: number | null;
 };
