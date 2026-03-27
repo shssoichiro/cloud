@@ -72,6 +72,11 @@ const FRONTIER_CODE_MODEL: ResolvedAutoModel = {
 };
 
 const FRONTIER_MODE_TO_MODEL: Record<string, ResolvedAutoModel> = {
+  KiloClaw: {
+    model: CLAUDE_OPUS_CURRENT_MODEL_ID,
+    reasoning: { enabled: true },
+    verbosity: 'high',
+  },
   plan: { model: CLAUDE_OPUS_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'high' },
   general: {
     model: CLAUDE_OPUS_CURRENT_MODEL_ID,
@@ -101,11 +106,6 @@ const FRONTIER_MODE_TO_MODEL: Record<string, ResolvedAutoModel> = {
     verbosity: 'medium',
   },
   code: FRONTIER_CODE_MODEL,
-  KiloClaw: {
-    model: CLAUDE_OPUS_CURRENT_MODEL_ID,
-    reasoning: { enabled: true },
-    verbosity: 'high',
-  },
 };
 
 const BALANCED_CODE_MODEL: ResolvedAutoModel = {
@@ -118,6 +118,7 @@ const BALANCED_IMAGE_MODEL: ResolvedAutoModel = {
 };
 
 const BALANCED_MODE_TO_MODEL: Record<string, ResolvedAutoModel> = {
+  KiloClaw: { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } },
   plan: { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } },
   general: { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } },
   architect: { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } },
@@ -127,7 +128,6 @@ const BALANCED_MODE_TO_MODEL: Record<string, ResolvedAutoModel> = {
   build: { model: MINIMAX_CURRENT_MODEL_ID },
   explore: { model: MINIMAX_CURRENT_MODEL_ID },
   code: BALANCED_CODE_MODEL,
-  KiloClaw: { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } },
 };
 
 export const KILO_AUTO_FRONTIER_MODEL: AutoModel = {
