@@ -54,6 +54,8 @@ export type ClawBillingStatus = {
     renewalCostMicrodollars: number | null;
     /** True when user has both Stripe-funded hosting and active Kilo Pass. */
     showConversionPrompt: boolean;
+    /** True when Stripe subscription is being cancelled to convert to credit-funded billing. */
+    pendingConversion: boolean;
   } | null;
 
   earlybird: {
@@ -81,6 +83,7 @@ export type ClawBannerState =
   | 'earlybird_active'
   | 'earlybird_ending_soon'
   | 'subscription_canceling'
+  | 'subscription_converting'
   | 'subscription_past_due'
   | 'subscribed'
   | 'none';
@@ -100,6 +103,8 @@ export function deriveBannerState(billing: ClawBillingStatus): ClawBannerState {
   if (billing.subscription) {
     if (billing.subscription.status === 'past_due' || billing.subscription.status === 'unpaid')
       return 'subscription_past_due';
+    if (billing.subscription.cancelAtPeriodEnd && billing.subscription.pendingConversion)
+      return 'subscription_converting';
     if (billing.subscription.cancelAtPeriodEnd) return 'subscription_canceling';
     if (billing.subscription.status === 'active') return 'subscribed';
   }

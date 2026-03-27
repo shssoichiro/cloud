@@ -392,6 +392,7 @@ async function ensureProvisionAccess(userId: string, userEmail: string): Promise
       status: kiloclaw_subscriptions.status,
       trial_ends_at: kiloclaw_subscriptions.trial_ends_at,
       suspended_at: kiloclaw_subscriptions.suspended_at,
+      instance_id: kiloclaw_subscriptions.instance_id,
     })
     .from(kiloclaw_subscriptions)
     .where(eq(kiloclaw_subscriptions.user_id, userId))
@@ -440,13 +441,41 @@ async function ensureProvisionAccess(userId: string, userEmail: string): Promise
   if (existing) {
     // Mirror requireKiloClawAccess: active always passes; past_due passes only
     // until the billing lifecycle cron sets suspended_at.
-    if (existing.status === 'active') return;
-    if (existing.status === 'past_due' && !existing.suspended_at) return;
-    if (
-      existing.status === 'trialing' &&
-      existing.trial_ends_at &&
-      new Date(existing.trial_ends_at) > new Date()
-    ) {
+    const hasAccess =
+      existing.status === 'active' ||
+      (existing.status === 'past_due' && !existing.suspended_at) ||
+      (existing.status === 'trialing' &&
+        !!existing.trial_ends_at &&
+        new Date(existing.trial_ends_at) > new Date());
+
+    if (hasAccess) {
+      // If the subscription references a destroyed instance, reassign it to
+      // the new instance being provisioned. This covers the case where a user
+      // destroyed their instance and re-provisioned while the subscription
+      // (e.g. a trial) is still valid.  See billing spec: Trial Eligibility
+      // and Creation rule 5.
+      if (existing.instance_id) {
+        const [linkedInstance] = await db
+          .select({ destroyed_at: kiloclaw_instances.destroyed_at })
+          .from(kiloclaw_instances)
+          .where(eq(kiloclaw_instances.id, existing.instance_id))
+          .limit(1);
+
+        if (linkedInstance?.destroyed_at) {
+          // ensureActiveInstance is idempotent; the subsequent call in
+          // provisionInstance will be a no-op.
+          const newInstance = await ensureActiveInstance(userId);
+          await db
+            .update(kiloclaw_subscriptions)
+            .set({ instance_id: newInstance.id })
+            .where(
+              and(
+                eq(kiloclaw_subscriptions.user_id, userId),
+                eq(kiloclaw_subscriptions.instance_id, existing.instance_id)
+              )
+            );
+        }
+      }
       return;
     }
   }
@@ -1365,6 +1394,7 @@ export const kiloclawRouter = createTRPCRouter({
           creditRenewalAt: sub.credit_renewal_at ?? null,
           renewalCostMicrodollars,
           showConversionPrompt,
+          pendingConversion: sub.pending_conversion ?? false,
         }
       : null;
 

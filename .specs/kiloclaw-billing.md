@@ -18,6 +18,7 @@ Updated 2026-03-19 -- pricing and trial duration changes.
 Updated 2026-03-20 -- Stripe-to-credits hybrid billing model.
 Updated 2026-03-24 -- credits-first billing, per-instance subscriptions,
 Kilo Pass upsell checkout.
+Updated 2026-03-27 -- subscription reassignment on re-provision.
 
 ## Conventions
 
@@ -50,6 +51,20 @@ capitals, as shown here.
 - **Dunning state**: A non-active payment failure status reported by
   the payment provider (past-due, unpaid, or defensive terminal
   fallback).
+- **Credit balance**: The user's available credit balance, computed as
+  `total_microdollars_acquired - microdollars_used`. Credits enter the
+  system by incrementing the acquired counter (purchases, grants,
+  bonuses). Credits leave the system by incrementing the used counter
+  (inference usage, pure-credit hosting deductions). The balance MUST
+  NOT change as a result of Stripe-funded settlement (see
+  Stripe-Funded Credit Settlement rule 3), which achieves
+  balance-neutrality by incrementing and then decrementing the
+  acquired counter.
+- **Credit spend**: Any operation that increments the used counter.
+  Both inference usage and pure-credit KiloClaw hosting deductions are
+  credit spend. Stripe-funded settlement deductions are NOT credit
+  spend; they are balance-neutral bookkeeping entries. Credit spend
+  counts toward the Kilo Pass bonus unlock threshold.
 
 ## Overview
 
@@ -202,6 +217,17 @@ rules resolve conflicts.
 3. When a trial is created, the system MUST record the trial start
    timestamp and an end timestamp exactly 7 days later.
 4. The system MUST NOT require a credit card to start a trial.
+5. When a user provisions a new instance and the user's existing
+   subscription references a destroyed instance, the system MUST
+   reassign the subscription to the newly provisioned instance,
+   provided the subscription still grants access (active,
+   non-suspended past-due, or trialing with a future end date). This
+   preserves the user's remaining subscription time when they destroy
+   and re-create an instance. The reassignment MUST occur during the
+   provisioning access check, before the instance is fully
+   provisioned. This rule applies to all subscription statuses that
+   grant access, not only trials, and satisfies the per-instance
+   invariant in Plans rule 5.
 
 ### Access Control
 
@@ -293,8 +319,10 @@ rules resolve conflicts.
    standard or `kiloclaw-subscription-commit:{instance_id}:YYYY-MM`
    for commit. If the insertion detects a duplicate, the system MUST
    abort the enrollment as a duplicate attempt.
-   b. Atomically decrement the user's acquired credit balance by the
-   deducted amount.
+   b. Atomically record the deduction as credit spend (see
+   Definitions) by incrementing the user's used counter by the
+   deducted amount. This ensures the deduction counts toward the
+   Kilo Pass bonus unlock threshold.
    c. Create or upsert the subscription record with payment source set
    to `credits`, status set to active, the billing period set from
    the current time, the credit renewal timestamp set to the period
@@ -310,9 +338,10 @@ rules resolve conflicts.
    key blocking it.
 6. After the enrollment transaction commits (rule 5), the system MUST
    trigger a bonus credit evaluation. This step determines whether the
-   user's cumulative spend now qualifies for additional bonus credits
-   under their Kilo Pass entitlement and, if so, awards them. The
-   user's acquired credit balance MAY be temporarily negative between
+   user's cumulative credit spend (see Definitions) — including the
+   hosting deduction just committed — now qualifies for additional
+   bonus credits under their Kilo Pass entitlement and, if so, awards
+   them. The user's credit balance MAY be temporarily negative between
    the deduction in rule 5b and the bonus award; other
    balance-observing systems (monitoring, display, renewal sweeps)
    MUST tolerate transient negative balances from this flow. When the
@@ -619,13 +648,13 @@ rows renew.
    once current-period-end has passed.
 6. When the effective balance (as defined in Credit Enrollment rule 3)
    is sufficient and the deduction succeeds (one affected row), the
-   system MUST atomically decrement the user's acquired credit balance
-   and advance the subscription's billing period (current-period-start,
-   current-period-end, credit-renewal-timestamp) within the same
-   transaction. After the transaction commits, the system MUST trigger
-   a bonus credit evaluation as described in Credit Enrollment rule 6.
-   The user's acquired credit balance MAY be temporarily negative
-   between the deduction and the bonus award. If the bonus evaluation
+   system MUST atomically record the deduction as credit spend (see
+   Definitions) and advance the subscription's billing period
+   (current-period-start, current-period-end, credit-renewal-timestamp)
+   within the same transaction. After the transaction commits, the
+   system MUST trigger a bonus credit evaluation as described in Credit
+   Enrollment rule 6. The user's credit balance MAY be temporarily
+   negative between the deduction and the bonus award. If the bonus evaluation
    fails or times out, the system MUST log the failure and continue
    processing the row; the missed bonus SHOULD be recovered by a
    subsequent reconciliation process.
@@ -920,6 +949,25 @@ rows renew.
    requirements on credit transaction records.
 
 ### Changelog
+
+#### 2026-03-27 -- Credit spend model, subscription reassignment
+
+- Added definitions for credit balance, credit spend, and the
+  distinction between pure-credit deductions (which increment the used
+  counter and count toward the Kilo Pass bonus threshold) and
+  Stripe-funded settlement deductions (which are balance-neutral
+  bookkeeping and do not count as spend).
+- Updated Credit Enrollment rule 5b and Credit Renewal rule 6 to use
+  "record as credit spend" instead of "decrement acquired credit
+  balance," aligning the spec with the intent that hosting deductions
+  count toward the Kilo Pass bonus unlock threshold.
+- Clarified Credit Enrollment rule 6: "cumulative credit spend"
+  explicitly includes the hosting deduction just committed.
+- Added Trial Eligibility and Creation rule 5: when a user provisions
+  a new instance and the existing subscription references a destroyed
+  instance, the system reassigns the subscription to the new instance.
+  This fixes a bug where destroying and re-creating an instance left
+  the subscription orphaned on the old destroyed instance.
 
 #### 2026-03-24 -- Credits-first billing, per-instance subscriptions, Kilo Pass upsell
 

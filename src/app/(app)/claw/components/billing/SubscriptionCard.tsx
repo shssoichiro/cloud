@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ExternalLink, CreditCard, Coins } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -51,14 +51,18 @@ function ActiveSubscriptionCard({
   const portalMutation = useMutation(trpc.kiloclaw.createBillingPortalSession.mutationOptions());
   const cancelSwitchMutation = useMutation(trpc.kiloclaw.cancelPlanSwitch.mutationOptions());
   const acceptConversionMutation = useMutation(trpc.kiloclaw.acceptConversion.mutationOptions());
-  const [conversionDismissed, setConversionDismissed] = useState(false);
+  const CONVERSION_DISMISSED_KEY = 'kiloclaw-conversion-dismissed';
+  const [conversionDismissed, setConversionDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(CONVERSION_DISMISSED_KEY) === '1';
+  });
 
   const sub = billing.subscription;
   if (!sub) return null;
 
   const isCommit = sub.plan === 'commit';
   const planLabel = isCommit ? 'Commit ($8/mo)' : 'Standard ($9/mo)';
-  const otherPlan = isCommit ? 'Standard ($9/mo)' : 'Commit ($8/mo)';
+  const otherPlan = isCommit ? 'Standard ($9/mo)' : 'Commit ($8/mo · 6-mo term)';
 
   const hasUserRequestedSwitch = sub.scheduledBy === 'user';
 
@@ -88,6 +92,15 @@ function ActiveSubscriptionCard({
       queryKey: trpc.kiloclaw.getBillingStatus.queryKey(),
     });
   }
+
+  // Clear the persisted dismiss when the prompt is no longer relevant
+  // (e.g. user converted, subscription changed) so it doesn't stay hidden forever.
+  useEffect(() => {
+    if (!sub.showConversionPrompt && conversionDismissed) {
+      localStorage.removeItem(CONVERSION_DISMISSED_KEY);
+      setConversionDismissed(false);
+    }
+  }, [sub.showConversionPrompt, conversionDismissed]);
 
   const showConversion = sub.showConversionPrompt && !conversionDismissed;
 
@@ -158,7 +171,14 @@ function ActiveSubscriptionCard({
             >
               Switch to Credits
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setConversionDismissed(true)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                localStorage.setItem(CONVERSION_DISMISSED_KEY, '1');
+                setConversionDismissed(true);
+              }}
+            >
               Dismiss
             </Button>
           </div>
@@ -193,6 +213,56 @@ function ActiveSubscriptionCard({
             Manage Payment <ExternalLink className="ml-1 h-3 w-3" />
           </Button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ConvertingSubscriptionCard({
+  billing,
+  onReactivateClick,
+}: {
+  billing: ClawBillingStatus;
+  onReactivateClick: () => void;
+}) {
+  const sub = billing.subscription;
+  if (!sub) return null;
+
+  const planLabel = sub.plan === 'commit' ? 'Commit ($8/mo)' : 'Standard ($9/mo)';
+
+  return (
+    <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🦀</span>
+          <span className="text-foreground text-sm font-semibold">KiloClaw Subscription</span>
+        </div>
+        <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-400">
+          <Coins className="h-3 w-3" />
+          Switching to Credits
+        </span>
+      </div>
+
+      <div className="text-muted-foreground space-y-1 text-sm">
+        <div>
+          <span>Plan:</span> <span className="text-foreground">{planLabel}</span>
+        </div>
+        <div>
+          <span>Status:</span>{' '}
+          <span className="text-blue-400">
+            Switches to credit billing on {formatBillingDate(sub.currentPeriodEnd)}
+          </span>
+        </div>
+        <p className="text-muted-foreground text-xs">
+          Your Stripe charge ends at the current period. After that, hosting renews from your credit
+          balance.
+        </p>
+      </div>
+
+      <div className="mt-4">
+        <Button variant="outline" size="sm" onClick={onReactivateClick}>
+          Keep Stripe Billing
+        </Button>
       </div>
     </div>
   );
@@ -315,6 +385,9 @@ export function SubscriptionCard({ billing, onCancelClick }: SubscriptionCardPro
       return (
         <PastDueSubscriptionCard billing={billing} onUpdatePaymentClick={handleUpdatePayment} />
       );
+    }
+    if (billing.subscription.cancelAtPeriodEnd && billing.subscription.pendingConversion) {
+      return <ConvertingSubscriptionCard billing={billing} onReactivateClick={handleReactivate} />;
     }
     if (billing.subscription.cancelAtPeriodEnd) {
       return <CancelingSubscriptionCard billing={billing} onReactivateClick={handleReactivate} />;

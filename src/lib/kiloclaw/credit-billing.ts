@@ -334,10 +334,12 @@ export async function enrollWithCredits(params: {
   // Step 2: Check effective balance (spec rule 3)
   // Effective balance = raw balance + projected Kilo Pass bonus that would
   // be awarded after the deduction by maybeIssueKiloPassBonusFromUsageThreshold.
+  // The deduction increments microdollars_used, so project the post-deduction
+  // value to correctly evaluate whether the spend crosses the bonus threshold.
   const balance = user.total_microdollars_acquired - user.microdollars_used;
   const projectedBonus = await projectPendingKiloPassBonusMicrodollars({
     userId,
-    microdollarsUsed: user.microdollars_used,
+    microdollarsUsed: user.microdollars_used + costMicrodollars,
     kiloPassThreshold: user.kilo_pass_threshold,
   });
   const effectiveBalance = balance + projectedBonus;
@@ -388,11 +390,12 @@ export async function enrollWithCredits(params: {
       throw new Error('Enrollment already processed for this billing period.');
     }
 
-    // 5b: Atomically decrement total_microdollars_acquired
+    // 5b: Atomically increment microdollars_used so the deduction counts
+    //     as spend toward the Kilo Pass bonus unlock threshold.
     await tx
       .update(kilocode_users)
       .set({
-        total_microdollars_acquired: sql`${kilocode_users.total_microdollars_acquired} - ${costMicrodollars}`,
+        microdollars_used: sql`${kilocode_users.microdollars_used} + ${costMicrodollars}`,
       })
       .where(eq(kilocode_users.id, userId));
 
