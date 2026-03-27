@@ -74,11 +74,19 @@ describe('evictCapacityRegionFromKV', () => {
     expect(store.get(FLY_REGIONS_KV_KEY)).toBe('dfw,ord');
   });
 
-  it('preserves duplicate entries when evicting (duplicates are intentional weighting)', async () => {
+  it('preserves duplicate entries when multiple distinct named regions remain', async () => {
     const { kv, putMock } = makeKv('dfw,dfw,ord,iad');
     await evictCapacityRegionFromKV(kv, noopEnv, 'iad');
-    // all iad occurrences removed, duplicates of other regions preserved
+    // 2 distinct named regions remain (dfw, ord), so duplicates are preserved
     expect(putMock).toHaveBeenCalledWith(FLY_REGIONS_KV_KEY, 'dfw,dfw,ord');
+  });
+
+  it('falls back to meta when eviction leaves only one distinct named region (with duplicates)', async () => {
+    // iad,dfw,dfw — evicting iad leaves dfw,dfw (only 1 distinct named region)
+    const { kv, putMock, store } = makeKv('iad,dfw,dfw');
+    await evictCapacityRegionFromKV(kv, noopEnv, 'iad');
+    expect(putMock).toHaveBeenCalledWith(FLY_REGIONS_KV_KEY, 'dfw,eu,us');
+    expect(store.get(FLY_REGIONS_KV_KEY)).toBe('dfw,eu,us');
   });
 
   it('writes "lastRegion,eu,us" when evicting the second-to-last named region', async () => {

@@ -123,11 +123,12 @@ export async function evictCapacityRegionFromKV(
 
   const remaining = regions.filter(r => r !== failedRegion);
   const namedRemaining = remaining.filter(r => !isMetaRegion(r));
+  const distinctNamedCount = new Set(namedRemaining).size;
 
   let newKvValue: string;
   let revertedToMeta: boolean;
 
-  if (namedRemaining.length > 1) {
+  if (distinctNamedCount > 1) {
     newKvValue = remaining.join(',');
     revertedToMeta = false;
   } else {
