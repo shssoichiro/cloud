@@ -6,13 +6,17 @@ on:
     paths:
       - 'kilo-app/**'
       - 'packages/trpc/**'
+      - 'src/routers/**'
       - 'pnpm-lock.yaml'
+      - '.github/workflows/kilo-app-ci.yml'
   pull_request:
     branches: [main]
     paths:
       - 'kilo-app/**'
       - 'packages/trpc/**'
+      - 'src/routers/**'
       - 'pnpm-lock.yaml'
+      - '.github/workflows/kilo-app-ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -72,6 +76,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build trpc types
+        run: pnpm --filter @kilocode/trpc run build
 
       - name: Lint
         run: pnpm --filter kilo-app run lint
