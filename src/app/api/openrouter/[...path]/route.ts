@@ -3,7 +3,12 @@ import { type NextRequest } from 'next/server';
 import { isOpenCodeBasedClient, isRooCodeBasedClient, stripRequiredPrefix } from '@/lib/utils';
 import { applyTrackingIds } from '@/lib/providerHash';
 import { extractPromptInfo as extractChatCompletionsPromptInfo } from '@/lib/processUsage';
-import { validateFeatureHeader, FEATURE_HEADER } from '@/lib/feature-detection';
+import {
+  validateFeatureHeader,
+  FEATURE_HEADER,
+  isUserRateLimitedFeature,
+  type FeatureValue,
+} from '@/lib/feature-detection';
 import type {
   OpenRouterChatCompletionRequest,
   GatewayResponsesRequest,
@@ -56,6 +61,7 @@ import {
 } from '@/lib/anonymous';
 import {
   checkFreeModelRateLimit,
+  checkFreeModelRateLimitByUser,
   logFreeModelRequest,
   checkPromotionLimit,
 } from '@/lib/free-model-rate-limiter';
@@ -71,6 +77,7 @@ import { grokCodeFastOptimizedRequest } from '@/lib/custom-llm/customLlmRequest'
 import { normalizeModelId } from '@/lib/model-utils';
 import { isForbiddenFreeModel } from '@/lib/forbidden-free-models';
 import { isActiveReviewPromo } from '@/lib/code-reviews/core/constants';
+import { isCloudflareIP } from '@/lib/cloudflare-ip';
 import { applyResolvedAutoModel, isKiloAutoModel } from '@/lib/kilo-auto-model';
 import { fixOpenCodeDuplicateReasoning } from '@/lib/providers/fixOpenCodeDuplicateReasoning';
 import type { MicrodollarUsageContext, PromptInfo } from '@/lib/processUsage.types';
@@ -118,6 +125,33 @@ function extractPromptInfo(requestBodyParsed: GatewayRequest): PromptInfo {
     return extractResponsesPromptInfo(requestBodyParsed.body);
   }
   return extractChatCompletionsPromptInfo(requestBodyParsed.body);
+}
+
+async function resolveRateLimit(
+  feature: FeatureValue | null,
+  ipAddress: string,
+  authPromise: Promise<{ user: { id: string } | null }>
+): Promise<
+  | NextResponseType<unknown>
+  | { result: { allowed: boolean; requestCount: number }; subject: string }
+> {
+  if (isUserRateLimitedFeature(feature) && isCloudflareIP(ipAddress)) {
+    const { user } = await authPromise;
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Authentication required for this feature' },
+        { status: 401 }
+      );
+    }
+    return {
+      result: await checkFreeModelRateLimitByUser(user.id),
+      subject: `user: ${user.id}`,
+    };
+  }
+  return {
+    result: await checkFreeModelRateLimit(ipAddress),
+    subject: `ip address: ${ipAddress}`,
+  };
 }
 
 export async function POST(request: NextRequest): Promise<NextResponseType<unknown>> {
@@ -201,14 +235,17 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     return NextResponse.json({ error: 'Unable to determine client IP' }, { status: 400 });
   }
 
-  // For FREE models: check IP rate limit BEFORE auth, log at start
-  // Slackbot-only models are exempt from free model rate limits since they're
-  // already gated behind the Slack integration (internalApiUse auth).
+  // For FREE models: check rate limit, log at start.
+  // Server-side products (cloud-agent, code-review, app-builder) rate-limit
+  // per user when the request comes from Cloudflare IPs (Kilo infrastructure).
+  // All other products rate-limit per IP (fast pre-auth path).
   if (isKiloFreeModel(originalModelIdLowerCased)) {
-    const rateLimitResult = await checkFreeModelRateLimit(ipAddress);
-    if (!rateLimitResult.allowed) {
+    const rateLimit = await resolveRateLimit(feature, ipAddress, authPromise);
+    if (rateLimit instanceof NextResponse) return rateLimit;
+
+    if (!rateLimit.result.allowed) {
       console.warn(
-        `Free model rate limit exceeded, ip address: ${ipAddress}, model: ${originalModelIdLowerCased}, request count: ${rateLimitResult.requestCount}`
+        `Free model rate limit exceeded, ${rateLimit.subject}, model: ${originalModelIdLowerCased}, request count: ${rateLimit.result.requestCount}`
       );
       return NextResponse.json(
         {
