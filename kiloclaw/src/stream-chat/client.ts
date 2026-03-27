@@ -131,7 +131,8 @@ export async function getOrCreateStreamChatChannel(
  * Deactivate one or more Stream Chat users via the server API.
  * Deactivated users cannot connect to Stream Chat or send/receive messages,
  * making any previously issued tokens useless.
- * Silently ignores 404 (user not found). Other errors are thrown.
+ * Silently ignores 404 (user not found). Attempts all users before throwing
+ * so that a transient failure for one user doesn't leave others active.
  */
 export async function deactivateStreamChatUsers(
   apiKey: string,
@@ -139,6 +140,7 @@ export async function deactivateStreamChatUsers(
   userIds: readonly string[]
 ): Promise<void> {
   const serverToken = await createServerToken(apiSecret);
+  const errors: Error[] = [];
   for (const userId of userIds) {
     const res = await fetch(
       `${STREAM_CHAT_API_BASE}/api/v2/users/${encodeURIComponent(userId)}/deactivate?api_key=${apiKey}`,
@@ -155,15 +157,20 @@ export async function deactivateStreamChatUsers(
     // 404 = user never existed, safe to ignore
     if (!res.ok && res.status !== 404) {
       const body = await res.text().catch(() => '(unreadable)');
-      throw new Error(`Stream Chat deactivateUser failed for ${userId} (${res.status}): ${body}`);
+      errors.push(new Error(`Stream Chat deactivateUser failed for ${userId} (${res.status}): ${body}`));
     }
+  }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) {
+    throw new AggregateError(errors, 'Stream Chat deactivateUsers had failures');
   }
 }
 
 /**
  * Reactivate one or more previously deactivated Stream Chat users.
  * Called during re-provision to ensure users can connect again.
- * Silently ignores 404 (user not found). Other errors are thrown.
+ * Silently ignores 404 (user not found). Attempts all users before throwing
+ * so that a transient failure for one user doesn't leave others deactivated.
  */
 export async function reactivateStreamChatUsers(
   apiKey: string,
@@ -171,6 +178,7 @@ export async function reactivateStreamChatUsers(
   userIds: readonly string[]
 ): Promise<void> {
   const serverToken = await createServerToken(apiSecret);
+  const errors: Error[] = [];
   for (const userId of userIds) {
     const res = await fetch(
       `${STREAM_CHAT_API_BASE}/api/v2/users/${encodeURIComponent(userId)}/reactivate?api_key=${apiKey}`,
@@ -187,10 +195,14 @@ export async function reactivateStreamChatUsers(
     // 404 = user never existed, safe to ignore
     if (!res.ok && res.status !== 404) {
       const body = await res.text().catch(() => '(unreadable)');
-      throw new Error(
+      errors.push(new Error(
         `Stream Chat reactivateUser failed for ${userId} (${res.status}): ${body}`
-      );
+      ));
     }
+  }
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) {
+    throw new AggregateError(errors, 'Stream Chat reactivateUsers had failures');
   }
 }
 

@@ -106,6 +106,9 @@ function StreamChatUI({
     const ch = client.channel('messaging', channelId);
     void ch.watch({ presence: true });
     setChannel(ch);
+    return () => {
+      void ch.stopWatching();
+    };
   }, [client, channelId]);
 
   // channelId is "default-{sandboxId}", bot user is "bot-{sandboxId}"
