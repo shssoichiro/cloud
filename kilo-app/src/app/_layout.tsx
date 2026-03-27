@@ -114,13 +114,15 @@ function RootLayoutNav() {
   ]);
 
   const needsForceUpdate = updateRequired && !inForceUpdate;
+  const showingForceUpdate = updateRequired && inForceUpdate;
   const needsAuth = !token && !inAuthGroup;
   const needsContext = token != null && !context && !inContextGroup;
   const needsAppRedirect =
     (token != null && context != null && (inAuthGroup || inContextGroup)) || inForceUpdate;
 
   const needsRedirect =
-    !isLoading && (needsForceUpdate || needsAuth || needsContext || needsAppRedirect);
+    !isLoading &&
+    (needsForceUpdate || (!showingForceUpdate && (needsAuth || needsContext || needsAppRedirect)));
 
   if (isLoading || needsRedirect) {
     return null;
