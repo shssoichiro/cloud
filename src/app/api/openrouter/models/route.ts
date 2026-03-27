@@ -42,9 +42,6 @@ export async function GET(
   try {
     const data = await getEnhancedOpenRouterModels();
     return NextResponse.json(
-      // TODO: ENABLE_CODING_PLANS_UI requires:
-      // https://github.com/Kilo-Org/kilocode/pull/7728
-      // we should also watch the performance impact non pre-rendering
       ENABLE_CODING_PLANS_UI && Array.isArray(data.data)
         ? { data: data.data.concat(await getCodingPlanModels()) }
         : data
