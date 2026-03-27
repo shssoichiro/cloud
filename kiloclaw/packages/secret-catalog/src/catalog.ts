@@ -356,7 +356,8 @@ export function isCustomSecretEnvVar(envVarName: string): boolean {
 
 // --- Config path helpers ---
 
-const CONFIG_PATH_RE = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/;
+// Allows hyphens in segments for header keys (x-api-key) and channel names (nextcloud-talk).
+const CONFIG_PATH_RE = /^[a-zA-Z_][a-zA-Z0-9_-]*(\.[a-zA-Z_][a-zA-Z0-9_-]*)*$/;
 const MAX_CONFIG_PATH_LENGTH = 256;
 
 /**
@@ -403,10 +404,10 @@ const ALLOWED_CONFIG_PATH_PATTERNS: readonly string[] = [
   // Channels — MS Teams
   'channels.msteams.appPassword',
   // Channels — Nextcloud Talk
-  'channels.nextcloud_talk.botSecret',
-  'channels.nextcloud_talk.apiPassword',
-  'channels.nextcloud_talk.accounts.*.botSecret',
-  'channels.nextcloud_talk.accounts.*.apiPassword',
+  'channels.nextcloud-talk.botSecret',
+  'channels.nextcloud-talk.apiPassword',
+  'channels.nextcloud-talk.accounts.*.botSecret',
+  'channels.nextcloud-talk.accounts.*.apiPassword',
   // Channels — Slack (botToken/appToken omitted: catalog-managed)
   'channels.slack.userToken',
   'channels.slack.signingSecret',

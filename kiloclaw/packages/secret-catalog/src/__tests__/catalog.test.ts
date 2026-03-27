@@ -604,6 +604,13 @@ describe('Secret Catalog', () => {
       expect(isValidConfigPath('channels.slack.accounts.workspace1.botToken')).toBe(true);
     });
 
+    it('accepts hyphenated segments for headers and channel names', () => {
+      expect(isValidConfigPath('models.providers.openai.headers.x-api-key')).toBe(true);
+      expect(isValidConfigPath('models.providers.openai.headers.anthropic-beta')).toBe(true);
+      expect(isValidConfigPath('channels.nextcloud-talk.botSecret')).toBe(true);
+      expect(isValidConfigPath('channels.nextcloud-talk.accounts.srv1.apiPassword')).toBe(true);
+    });
+
     it('rejects empty strings', () => {
       expect(isValidConfigPath('')).toBe(false);
     });
