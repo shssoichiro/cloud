@@ -14,6 +14,7 @@ import { Toaster } from 'sonner-native';
 
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
 import { ContextProvider, useAppContext } from '@/lib/context/context-context';
+import { useForceUpdate } from '@/lib/hooks/use-force-update';
 import { queryClient } from '@/lib/query-client';
 import { trpcClient, TRPCProvider } from '@/lib/trpc';
 
@@ -55,15 +56,32 @@ void SplashScreen.preventAutoHideAsync();
 function RootLayoutNav() {
   const { token, isLoading: authLoading } = useAuth();
   const { context, isLoading: contextLoading } = useAppContext();
+  const { updateRequired, isChecking: updateChecking } = useForceUpdate();
   const segments = useSegments();
   const router = useRouter();
 
-  const isLoading = authLoading || contextLoading;
+  const isLoading = authLoading || contextLoading || updateChecking;
   const inAuthGroup = segments[0] === '(auth)';
   const inContextGroup = segments[0] === '(context)';
+  const inForceUpdate = segments[0] === 'force-update';
 
   useEffect(() => {
     if (isLoading) {
+      return;
+    }
+
+    if (updateRequired) {
+      if (!inForceUpdate) {
+        router.replace('/force-update');
+      } else {
+        void SplashScreen.hideAsync();
+      }
+      return;
+    }
+
+    if (inForceUpdate) {
+      // Version is now acceptable, leave the force-update screen
+      router.replace('/(app)');
       return;
     }
 
@@ -84,13 +102,25 @@ function RootLayoutNav() {
     } else {
       void SplashScreen.hideAsync();
     }
-  }, [token, context, isLoading, inAuthGroup, inContextGroup, router]);
+  }, [
+    token,
+    context,
+    isLoading,
+    updateRequired,
+    inAuthGroup,
+    inContextGroup,
+    inForceUpdate,
+    router,
+  ]);
 
   const needsRedirect =
     !isLoading &&
-    ((!token && !inAuthGroup) ||
-      (token != null && !context && !inContextGroup) ||
-      (token != null && context != null && (inAuthGroup || inContextGroup)));
+    (updateRequired
+      ? !inForceUpdate
+      : (!token && !inAuthGroup) ||
+        (token != null && !context && !inContextGroup) ||
+        (token != null && context != null && (inAuthGroup || inContextGroup)) ||
+        inForceUpdate);
 
   if (isLoading || needsRedirect) {
     return null;
