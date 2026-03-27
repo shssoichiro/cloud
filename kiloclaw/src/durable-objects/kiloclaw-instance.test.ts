@@ -2104,6 +2104,174 @@ describe('updateSecrets', () => {
       'Invalid secret patch: Slack requires all fields to be set together'
     );
   });
+
+  // ─── Custom (non-catalog) secrets ─────────────────────────────────
+
+  it('stores custom secrets by env var name in encryptedSecrets', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+    const customEnvelope = { ...fakeEnvelope, encryptedData: 'custom-value' };
+
+    await instance.updateSecrets({ MY_CUSTOM_KEY: customEnvelope });
+
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    expect(secrets.MY_CUSTOM_KEY).toEqual(customEnvelope);
+  });
+
+  it('removes custom secrets when null is passed', async () => {
+    const { instance, storage } = createInstance();
+    const customEnvelope = { ...fakeEnvelope, encryptedData: 'custom-value' };
+    await seedProvisioned(storage, {
+      encryptedSecrets: { MY_CUSTOM_KEY: customEnvelope },
+    });
+
+    await instance.updateSecrets({ MY_CUSTOM_KEY: null });
+
+    const secrets = storage._store.get('encryptedSecrets');
+    expect(secrets).toBeNull();
+  });
+
+  it('preserves catalog secrets when adding custom secrets', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      channels: { telegramBotToken: fakeEnvelope },
+      encryptedSecrets: { TELEGRAM_BOT_TOKEN: fakeEnvelope },
+    });
+    const customEnvelope = { ...fakeEnvelope, encryptedData: 'custom-value' };
+
+    await instance.updateSecrets({ MY_CUSTOM_KEY: customEnvelope });
+
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    expect(secrets.TELEGRAM_BOT_TOKEN).toEqual(fakeEnvelope);
+    expect(secrets.MY_CUSTOM_KEY).toEqual(customEnvelope);
+  });
+
+  it('preserves custom secrets when updating catalog secrets', async () => {
+    const { instance, storage } = createInstance();
+    const customEnvelope = { ...fakeEnvelope, encryptedData: 'custom-value' };
+    await seedProvisioned(storage, {
+      encryptedSecrets: { MY_CUSTOM_KEY: customEnvelope },
+    });
+
+    await instance.updateSecrets({ telegramBotToken: fakeEnvelope });
+
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    expect(secrets.MY_CUSTOM_KEY).toEqual(customEnvelope);
+    expect(secrets.TELEGRAM_BOT_TOKEN).toEqual(fakeEnvelope);
+  });
+
+  it('enforces custom secret count limit', async () => {
+    const { instance, storage } = createInstance();
+    // Seed 50 custom secrets (the max)
+    const existingSecrets: Record<string, unknown> = {};
+    for (let i = 0; i < 50; i++) {
+      existingSecrets[`SECRET_${i}`] = { ...fakeEnvelope, encryptedData: `val-${i}` };
+    }
+    await seedProvisioned(storage, { encryptedSecrets: existingSecrets });
+
+    // Adding one more should fail
+    await expect(
+      instance.updateSecrets({ SECRET_OVERFLOW: { ...fakeEnvelope, encryptedData: 'overflow' } })
+    ).rejects.toThrow('Custom secret limit exceeded');
+  });
+
+  it('stores config path metadata alongside secrets', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+    const customEnvelope = { ...fakeEnvelope, encryptedData: 'custom-value' };
+
+    await instance.updateSecrets(
+      { MY_KEY: customEnvelope },
+      { MY_KEY: { configPath: 'models.providers.openai.apiKey' } }
+    );
+
+    const meta = storage._store.get('customSecretMeta') as Record<string, unknown>;
+    expect(meta).toEqual({ MY_KEY: { configPath: 'models.providers.openai.apiKey' } });
+  });
+
+  it('removes config path metadata when secret is deleted', async () => {
+    const { instance, storage } = createInstance();
+    const customEnvelope = { ...fakeEnvelope, encryptedData: 'custom-value' };
+    await seedProvisioned(storage, {
+      encryptedSecrets: { MY_KEY: customEnvelope },
+      customSecretMeta: { MY_KEY: { configPath: 'talk.apiKey' } },
+    });
+
+    await instance.updateSecrets({ MY_KEY: null });
+
+    const meta = storage._store.get('customSecretMeta');
+    expect(meta).toBeNull();
+  });
+
+  it('updates config path metadata without changing value', async () => {
+    const { instance, storage } = createInstance();
+    const customEnvelope = { ...fakeEnvelope, encryptedData: 'custom-value' };
+    await seedProvisioned(storage, {
+      encryptedSecrets: { MY_KEY: customEnvelope },
+      customSecretMeta: { MY_KEY: { configPath: 'talk.apiKey' } },
+    });
+
+    // Empty secrets patch, only meta update
+    await instance.updateSecrets({}, { MY_KEY: { configPath: 'cron.webhookToken' } });
+
+    const meta = storage._store.get('customSecretMeta') as Record<string, unknown>;
+    expect(meta).toEqual({ MY_KEY: { configPath: 'cron.webhookToken' } });
+    // Secret value unchanged
+    const secrets = storage._store.get('encryptedSecrets') as Record<string, unknown>;
+    expect(secrets.MY_KEY).toEqual(customEnvelope);
+  });
+
+  it('rejects duplicate config paths', async () => {
+    const { instance, storage } = createInstance();
+    const envelope1 = { ...fakeEnvelope, encryptedData: 'val-1' };
+    const envelope2 = { ...fakeEnvelope, encryptedData: 'val-2' };
+    await seedProvisioned(storage, {
+      encryptedSecrets: { KEY_A: envelope1 },
+      customSecretMeta: { KEY_A: { configPath: 'talk.apiKey' } },
+    });
+
+    await expect(
+      instance.updateSecrets({ KEY_B: envelope2 }, { KEY_B: { configPath: 'talk.apiKey' } })
+    ).rejects.toThrow('Config path "talk.apiKey" is already used by secret "KEY_A"');
+  });
+});
+
+// ============================================================================
+// listCustomSecretKeys
+// ============================================================================
+
+describe('listCustomSecretKeys', () => {
+  const fakeEnvelope = {
+    encryptedData: 'data',
+    encryptedDEK: 'dek',
+    algorithm: 'rsa-aes-256-gcm' as const,
+    version: 1 as const,
+  };
+
+  it('returns empty array when no secrets exist', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage);
+
+    const keys = await instance.listCustomSecretKeys();
+    expect(keys).toEqual([]);
+  });
+
+  it('returns only custom (non-catalog) secret keys', async () => {
+    const { instance, storage } = createInstance();
+    await seedProvisioned(storage, {
+      encryptedSecrets: {
+        TELEGRAM_BOT_TOKEN: fakeEnvelope, // catalog
+        MY_CUSTOM_KEY: fakeEnvelope, // custom
+        ANOTHER_KEY: fakeEnvelope, // custom
+      },
+    });
+
+    const keys = await instance.listCustomSecretKeys();
+    expect(keys).toContain('MY_CUSTOM_KEY');
+    expect(keys).toContain('ANOTHER_KEY');
+    expect(keys).not.toContain('TELEGRAM_BOT_TOKEN');
+    expect(keys).toHaveLength(2);
+  });
 });
 
 // ============================================================================

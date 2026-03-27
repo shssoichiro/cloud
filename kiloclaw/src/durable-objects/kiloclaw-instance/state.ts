@@ -79,6 +79,7 @@ export async function loadState(ctx: DurableObjectState, s: InstanceMutableState
     // Legacy instances pre-dating this field treat absence as already-sent
     // to avoid spurious emails after deploy.
     s.instanceReadyEmailSent = 'instanceReadyEmailSent' in raw ? d.instanceReadyEmailSent : true;
+    s.customSecretMeta = d.customSecretMeta;
   } else {
     const hasAnyData = entries.size > 0;
     if (hasAnyData) {
@@ -207,6 +208,7 @@ export function createMutableState(): InstanceMutableState {
     preRestoreStatus: null,
     pendingRestoreVolumeId: null,
     instanceReadyEmailSent: false,
+    customSecretMeta: null,
     lastLiveCheckAt: null,
   };
 }

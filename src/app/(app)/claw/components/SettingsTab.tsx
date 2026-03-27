@@ -962,9 +962,10 @@ export function SettingsTab({
         </div>
       </div>
 
-      {/* ── Custom Secrets ── */}
+      {/* ── Additional Secrets ── */}
       <CustomSecretsSection
         customSecretKeys={config?.customSecretKeys ?? []}
+        customSecretMeta={config?.customSecretMeta ?? {}}
         mutations={mutations}
         onRedeploy={onRedeploy}
       />

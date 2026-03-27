@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { ALL_SECRET_FIELD_KEYS, isValidCustomSecretKey } from '@kilocode/kiloclaw-secret-catalog';
+import {
+  ALL_SECRET_FIELD_KEYS,
+  isValidCustomSecretKey,
+  isValidConfigPath,
+} from '@kilocode/kiloclaw-secret-catalog';
 import { IMAGE_TAG_RE, IMAGE_TAG_MAX_LENGTH } from '../lib/image-tag-validation';
 
 export const EncryptedEnvelopeSchema = z.object({
@@ -82,6 +86,19 @@ export const ChannelsPatchSchema = z.object({
   }),
 });
 
+/** Metadata for a custom secret (e.g. config path for openclaw.json patching). */
+export const CustomSecretMetaSchema = z.object({
+  configPath: z
+    .string()
+    .refine(isValidConfigPath, {
+      message:
+        'Not a supported credential path. See https://docs.openclaw.ai/reference/secretref-credential-surface',
+    })
+    .optional(),
+});
+
+export type CustomSecretMeta = z.infer<typeof CustomSecretMetaSchema>;
+
 export const SecretsPatchSchema = z.object({
   userId: z.string().min(1),
   secrets: z.record(
@@ -90,6 +107,7 @@ export const SecretsPatchSchema = z.object({
     }),
     EncryptedEnvelopeSchema.nullable()
   ),
+  meta: z.record(z.string(), CustomSecretMetaSchema).optional(),
 });
 
 export const ProvisionRequestSchema = z.object({
@@ -223,6 +241,9 @@ export const PersistedStateSchema = z.object({
   // Tracks whether the "instance ready" email has been sent for this provision lifecycle.
   // Set to true on first low-load checkin; reset on DO wipe (destroy + re-provision).
   instanceReadyEmailSent: z.boolean().default(false),
+  // Metadata for custom (non-catalog) secrets: env var name → { configPath? }.
+  // configPath is a JSON dot-notation path for patching into openclaw.json at boot.
+  customSecretMeta: z.record(z.string(), CustomSecretMetaSchema).nullable().default(null),
 });
 
 export type PersistedState = z.infer<typeof PersistedStateSchema>;

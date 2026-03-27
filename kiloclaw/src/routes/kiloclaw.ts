@@ -44,6 +44,7 @@ kiloclaw.get('/config', c =>
       customSecretKeys: config.encryptedSecrets
         ? Object.keys(config.encryptedSecrets).filter(isCustomSecretEnvVar)
         : [],
+      customSecretMeta: config.customSecretMeta ?? {},
     });
   })
 );

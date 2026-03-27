@@ -30,6 +30,7 @@ export type UserConfig = {
   instanceFeatures?: string[];
   execSecurity?: string | null;
   execAsk?: string | null;
+  customSecretMeta?: Record<string, { configPath?: string }> | null;
 };
 
 /**
@@ -208,6 +209,18 @@ export async function buildEnvVars(
     for (const feature of userConfig.instanceFeatures) {
       const envVar = FEATURE_TO_ENV_VAR[feature];
       if (envVar) plainEnv[envVar] = 'true';
+    }
+  }
+
+  // Custom secret config path mapping — tells the controller which env vars
+  // to patch into openclaw.json at specific JSON paths.
+  if (userConfig?.customSecretMeta) {
+    const pathMap: Record<string, string> = {};
+    for (const [envVar, meta] of Object.entries(userConfig.customSecretMeta)) {
+      if (meta.configPath) pathMap[envVar] = meta.configPath;
+    }
+    if (Object.keys(pathMap).length > 0) {
+      plainEnv.KILOCLAW_SECRET_CONFIG_PATHS = JSON.stringify(pathMap);
     }
   }
 

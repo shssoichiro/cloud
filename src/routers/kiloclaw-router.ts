@@ -14,6 +14,7 @@ import {
   validateFieldValue,
   getEntriesByCategory,
   isValidCustomSecretKey,
+  isValidConfigPath,
 } from '@kilocode/kiloclaw-secret-catalog';
 import {
   KILOCLAW_API_URL,
@@ -625,6 +626,20 @@ export const kiloclawRouter = createTRPCRouter({
                 'Invalid secret key: must be a catalog field key or valid env var name (A-Z, 0-9, _, no KILOCLAW_ prefix)',
             }
           ),
+        meta: z
+          .record(
+            z.string(),
+            z.object({
+              configPath: z
+                .string()
+                .refine(isValidConfigPath, {
+                  message:
+                    'Not a supported credential path. See https://docs.openclaw.ai/reference/secretref-credential-surface',
+                })
+                .optional(),
+            })
+          )
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -669,7 +684,10 @@ export const kiloclawRouter = createTRPCRouter({
       // 4. Forward to worker — translate 4xx responses into TRPCErrors
       const client = new KiloClawInternalClient();
       try {
-        return await client.patchSecrets(ctx.user.id, { secrets: encryptedPatch });
+        return await client.patchSecrets(ctx.user.id, {
+          secrets: encryptedPatch,
+          meta: input.meta,
+        });
       } catch (err) {
         if (err instanceof KiloClawApiError && err.statusCode >= 400 && err.statusCode < 500) {
           // Extract message from worker response body (JSON or plain text)

@@ -12,6 +12,7 @@ import {
   getFieldKeysByCategory,
   isValidCustomSecretKey,
   isCustomSecretEnvVar,
+  isValidConfigPath,
   MAX_CUSTOM_SECRETS,
   MAX_CUSTOM_SECRET_VALUE_LENGTH,
 } from '../catalog.js';
@@ -515,9 +516,24 @@ describe('Secret Catalog', () => {
       expect(isValidCustomSecretKey('BRAVE_API_KEY')).toBe(false);
     });
 
-    it('rejects reserved KILOCLAW_ prefix', () => {
+    it('rejects reserved prefixes', () => {
       expect(isValidCustomSecretKey('KILOCLAW_SECRET')).toBe(false);
       expect(isValidCustomSecretKey('KILOCLAW_ENC_FOO')).toBe(false);
+      expect(isValidCustomSecretKey('OPENCLAW_SOMETHING')).toBe(false);
+      expect(isValidCustomSecretKey('KILOCODE_API_KEY')).toBe(false);
+      expect(isValidCustomSecretKey('FLY_REGION')).toBe(false);
+      expect(isValidCustomSecretKey('NEXTAUTH_SECRET')).toBe(false);
+      expect(isValidCustomSecretKey('NODE_OPTIONS')).toBe(false);
+      expect(isValidCustomSecretKey('STREAM_CHAT_API_KEY')).toBe(false);
+    });
+
+    it('rejects denied exact env var names', () => {
+      expect(isValidCustomSecretKey('PATH')).toBe(false);
+      expect(isValidCustomSecretKey('HOME')).toBe(false);
+      expect(isValidCustomSecretKey('AUTO_APPROVE_DEVICES')).toBe(false);
+      expect(isValidCustomSecretKey('REQUIRE_PROXY_TOKEN')).toBe(false);
+      expect(isValidCustomSecretKey('TELEGRAM_DM_POLICY')).toBe(false);
+      expect(isValidCustomSecretKey('DISCORD_DM_POLICY')).toBe(false);
     });
 
     it('rejects invalid shell identifiers', () => {
@@ -557,6 +573,88 @@ describe('Secret Catalog', () => {
 
     it('MAX_CUSTOM_SECRET_VALUE_LENGTH covers JWTs and certificates', () => {
       expect(MAX_CUSTOM_SECRET_VALUE_LENGTH).toBe(8192);
+    });
+  });
+
+  describe('isValidConfigPath', () => {
+    it('accepts supported OpenClaw credential paths', () => {
+      expect(isValidConfigPath('models.providers.openai.apiKey')).toBe(true);
+      expect(isValidConfigPath('tools.web.search.apiKey')).toBe(true);
+      expect(isValidConfigPath('skills.entries.mySkill.apiKey')).toBe(true);
+      expect(isValidConfigPath('cron.webhookToken')).toBe(true);
+      expect(isValidConfigPath('talk.apiKey')).toBe(true);
+      expect(isValidConfigPath('talk.providers.custom.apiKey')).toBe(true);
+      expect(isValidConfigPath('messages.tts.providers.elevenlabs.apiKey')).toBe(true);
+      expect(isValidConfigPath('plugins.entries.brave.config.webSearch.apiKey')).toBe(true);
+      expect(isValidConfigPath('channels.irc.password')).toBe(true);
+      expect(isValidConfigPath('channels.mattermost.botToken')).toBe(true);
+      expect(isValidConfigPath('channels.matrix.password')).toBe(true);
+      expect(isValidConfigPath('channels.msteams.appPassword')).toBe(true);
+      expect(isValidConfigPath('channels.zalo.botToken')).toBe(true);
+    });
+
+    it('accepts wildcard pattern matches with concrete segments', () => {
+      // models.providers.*.apiKey
+      expect(isValidConfigPath('models.providers.anthropic.apiKey')).toBe(true);
+      expect(isValidConfigPath('models.providers.my_custom.apiKey')).toBe(true);
+      // models.providers.*.headers.*
+      expect(isValidConfigPath('models.providers.openai.headers.Authorization')).toBe(true);
+      // channels.*.accounts.*.token etc.
+      expect(isValidConfigPath('channels.discord.accounts.bot2.token')).toBe(true);
+      expect(isValidConfigPath('channels.slack.accounts.workspace1.botToken')).toBe(true);
+    });
+
+    it('rejects empty strings', () => {
+      expect(isValidConfigPath('')).toBe(false);
+    });
+
+    it('rejects paths with invalid characters', () => {
+      expect(isValidConfigPath('has spaces.foo')).toBe(false);
+      expect(isValidConfigPath('has-dashes.foo')).toBe(false);
+      expect(isValidConfigPath('foo..bar')).toBe(false);
+      expect(isValidConfigPath('.foo')).toBe(false);
+      expect(isValidConfigPath('foo.')).toBe(false);
+      expect(isValidConfigPath('123.foo')).toBe(false);
+    });
+
+    it('rejects paths not in the OpenClaw supported list', () => {
+      expect(isValidConfigPath('foo.bar')).toBe(false);
+      expect(isValidConfigPath('random.path.here')).toBe(false);
+      expect(isValidConfigPath('tools.exec.security')).toBe(false);
+      expect(isValidConfigPath('update.checkOnStart')).toBe(false);
+      expect(isValidConfigPath('browser.headless')).toBe(false);
+      expect(isValidConfigPath('tools.profile')).toBe(false);
+    });
+
+    it('rejects KiloClaw-managed paths', () => {
+      expect(isValidConfigPath('gateway.auth.token')).toBe(false);
+      expect(isValidConfigPath('gateway.auth.password')).toBe(false);
+      expect(isValidConfigPath('gateway.remote.token')).toBe(false);
+      expect(isValidConfigPath('gateway.remote.password')).toBe(false);
+    });
+
+    it('rejects catalog-managed secret paths', () => {
+      expect(isValidConfigPath('channels.telegram.botToken')).toBe(false);
+      expect(isValidConfigPath('channels.discord.token')).toBe(false);
+      expect(isValidConfigPath('channels.slack.botToken')).toBe(false);
+      expect(isValidConfigPath('channels.slack.appToken')).toBe(false);
+    });
+
+    it('rejects OpenClaw excluded credentials', () => {
+      expect(isValidConfigPath('commands.ownerDisplaySecret')).toBe(false);
+      expect(isValidConfigPath('channels.matrix.accessToken')).toBe(false);
+      expect(isValidConfigPath('hooks.token')).toBe(false);
+      expect(isValidConfigPath('hooks.gmail.pushToken')).toBe(false);
+    });
+
+    it('allows non-catalog channel account paths', () => {
+      expect(isValidConfigPath('channels.telegram.accounts.bot2.botToken')).toBe(true);
+      expect(isValidConfigPath('channels.irc.accounts.freenode.password')).toBe(true);
+    });
+
+    it('rejects paths exceeding max length', () => {
+      const tooLong = 'models.providers.' + 'a'.repeat(240) + '.apiKey';
+      expect(isValidConfigPath(tooLong)).toBe(false);
     });
   });
 });

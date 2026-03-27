@@ -16,6 +16,7 @@ import type {
   EncryptedEnvelope,
   GoogleCredentials,
   MachineSize,
+  CustomSecretMeta,
 } from '../../schemas/instance-config';
 import { DEFAULT_INSTANCE_FEATURES } from '../../schemas/instance-config';
 import type { FlyVolume, FlyVolumeSnapshot } from '../../fly/types';
@@ -503,7 +504,8 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   }
 
   async updateSecrets(
-    patch: Record<string, EncryptedEnvelope | null>
+    patch: Record<string, EncryptedEnvelope | null>,
+    meta?: Record<string, CustomSecretMeta>
   ): Promise<{ configured: SecretFieldKey[] }> {
     await this.loadState();
 
@@ -605,9 +607,41 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     const hasSecrets = Object.keys(remappedSecrets).length > 0;
     this.s.encryptedSecrets = hasSecrets ? remappedSecrets : null;
 
+    // Update custom secret metadata (config paths, etc.)
+    // Always clean up metadata for deleted secrets, even without a meta param.
+    const currentMeta = { ...(this.s.customSecretMeta ?? {}) };
+    for (const [key, value] of Object.entries(patch)) {
+      if (ALL_SECRET_FIELD_KEYS.has(key)) continue;
+      if (value === null) {
+        delete currentMeta[key];
+      }
+    }
+    // Set/update metadata for any keys provided in meta
+    if (meta) {
+      for (const [key, metaValue] of Object.entries(meta)) {
+        if (ALL_SECRET_FIELD_KEYS.has(key)) continue;
+        // Reject duplicate config paths — no two secrets may target the same path
+        if (metaValue.configPath) {
+          for (const [existingKey, existingMeta] of Object.entries(currentMeta)) {
+            if (existingKey !== key && existingMeta.configPath === metaValue.configPath) {
+              const err = new Error(
+                `Config path "${metaValue.configPath}" is already used by secret "${existingKey}"`
+              );
+              (err as Error & { status: number }).status = 400;
+              throw err;
+            }
+          }
+        }
+        currentMeta[key] = metaValue;
+      }
+    }
+    const hasMeta = Object.keys(currentMeta).length > 0;
+    this.s.customSecretMeta = hasMeta ? currentMeta : null;
+
     await this.ctx.storage.put({
       channels: this.s.channels,
       encryptedSecrets: this.s.encryptedSecrets,
+      customSecretMeta: this.s.customSecretMeta,
     });
 
     return { configured };
@@ -1341,7 +1375,9 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     };
   }
 
-  async getConfig(): Promise<InstanceConfig> {
+  async getConfig(): Promise<
+    InstanceConfig & { customSecretMeta?: Record<string, CustomSecretMeta> | null }
+  > {
     await this.loadState();
     return {
       envVars: this.s.envVars ?? undefined,
@@ -1351,6 +1387,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       kilocodeDefaultModel: this.s.kilocodeDefaultModel ?? undefined,
       channels: this.s.channels ?? undefined,
       machineSize: this.s.machineSize ?? undefined,
+      customSecretMeta: this.s.customSecretMeta ?? undefined,
     };
   }
 

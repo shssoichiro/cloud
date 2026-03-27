@@ -36,6 +36,8 @@ export {
   MAX_CUSTOM_SECRET_VALUE_LENGTH,
   isValidCustomSecretKey,
   isCustomSecretEnvVar,
+  isValidConfigPath,
+  getAllowedConfigPathPatterns,
 } from './catalog';
 
 export type { SecretFieldKey } from './catalog';
