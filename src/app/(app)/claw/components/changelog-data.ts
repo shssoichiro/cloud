@@ -11,6 +11,13 @@ export type ChangelogEntry = {
 // Newest entries first. Developers add new entries to the top of this array.
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-03-27',
+    description:
+      'Additional Secrets — all OpenClaw SecretRef credential paths are now supported. Add any API key, token, or credential in Settings > Additional Secrets and it will be encrypted and patched into your openclaw.json config at the specified path on every boot. Supports model providers, channels, plugins, web search, and more.',
+    category: 'feature',
+    deployHint: 'upgrade_required',
+  },
+  {
     date: '2026-03-26',
     description:
       'Added real-time Chat tab — talk to your KiloClaw bot directly from the dashboard.',

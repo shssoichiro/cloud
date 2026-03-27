@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   backupConfigFile,
   generateBaseConfig,
+  setNestedValue,
   writeBaseConfig,
   writeMcporterConfig,
   MAX_CONFIG_BACKUPS,
@@ -588,6 +589,102 @@ describe('generateBaseConfig', () => {
 
     expect(config.tools.exec.security).toBe('allowlist');
     expect(config.tools.exec.ask).toBe('on-miss');
+  });
+
+  it('patches custom secrets into config via KILOCLAW_SECRET_CONFIG_PATHS', () => {
+    const { deps } = fakeDeps();
+    const config = generateBaseConfig(
+      {
+        MY_API_KEY: 'sk-test-123',
+        ANOTHER_KEY: 'value-456',
+        KILOCLAW_SECRET_CONFIG_PATHS: JSON.stringify({
+          MY_API_KEY: 'models.providers.openai.apiKey',
+          ANOTHER_KEY: 'channels.custom.token',
+        }),
+      },
+      '/root/.openclaw/openclaw.json',
+      deps
+    );
+
+    expect(config.models.providers.openai.apiKey).toBe('sk-test-123');
+    expect(config.channels.custom.token).toBe('value-456');
+  });
+
+  it('skips config path patching for missing env vars', () => {
+    const { deps } = fakeDeps();
+    const config = generateBaseConfig(
+      {
+        KILOCLAW_SECRET_CONFIG_PATHS: JSON.stringify({
+          MISSING_KEY: 'models.providers.openai.apiKey',
+        }),
+      },
+      '/root/.openclaw/openclaw.json',
+      deps
+    );
+
+    expect(config.models?.providers?.openai?.apiKey).toBeUndefined();
+  });
+
+  it('handles malformed KILOCLAW_SECRET_CONFIG_PATHS gracefully', () => {
+    const { deps } = fakeDeps();
+    // Should not throw, just warn
+    const config = generateBaseConfig(
+      { KILOCLAW_SECRET_CONFIG_PATHS: 'not-valid-json' },
+      '/root/.openclaw/openclaw.json',
+      deps
+    );
+    expect(config).toBeDefined();
+  });
+});
+
+describe('setNestedValue', () => {
+  it('sets a value at a simple path', () => {
+    const obj: Record<string, unknown> = {};
+    setNestedValue(obj, 'foo', 'bar');
+    expect(obj.foo).toBe('bar');
+  });
+
+  it('sets a value at a nested path, creating intermediates', () => {
+    const obj: Record<string, unknown> = {};
+    setNestedValue(obj, 'a.b.c', 'value');
+    expect((obj as any).a.b.c).toBe('value');
+  });
+
+  it('preserves existing sibling keys', () => {
+    const obj: Record<string, unknown> = { a: { existing: true } };
+    setNestedValue(obj, 'a.newKey', 'value');
+    expect((obj as any).a.existing).toBe(true);
+    expect((obj as any).a.newKey).toBe('value');
+  });
+
+  it('overwrites existing values', () => {
+    const obj: Record<string, unknown> = { a: { b: 'old' } };
+    setNestedValue(obj, 'a.b', 'new');
+    expect((obj as any).a.b).toBe('new');
+  });
+
+  it('refuses to patch __proto__ segments', () => {
+    const obj: Record<string, unknown> = {};
+    setNestedValue(obj, '__proto__.polluted', 'yes');
+    expect(({} as any).polluted).toBeUndefined();
+  });
+
+  it('refuses to patch constructor segments', () => {
+    const obj: Record<string, unknown> = {};
+    setNestedValue(obj, 'constructor.prototype.polluted', 'yes');
+    expect(({} as any).polluted).toBeUndefined();
+  });
+
+  it('refuses to patch prototype segments', () => {
+    const obj: Record<string, unknown> = {};
+    setNestedValue(obj, 'a.prototype.b', 'yes');
+    expect((obj as any).a).toBeUndefined();
+  });
+
+  it('skips when intermediate is a non-object primitive', () => {
+    const obj: Record<string, unknown> = { a: 'string-not-object' };
+    setNestedValue(obj, 'a.b.c', 'value');
+    expect(obj.a).toBe('string-not-object');
   });
 });
 

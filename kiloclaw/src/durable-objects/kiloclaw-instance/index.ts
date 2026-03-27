@@ -16,6 +16,7 @@ import type {
   EncryptedEnvelope,
   GoogleCredentials,
   MachineSize,
+  CustomSecretMeta,
 } from '../../schemas/instance-config';
 import { DEFAULT_INSTANCE_FEATURES } from '../../schemas/instance-config';
 import type { FlyVolume, FlyVolumeSnapshot } from '../../fly/types';
@@ -35,6 +36,7 @@ import {
   FIELD_KEY_TO_ENV_VAR,
   ENV_VAR_TO_FIELD_KEY,
   ALL_SECRET_FIELD_KEYS,
+  MAX_CUSTOM_SECRETS,
   type SecretFieldKey,
 } from '@kilocode/kiloclaw-secret-catalog';
 import { parseRegions, prepareRegions, resolveRegions } from '../regions';
@@ -547,35 +549,50 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
   }
 
   async updateSecrets(
-    patch: Partial<Record<SecretFieldKey, EncryptedEnvelope | null>>
+    patch: Record<string, EncryptedEnvelope | null>,
+    meta?: Record<string, CustomSecretMeta>
   ): Promise<{ configured: SecretFieldKey[] }> {
     await this.loadState();
 
+    // Separate catalog secrets (keyed by field key) from custom secrets
+    // (keyed directly by env var name).
     const currentSecrets: Record<string, EncryptedEnvelope | null> = {
       ...(this.s.channels ?? {}),
     };
-    const nonCatalogSecrets: Record<string, EncryptedEnvelope> = {};
+    const customSecrets: Record<string, EncryptedEnvelope> = {};
     if (this.s.encryptedSecrets) {
       for (const [key, value] of Object.entries(this.s.encryptedSecrets)) {
         const fieldKey = ENV_VAR_TO_FIELD_KEY.get(key);
         if (fieldKey) {
           currentSecrets[fieldKey] = value;
         } else {
-          nonCatalogSecrets[key] = value;
+          customSecrets[key] = value;
         }
       }
     }
 
+    // Apply the patch — catalog field keys go to currentSecrets, custom
+    // env var names go directly to customSecrets.
     for (const [key, value] of Object.entries(patch)) {
+      const isCatalogKey = ALL_SECRET_FIELD_KEYS.has(key);
       if (value === null) {
-        console.log('[DO] Secret removed', { fieldKey: key, operation: 'remove' });
-        delete currentSecrets[key];
+        console.log('[DO] Secret removed', { key, operation: 'remove' });
+        if (isCatalogKey) {
+          delete currentSecrets[key];
+        } else {
+          delete customSecrets[key];
+        }
       } else {
-        console.log('[DO] Secret updated', { fieldKey: key, operation: 'set' });
-        currentSecrets[key] = value;
+        console.log('[DO] Secret updated', { key, operation: 'set' });
+        if (isCatalogKey) {
+          currentSecrets[key] = value;
+        } else {
+          customSecrets[key] = value;
+        }
       }
     }
 
+    // Enforce allFieldsRequired for catalog entries (e.g., Slack needs both tokens)
     for (const entry of SECRET_CATALOG) {
       if (!entry.allFieldsRequired) continue;
       const fieldValues = entry.fields.map(f => currentSecrets[f.key]);
@@ -590,6 +607,17 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       }
     }
 
+    // Enforce custom secret count limit
+    const customCount = Object.keys(customSecrets).length;
+    if (customCount > MAX_CUSTOM_SECRETS) {
+      const err = new Error(
+        `Custom secret limit exceeded: ${customCount} secrets (max ${MAX_CUSTOM_SECRETS})`
+      );
+      (err as Error & { status: number }).status = 400;
+      throw err;
+    }
+
+    // Backward compat: write channel secrets to legacy channels field
     const channelKeys = new Set(
       SECRET_CATALOG.filter(e => e.category === 'channel').flatMap(e => e.fields.map(f => f.key))
     );
@@ -603,6 +631,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     const hasChannels = Object.keys(channelsSubset).length > 0;
     this.s.channels = hasChannels ? (channelsSubset as PersistedState['channels']) : null;
 
+    // Build cleaned catalog secrets (non-null only)
     const cleanedSecrets: Record<string, EncryptedEnvelope> = {};
     for (const [key, value] of Object.entries(currentSecrets)) {
       if (value) {
@@ -614,7 +643,8 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       ALL_SECRET_FIELD_KEYS.has(k)
     );
 
-    const remappedSecrets: Record<string, EncryptedEnvelope> = { ...nonCatalogSecrets };
+    // Merge catalog secrets (remapped to env var names) with custom secrets
+    const remappedSecrets: Record<string, EncryptedEnvelope> = { ...customSecrets };
     for (const [key, value] of Object.entries(cleanedSecrets)) {
       const envName = FIELD_KEY_TO_ENV_VAR.get(key) ?? key;
       remappedSecrets[envName] = value;
@@ -622,9 +652,41 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     const hasSecrets = Object.keys(remappedSecrets).length > 0;
     this.s.encryptedSecrets = hasSecrets ? remappedSecrets : null;
 
+    // Update custom secret metadata (config paths, etc.)
+    // Always clean up metadata for deleted secrets, even without a meta param.
+    const currentMeta = { ...(this.s.customSecretMeta ?? {}) };
+    for (const [key, value] of Object.entries(patch)) {
+      if (ALL_SECRET_FIELD_KEYS.has(key)) continue;
+      if (value === null) {
+        delete currentMeta[key];
+      }
+    }
+    // Set/update metadata for any keys provided in meta
+    if (meta) {
+      for (const [key, metaValue] of Object.entries(meta)) {
+        if (ALL_SECRET_FIELD_KEYS.has(key)) continue;
+        // Reject duplicate config paths — no two secrets may target the same path
+        if (metaValue.configPath) {
+          for (const [existingKey, existingMeta] of Object.entries(currentMeta)) {
+            if (existingKey !== key && existingMeta.configPath === metaValue.configPath) {
+              const err = new Error(
+                `Config path "${metaValue.configPath}" is already used by secret "${existingKey}"`
+              );
+              (err as Error & { status: number }).status = 400;
+              throw err;
+            }
+          }
+        }
+        currentMeta[key] = metaValue;
+      }
+    }
+    const hasMeta = Object.keys(currentMeta).length > 0;
+    this.s.customSecretMeta = hasMeta ? currentMeta : null;
+
     await this.ctx.storage.put({
       channels: this.s.channels,
       encryptedSecrets: this.s.encryptedSecrets,
+      customSecretMeta: this.s.customSecretMeta,
     });
 
     return { configured };
@@ -1406,6 +1468,7 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
       kilocodeDefaultModel: this.s.kilocodeDefaultModel ?? undefined,
       channels: this.s.channels ?? undefined,
       machineSize: this.s.machineSize ?? undefined,
+      customSecretMeta: this.s.customSecretMeta ?? undefined,
     };
   }
 

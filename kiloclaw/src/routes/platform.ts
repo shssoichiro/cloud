@@ -497,12 +497,12 @@ platform.patch('/secrets', async c => {
   const result = await parseBody(c, SecretsPatchSchema);
   if ('error' in result) return result.error;
 
-  const { userId, secrets } = result.data;
+  const { userId, secrets, meta } = result.data;
 
   try {
     const updated = await withDORetry(
       instanceStubFactory(c.env, userId),
-      stub => stub.updateSecrets(secrets),
+      stub => stub.updateSecrets(secrets, meta),
       'updateSecrets'
     );
     return c.json(updated, 200);

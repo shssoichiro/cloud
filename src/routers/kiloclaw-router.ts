@@ -10,10 +10,11 @@ import { encryptKiloClawSecret } from '@/lib/kiloclaw/encryption';
 import {
   ALL_SECRET_FIELD_KEYS,
   FIELD_KEY_TO_ENTRY,
-  MAX_SECRET_FIELD_LENGTH,
+  MAX_CUSTOM_SECRET_VALUE_LENGTH,
   validateFieldValue,
   getEntriesByCategory,
-  type SecretFieldKey,
+  isValidCustomSecretKey,
+  isValidConfigPath,
 } from '@kilocode/kiloclaw-secret-catalog';
 import {
   KILOCLAW_API_URL,
@@ -673,62 +674,90 @@ export const kiloclawRouter = createTRPCRouter({
     }),
 
   /**
-   * Generic secret patch — catalog-driven replacement for patchChannels.
-   * Validates keys against the secret catalog, enforces allFieldsRequired,
-   * validates values against catalog patterns, encrypts, and forwards to worker.
+   * Generic secret patch — supports both catalog secrets and custom user secrets.
+   *
+   * Catalog keys (in ALL_SECRET_FIELD_KEYS) are validated against catalog patterns.
+   * Custom keys (valid env var names not in catalog) skip pattern validation but
+   * enforce a generous max value length. All values are RSA-encrypted before
+   * forwarding to the worker.
    */
   patchSecrets: clawAccessProcedure
     .input(
       z.object({
         secrets: z
-          .record(z.string(), z.string().max(MAX_SECRET_FIELD_LENGTH).nullable())
-          .refine(obj => Object.keys(obj).every(k => ALL_SECRET_FIELD_KEYS.has(k)), {
-            message: 'Unknown secret field key',
-          }),
+          .record(z.string(), z.string().max(MAX_CUSTOM_SECRET_VALUE_LENGTH).nullable())
+          .refine(
+            obj =>
+              Object.keys(obj).every(
+                k => ALL_SECRET_FIELD_KEYS.has(k) || isValidCustomSecretKey(k)
+              ),
+            {
+              message:
+                'Invalid secret key: must be a catalog field key or valid env var name (A-Z, 0-9, _, no KILOCLAW_ prefix)',
+            }
+          ),
+        meta: z
+          .record(
+            z.string(),
+            z.object({
+              configPath: z
+                .string()
+                .refine(isValidConfigPath, {
+                  message:
+                    'Not a supported credential path. See https://docs.openclaw.ai/reference/secretref-credential-surface',
+                })
+                .optional(),
+            })
+          )
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const secrets = input.secrets as Partial<Record<SecretFieldKey, string | null>>;
+      const secrets = input.secrets;
 
       // 1. allFieldsRequired is enforced by the DO on post-merge state (not here),
       //    so single-field rotations work when the other field is already stored.
 
-      // 2. Validate non-null values against catalog patterns + enforce per-field maxLength
+      // 2. Validate non-null values: catalog keys get pattern + maxLength checks,
+      //    custom keys only get the blanket max from the zod schema above.
       for (const [key, value] of Object.entries(secrets)) {
         if (value === null) continue;
 
-        const entry = FIELD_KEY_TO_ENTRY.get(key);
-        const field = entry?.fields.find(f => f.key === key);
+        if (ALL_SECRET_FIELD_KEYS.has(key)) {
+          // Catalog key — validate against catalog patterns and per-field maxLength
+          const entry = FIELD_KEY_TO_ENTRY.get(key);
+          const field = entry?.fields.find(f => f.key === key);
 
-        // Enforce per-field maxLength from catalog (falls back to 500 from zod schema above)
-        if (field?.maxLength != null && value.length > field.maxLength) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `${field.label} exceeds maximum length of ${field.maxLength} characters`,
-          });
-        }
+          if (field?.maxLength != null && value.length > field.maxLength) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `${field.label} exceeds maximum length of ${field.maxLength} characters`,
+            });
+          }
 
-        if (!validateFieldValue(value, field?.validationPattern)) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: field?.validationMessage ?? `Invalid value for ${key}`,
-          });
+          if (!validateFieldValue(value, field?.validationPattern)) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: field?.validationMessage ?? `Invalid value for ${key}`,
+            });
+          }
         }
+        // Custom keys: no pattern validation — the blanket zod .max() is sufficient
       }
 
       // 3. Encrypt non-null values
-      const encryptedPatch: Partial<
-        Record<SecretFieldKey, ReturnType<typeof encryptKiloClawSecret> | null>
-      > = {};
+      const encryptedPatch: Record<string, ReturnType<typeof encryptKiloClawSecret> | null> = {};
       for (const [key, value] of Object.entries(secrets)) {
-        encryptedPatch[key as SecretFieldKey] =
-          value === null ? null : encryptKiloClawSecret(value);
+        encryptedPatch[key] = value === null ? null : encryptKiloClawSecret(value);
       }
 
       // 4. Forward to worker — translate 4xx responses into TRPCErrors
       const client = new KiloClawInternalClient();
       try {
-        return await client.patchSecrets(ctx.user.id, { secrets: encryptedPatch });
+        return await client.patchSecrets(ctx.user.id, {
+          secrets: encryptedPatch,
+          meta: input.meta,
+        });
       } catch (err) {
         if (err instanceof KiloClawApiError && err.statusCode >= 400 && err.statusCode < 500) {
           // Extract message from worker response body (JSON or plain text)

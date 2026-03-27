@@ -56,6 +56,7 @@ import { PairingSection } from './PairingSection';
 import { VersionPinCard } from './VersionPinCard';
 import { WorkspaceFileEditor } from './WorkspaceFileEditor';
 import { PermissionPresetCards } from './PermissionPresetCards';
+import { CustomSecretsSection } from './CustomSecretsSection';
 import { type ExecPreset, configToExecPreset, execPresetToConfig } from './claw.types';
 
 type ClawMutations = ReturnType<typeof useKiloClawMutations>;
@@ -973,6 +974,14 @@ export function SettingsTab({
           />
         </div>
       </div>
+
+      {/* ── Additional Secrets ── */}
+      <CustomSecretsSection
+        customSecretKeys={config?.customSecretKeys ?? []}
+        customSecretMeta={config?.customSecretMeta ?? {}}
+        mutations={mutations}
+        onRedeploy={onRedeploy}
+      />
 
       {/* ── Danger Zone ── */}
       <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-5">
