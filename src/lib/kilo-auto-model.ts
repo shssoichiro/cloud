@@ -101,7 +101,11 @@ const FRONTIER_MODE_TO_MODEL: Record<string, ResolvedAutoModel> = {
     verbosity: 'medium',
   },
   code: FRONTIER_CODE_MODEL,
-  KiloClaw: { model: CLAUDE_OPUS_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'high' },
+  KiloClaw: {
+    model: CLAUDE_OPUS_CURRENT_MODEL_ID,
+    reasoning: { enabled: true },
+    verbosity: 'high',
+  },
 };
 
 const BALANCED_CODE_MODEL: ResolvedAutoModel = {
