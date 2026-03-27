@@ -237,7 +237,7 @@ export async function resolveAutoModel(
       model: (await balancePromise) > 0 ? GPT_5_NANO_ID : gpt_oss_20b_free_model.public_id,
     };
   }
-  const mode = modeHeader?.trim().toLowerCase() ?? '';
+  const mode = modeHeader?.trim() ?? '';
   if (mappedModel === KILO_AUTO_BALANCED_MODEL.id) {
     if (hasImages) {
       return BALANCED_IMAGE_MODEL;
