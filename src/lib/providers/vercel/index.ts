@@ -142,7 +142,9 @@ export function getVercelInferenceProviderConfigForUserByok(
   const list = new Array<VercelInferenceProviderConfig>();
 
   if (key === VercelUserByokInferenceProviderIdSchema.enum.zai) {
-    // Z.AI Coding Plan support
+    // Z.ai Coding Plan support
+    // ideally we remove this and have people use the explicit Z.ai Coding Plan option,
+    // but that's a breaking change
     list.push({
       apiKey: provider.decryptedAPIKey,
       baseURL: 'https://api.z.ai/api/coding/paas/v4',
