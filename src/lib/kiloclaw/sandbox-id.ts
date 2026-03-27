@@ -27,31 +27,7 @@ export function sandboxIdFromUserId(userId: string): string {
 }
 
 // ─── Instance-scoped identity ───────────────────────────────────────
+// Canonical implementation lives in @kilocode/worker-utils; re-exported here
+// so existing imports within the Next.js app continue to work.
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-/**
- * Validate that a string is a lowercase UUID with dashes.
- * Must stay in sync with kiloclaw/src/auth/sandbox-id.ts.
- */
-export function isValidInstanceId(id: string): boolean {
-  return UUID_RE.test(id);
-}
-
-/**
- * Derive a sandboxId from an instanceId (the DB row UUID).
- * Must stay in sync with kiloclaw/src/auth/sandbox-id.ts.
- */
-export function sandboxIdFromInstanceId(instanceId: string): string {
-  if (!isValidInstanceId(instanceId)) {
-    throw new Error('Invalid instanceId: must be a UUID');
-  }
-  const hex = instanceId.replace(/-/g, '');
-  const prefixed = `ki_${hex}`;
-  if (prefixed.length > MAX_SANDBOX_ID_LENGTH) {
-    throw new Error(
-      `instanceId too long: prefixed sandboxId would be ${prefixed.length} chars (max ${MAX_SANDBOX_ID_LENGTH})`
-    );
-  }
-  return prefixed;
-}
+export { isValidInstanceId, sandboxIdFromInstanceId } from '@kilocode/worker-utils';
