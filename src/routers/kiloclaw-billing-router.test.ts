@@ -1949,14 +1949,18 @@ describe('enrollWithCredits', () => {
     expect(deduction!.amount_microdollars).toBe(-9_000_000);
     expect(deduction!.credit_category).toContain('kiloclaw-subscription:');
 
-    // Verify balance decreased
+    // Verify credit spend recorded (microdollars_used incremented, acquired unchanged)
     const [updatedUser] = await db
-      .select({ acquired: kilocode_users.total_microdollars_acquired })
+      .select({
+        acquired: kilocode_users.total_microdollars_acquired,
+        used: kilocode_users.microdollars_used,
+      })
       .from(kilocode_users)
       .where(eq(kilocode_users.id, user.id))
       .limit(1);
 
-    expect(updatedUser.acquired).toBe(50_000_000 - 9_000_000);
+    expect(updatedUser.acquired).toBe(50_000_000);
+    expect(updatedUser.used).toBe(9_000_000);
   });
 
   it('enrolls with credits for commit plan when balance sufficient', async () => {
