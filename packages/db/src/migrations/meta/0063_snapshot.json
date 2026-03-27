@@ -1,6 +1,6 @@
 {
-  "id": "ad781a75-1f6c-4361-beac-cfc417c207f1",
-  "prevId": "e683a509-91d6-437e-b89a-ea9ba5c08dcb",
+  "id": "7d8f7da7-2071-4499-8b74-47b23916df7e",
+  "prevId": "ad781a75-1f6c-4361-beac-cfc417c207f1",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7704,6 +7704,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "name": {
           "name": "name",
           "type": "text",
@@ -7760,6 +7766,19 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "kiloclaw_instances_organization_id_organizations_id_fk": {
+          "name": "kiloclaw_instances_organization_id_organizations_id_fk",
+          "tableFrom": "kiloclaw_instances",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
