@@ -3609,4 +3609,16 @@ export const bot_requests = pgTable(
 );
 
 export type BotRequest = typeof bot_requests.$inferSelect;
+
+export const app_min_versions = pgTable('app_min_versions', {
+  id: uuid()
+    .default(sql`pg_catalog.gen_random_uuid()`)
+    .primaryKey()
+    .notNull(),
+  ios_min_version: text().notNull().default('1.0.0'),
+  android_min_version: text().notNull().default('1.0.0'),
+  updated_at: timestamp({ withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});
+
+export type AppMinVersions = typeof app_min_versions.$inferSelect;
 export type NewBotRequest = typeof bot_requests.$inferInsert;
