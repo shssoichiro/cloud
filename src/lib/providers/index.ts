@@ -48,7 +48,7 @@ async function checkCodingPlanBYOK(
   const userByok = organizationId
     ? await getBYOKforOrganization(db, organizationId, [codingPlan.id])
     : await getBYOKforUser(db, user.id, [codingPlan.id]);
-  if (!userByok) {
+  if (!userByok || userByok.length === 0) {
     return null;
   }
   return {
