@@ -136,7 +136,10 @@ function parseInstanceIdQuery(
   const result = InstanceIdParam.safeParse(raw);
   if (!result.success) {
     return {
-      error: c.json({ error: 'Invalid instance ID' }, 400) as unknown as Response,
+      error: new Response(JSON.stringify({ error: 'Invalid instance ID' }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
     };
   }
   return { instanceId: result.data };
