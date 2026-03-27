@@ -87,6 +87,11 @@ declare const KiloClawSubscriptionStatus: {
     readonly Unpaid: "unpaid";
 };
 type KiloClawSubscriptionStatus = (typeof KiloClawSubscriptionStatus)[keyof typeof KiloClawSubscriptionStatus];
+declare const KiloClawPaymentSource: {
+    readonly Stripe: "stripe";
+    readonly Credits: "credits";
+};
+type KiloClawPaymentSource = (typeof KiloClawPaymentSource)[keyof typeof KiloClawPaymentSource];
 type OrganizationRole = 'owner' | 'member' | 'billing_manager';
 declare const OrganizationPlanSchema: z.ZodEnum<{
     enterprise: "enterprise";
@@ -5770,6 +5775,9 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
             initiateFromKilocodeSessionStream: _trpc_server.TRPCSubscriptionProcedure<{
                 input: {
                     organizationId: string;
+                    cloudAgentSessionId: string;
+                } | {
+                    organizationId: string;
                     kiloSessionId: string;
                     githubRepo: string;
                     prompt: string;
@@ -5778,9 +5786,6 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                     envVars?: Record<string, string> | undefined;
                     setupCommands?: string[] | undefined;
                     autoCommit?: boolean | undefined;
-                } | {
-                    organizationId: string;
-                    cloudAgentSessionId: string;
                 };
                 output: AsyncIterable<StreamEvent, void, any>;
                 meta: object;
@@ -6010,6 +6015,9 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
             initiateFromKilocodeSessionV2: _trpc_server.TRPCMutationProcedure<{
                 input: {
                     organizationId: string;
+                    cloudAgentSessionId: string;
+                } | {
+                    organizationId: string;
                     kiloSessionId: string;
                     githubRepo: string;
                     prompt: string;
@@ -6018,9 +6026,6 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                     envVars?: Record<string, string> | undefined;
                     setupCommands?: string[] | undefined;
                     autoCommit?: boolean | undefined;
-                } | {
-                    organizationId: string;
-                    cloudAgentSessionId: string;
                 };
                 output: {
                     cloudAgentSessionId: string;
@@ -7494,6 +7499,13 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                     amount_mUsd: number;
                     is_free: boolean;
                 }[];
+                deductions: {
+                    id: string;
+                    date: string;
+                    description: string;
+                    credit_category: string | null;
+                    amount_mUsd: number;
+                }[];
                 totalBalance_mUsd: number;
                 isFirstPurchase: boolean;
             };
@@ -7652,6 +7664,12 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                     balance_mUsd: number;
                     amount_mUsd: number;
                     is_free: boolean;
+                }[];
+                deductions: {
+                    id: string;
+                    date: string;
+                    description: string;
+                    amount_mUsd: number;
                 }[];
                 totalBalance_mUsd: number;
                 isFirstPurchase: boolean;
@@ -8149,14 +8167,19 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                 };
                 output: {
                     subscription: {
+                        auto_top_up_triggered_for_period: string | null;
                         cancel_at_period_end: boolean;
                         commit_ends_at: string | null;
                         created_at: string;
+                        credit_renewal_at: string | null;
                         current_period_end: string | null;
                         current_period_start: string | null;
                         destruction_deadline: string | null;
                         id: string;
+                        instance_id: string | null;
                         past_due_since: string | null;
+                        payment_source: KiloClawPaymentSource | null;
+                        pending_conversion: boolean;
                         plan: KiloClawPlan;
                         scheduled_by: KiloClawScheduledBy | null;
                         scheduled_plan: KiloClawScheduledPlan | null;
@@ -10042,6 +10065,17 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                 output: RestartMachineResponse;
                 meta: object;
             }>;
+            destroyFlyMachine: _trpc_server.TRPCMutationProcedure<{
+                input: {
+                    userId: string;
+                    appName: string;
+                    machineId: string;
+                };
+                output: {
+                    ok: true;
+                };
+                meta: object;
+            }>;
             destroy: _trpc_server.TRPCMutationProcedure<{
                 input: {
                     id: string;
@@ -10058,7 +10092,7 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                     limit?: number | undefined;
                 };
                 output: {
-                    action: "kiloclaw.config.restore" | "kiloclaw.doctor.run" | "kiloclaw.gateway.restart" | "kiloclaw.gateway.start" | "kiloclaw.gateway.stop" | "kiloclaw.instance.destroy" | "kiloclaw.machine.start" | "kiloclaw.machine.stop" | "kiloclaw.snapshot.restore" | "kiloclaw.subscription.reset_trial" | "kiloclaw.subscription.update_trial_end" | "kiloclaw.volume.reassociate";
+                    action: "kiloclaw.config.restore" | "kiloclaw.doctor.run" | "kiloclaw.gateway.restart" | "kiloclaw.gateway.start" | "kiloclaw.gateway.stop" | "kiloclaw.instance.destroy" | "kiloclaw.machine.destroy_fly" | "kiloclaw.machine.start" | "kiloclaw.machine.stop" | "kiloclaw.snapshot.restore" | "kiloclaw.subscription.reset_trial" | "kiloclaw.subscription.update_trial_end" | "kiloclaw.volume.reassociate";
                     actor_email: string | null;
                     actor_id: string | null;
                     actor_name: string | null;
@@ -10593,24 +10627,24 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
             getTemplates: _trpc_server.TRPCQueryProcedure<{
                 input: void;
                 output: {
-                    name: "autoTopUpFailed" | "balanceAlert" | "clawDestructionWarning" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceDestroyed" | "clawInstanceReady" | "clawSuspendedPayment" | "clawSuspendedSubscription" | "clawSuspendedTrial" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "deployFailed" | "magicLink" | "orgCancelled" | "orgInvitation" | "orgRenewed" | "orgSSOUserJoined" | "orgSubscription" | "ossExistingOrgProvisioned" | "ossInviteExistingUser" | "ossInviteNewUser";
-                    subject: "Action Required: KiloClaw Payment Overdue" | "Kilo: Auto Top-Up Failed" | "Kilo: Low Balance Alert" | "Kilo: New SSO User Joined Your Organization" | "Kilo: OSS Sponsorship Offer" | "Kilo: Teams Invitation" | "Kilo: Your Deployment Failed" | "Kilo: Your Teams Subscription Renewal" | "Kilo: Your Teams Subscription is Cancelled" | "Sign in to Kilo Code" | "Welcome to Kilo for Teams!" | "Your KiloClaw Earlybird Access Ends Soon" | "Your KiloClaw Earlybird Access Expires Tomorrow" | "Your KiloClaw Instance Has Been Deleted" | "Your KiloClaw Instance Is Ready" | "Your KiloClaw Instance Will Be Deleted in 2 Days" | "Your KiloClaw Subscription Has Ended" | "Your KiloClaw Trial Ends in 2 Days" | "Your KiloClaw Trial Expires Tomorrow" | "Your KiloClaw Trial Has Ended";
+                    name: "autoTopUpFailed" | "balanceAlert" | "clawCreditRenewalFailed" | "clawDestructionWarning" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceDestroyed" | "clawInstanceReady" | "clawSuspendedPayment" | "clawSuspendedSubscription" | "clawSuspendedTrial" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "deployFailed" | "magicLink" | "orgCancelled" | "orgInvitation" | "orgRenewed" | "orgSSOUserJoined" | "orgSubscription" | "ossExistingOrgProvisioned" | "ossInviteExistingUser" | "ossInviteNewUser";
+                    subject: "Action Required: KiloClaw Hosting Renewal Failed" | "Action Required: KiloClaw Payment Overdue" | "Kilo: Auto Top-Up Failed" | "Kilo: Low Balance Alert" | "Kilo: New SSO User Joined Your Organization" | "Kilo: OSS Sponsorship Offer" | "Kilo: Teams Invitation" | "Kilo: Your Deployment Failed" | "Kilo: Your Teams Subscription Renewal" | "Kilo: Your Teams Subscription is Cancelled" | "Sign in to Kilo Code" | "Welcome to Kilo for Teams!" | "Your KiloClaw Earlybird Access Ends Soon" | "Your KiloClaw Earlybird Access Expires Tomorrow" | "Your KiloClaw Instance Has Been Deleted" | "Your KiloClaw Instance Is Ready" | "Your KiloClaw Instance Will Be Deleted in 2 Days" | "Your KiloClaw Subscription Has Ended" | "Your KiloClaw Trial Ends in 2 Days" | "Your KiloClaw Trial Expires Tomorrow" | "Your KiloClaw Trial Has Ended";
                 }[];
                 meta: object;
             }>;
             getPreview: _trpc_server.TRPCQueryProcedure<{
                 input: {
-                    template: "autoTopUpFailed" | "balanceAlert" | "clawDestructionWarning" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceDestroyed" | "clawInstanceReady" | "clawSuspendedPayment" | "clawSuspendedSubscription" | "clawSuspendedTrial" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "deployFailed" | "magicLink" | "orgCancelled" | "orgInvitation" | "orgRenewed" | "orgSSOUserJoined" | "orgSubscription" | "ossExistingOrgProvisioned" | "ossInviteExistingUser" | "ossInviteNewUser";
+                    template: "autoTopUpFailed" | "balanceAlert" | "clawCreditRenewalFailed" | "clawDestructionWarning" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceDestroyed" | "clawInstanceReady" | "clawSuspendedPayment" | "clawSuspendedSubscription" | "clawSuspendedTrial" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "deployFailed" | "magicLink" | "orgCancelled" | "orgInvitation" | "orgRenewed" | "orgSSOUserJoined" | "orgSubscription" | "ossExistingOrgProvisioned" | "ossInviteExistingUser" | "ossInviteNewUser";
                 };
                 output: {
-                    subject: "Action Required: KiloClaw Payment Overdue" | "Kilo: Auto Top-Up Failed" | "Kilo: Low Balance Alert" | "Kilo: New SSO User Joined Your Organization" | "Kilo: OSS Sponsorship Offer" | "Kilo: Teams Invitation" | "Kilo: Your Deployment Failed" | "Kilo: Your Teams Subscription Renewal" | "Kilo: Your Teams Subscription is Cancelled" | "Sign in to Kilo Code" | "Welcome to Kilo for Teams!" | "Your KiloClaw Earlybird Access Ends Soon" | "Your KiloClaw Earlybird Access Expires Tomorrow" | "Your KiloClaw Instance Has Been Deleted" | "Your KiloClaw Instance Is Ready" | "Your KiloClaw Instance Will Be Deleted in 2 Days" | "Your KiloClaw Subscription Has Ended" | "Your KiloClaw Trial Ends in 2 Days" | "Your KiloClaw Trial Expires Tomorrow" | "Your KiloClaw Trial Has Ended";
+                    subject: "Action Required: KiloClaw Hosting Renewal Failed" | "Action Required: KiloClaw Payment Overdue" | "Kilo: Auto Top-Up Failed" | "Kilo: Low Balance Alert" | "Kilo: New SSO User Joined Your Organization" | "Kilo: OSS Sponsorship Offer" | "Kilo: Teams Invitation" | "Kilo: Your Deployment Failed" | "Kilo: Your Teams Subscription Renewal" | "Kilo: Your Teams Subscription is Cancelled" | "Sign in to Kilo Code" | "Welcome to Kilo for Teams!" | "Your KiloClaw Earlybird Access Ends Soon" | "Your KiloClaw Earlybird Access Expires Tomorrow" | "Your KiloClaw Instance Has Been Deleted" | "Your KiloClaw Instance Is Ready" | "Your KiloClaw Instance Will Be Deleted in 2 Days" | "Your KiloClaw Subscription Has Ended" | "Your KiloClaw Trial Ends in 2 Days" | "Your KiloClaw Trial Expires Tomorrow" | "Your KiloClaw Trial Has Ended";
                     html: string;
                 };
                 meta: object;
             }>;
             sendTest: _trpc_server.TRPCMutationProcedure<{
                 input: {
-                    template: "autoTopUpFailed" | "balanceAlert" | "clawDestructionWarning" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceDestroyed" | "clawInstanceReady" | "clawSuspendedPayment" | "clawSuspendedSubscription" | "clawSuspendedTrial" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "deployFailed" | "magicLink" | "orgCancelled" | "orgInvitation" | "orgRenewed" | "orgSSOUserJoined" | "orgSubscription" | "ossExistingOrgProvisioned" | "ossInviteExistingUser" | "ossInviteNewUser";
+                    template: "autoTopUpFailed" | "balanceAlert" | "clawCreditRenewalFailed" | "clawDestructionWarning" | "clawEarlybirdEndingSoon" | "clawEarlybirdExpiresTomorrow" | "clawInstanceDestroyed" | "clawInstanceReady" | "clawSuspendedPayment" | "clawSuspendedSubscription" | "clawSuspendedTrial" | "clawTrialEndingSoon" | "clawTrialExpiresTomorrow" | "deployFailed" | "magicLink" | "orgCancelled" | "orgInvitation" | "orgRenewed" | "orgSSOUserJoined" | "orgSubscription" | "ossExistingOrgProvisioned" | "ossInviteExistingUser" | "ossInviteNewUser";
                     recipient: string;
                 };
                 output: {
@@ -14933,6 +14967,7 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                     isFirstTimeSubscriberEver: boolean;
                     currentPeriodBaseCreditsUsd: number;
                     currentPeriodUsageUsd: number;
+                    currentPeriodHostingCostUsd: number;
                     currentPeriodBonusCreditsUsd: number | null;
                     isBonusUnlocked: boolean;
                     refillAt: string | null;
@@ -15897,6 +15932,8 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                 hasAccess: boolean;
                 accessReason: "earlybird" | "subscription" | "trial" | null;
                 trialEligible: false;
+                creditBalanceMicrodollars: number;
+                creditIntroEligible: boolean;
                 trial: {
                     startedAt: string;
                     endsAt: string;
@@ -15911,6 +15948,12 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
                     commitEndsAt: string | null;
                     scheduledPlan: KiloClawScheduledPlan | null;
                     scheduledBy: KiloClawScheduledBy | null;
+                    hasStripeFunding: boolean;
+                    paymentSource: KiloClawPaymentSource | null;
+                    creditRenewalAt: string | null;
+                    renewalCostMicrodollars: 9000000 | 48000000 | null;
+                    showConversionPrompt: boolean;
+                    pendingConversion: boolean;
                 } | null;
                 earlybird: {
                     purchased: boolean;
@@ -15936,7 +15979,35 @@ declare const rootRouter: _trpc_server.TRPCBuiltRouter<{
             };
             meta: object;
         }>;
+        enrollWithCredits: _trpc_server.TRPCMutationProcedure<{
+            input: {
+                plan: "commit" | "standard";
+                instanceId?: string | undefined;
+            };
+            output: {
+                success: boolean;
+            };
+            meta: object;
+        }>;
+        createKiloPassUpsellCheckout: _trpc_server.TRPCMutationProcedure<{
+            input: {
+                tier: "19" | "199" | "49";
+                cadence: "monthly" | "yearly";
+                hostingPlan: "commit" | "standard";
+            };
+            output: {
+                url: string | null;
+            };
+            meta: object;
+        }>;
         cancelSubscription: _trpc_server.TRPCMutationProcedure<{
+            input: void;
+            output: {
+                success: boolean;
+            };
+            meta: object;
+        }>;
+        acceptConversion: _trpc_server.TRPCMutationProcedure<{
             input: void;
             output: {
                 success: boolean;
