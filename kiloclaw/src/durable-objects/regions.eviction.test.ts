@@ -117,7 +117,7 @@ describe('evictCapacityRegionFromKV', () => {
   });
 
   it('emits analytics event when KILOCLAW_AE binding is present', async () => {
-    const writeDataPoint = vi.fn<[AnalyticsEngineDataPoint], void>();
+    const writeDataPoint = vi.fn<(event: AnalyticsEngineDataPoint) => void>();
     const env = {
       KILOCLAW_AE: { writeDataPoint } as unknown as AnalyticsEngineDataset,
     };
@@ -147,7 +147,7 @@ describe('evictCapacityRegionFromKV', () => {
   });
 
   it('emits "reverted_to_meta" label in analytics when last named region evicted', async () => {
-    const writeDataPoint = vi.fn<[AnalyticsEngineDataPoint], void>();
+    const writeDataPoint = vi.fn<(event: AnalyticsEngineDataPoint) => void>();
     const env = {
       KILOCLAW_AE: { writeDataPoint } as unknown as AnalyticsEngineDataset,
     };
@@ -187,7 +187,7 @@ describe('evictCapacityRegionFromKV', () => {
   });
 
   it('does not emit analytics when KV put fails', async () => {
-    const writeDataPoint = vi.fn<[AnalyticsEngineDataPoint], void>();
+    const writeDataPoint = vi.fn<(event: AnalyticsEngineDataPoint) => void>();
     const env = {
       KILOCLAW_AE: { writeDataPoint } as unknown as AnalyticsEngineDataset,
     };
