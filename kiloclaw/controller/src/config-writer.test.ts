@@ -793,7 +793,7 @@ describe('writeMcporterConfig', () => {
     expect(written).toHaveLength(1);
     const config = JSON.parse(written[0].data);
     expect(config.mcpServers.linear).toEqual({
-      baseUrl: 'https://mcp.linear.app/mcp',
+      url: 'https://mcp.linear.app/mcp',
       headers: { Authorization: 'Bearer ${LINEAR_API_KEY}' },
     });
   });
@@ -802,7 +802,7 @@ describe('writeMcporterConfig', () => {
     const existing = JSON.stringify({
       mcpServers: {
         linear: {
-          baseUrl: 'https://mcp.linear.app/mcp',
+          url: 'https://mcp.linear.app/mcp',
           headers: { Authorization: 'Bearer ${LINEAR_API_KEY}' },
         },
       },
