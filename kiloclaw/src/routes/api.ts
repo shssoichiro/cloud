@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { isValidImageTag } from '../lib/image-tag-validation';
-import { isValidInstanceId } from '../auth/sandbox-id';
-import { GoogleCredentialsSchema } from '../schemas/instance-config';
+import { GoogleCredentialsSchema, InstanceIdParam } from '../schemas/instance-config';
 import { instrumented } from '../middleware/analytics';
 
 /**
@@ -12,14 +11,16 @@ import { instrumented } from '../middleware/analytics';
 const api = new Hono<AppEnv>();
 
 /**
- * Parse and validate an optional instanceId query parameter.
+ * Parse and validate an optional instanceId query parameter via zod.
  * Returns the validated instanceId string, or a 400 Response on invalid format.
  */
 function parseInstanceId(c: {
   req: { query: (key: string) => string | undefined };
 }): { instanceId: string | undefined } | { error: Response } {
-  const instanceId = c.req.query('instanceId') || undefined;
-  if (instanceId && !isValidInstanceId(instanceId)) {
+  const raw = c.req.query('instanceId') || undefined;
+  if (!raw) return { instanceId: undefined };
+  const result = InstanceIdParam.safeParse(raw);
+  if (!result.success) {
     return {
       error: new Response(JSON.stringify({ error: 'Invalid instance ID' }), {
         status: 400,
@@ -27,7 +28,7 @@ function parseInstanceId(c: {
       }),
     };
   }
-  return { instanceId };
+  return { instanceId: result.data };
 }
 
 /**

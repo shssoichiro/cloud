@@ -90,6 +90,12 @@ export const SecretsPatchSchema = z.object({
   ),
 });
 
+/**
+ * Zod schema for validating instanceId at IO boundaries (query params, path params).
+ * instanceId = kiloclaw_instances.id UUID.
+ */
+export const InstanceIdParam = z.string().uuid();
+
 export const ProvisionRequestSchema = z.object({
   userId: z.string().min(1),
   /** Optional DB row UUID used as the DO key for multi-instance support. */

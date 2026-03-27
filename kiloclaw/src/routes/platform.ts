@@ -15,6 +15,7 @@ import {
   ChannelsPatchSchema,
   GoogleCredentialsSchema,
   SecretsPatchSchema,
+  InstanceIdParam,
 } from '../schemas/instance-config';
 import {
   ImageVersionEntrySchema,
@@ -124,6 +125,14 @@ function setValidatedQueryUserId(c: Context<AppEnv>): string | null {
 function instanceStubFactory(env: AppEnv['Bindings'], userId: string, instanceId?: string) {
   const doKey = instanceId ?? userId;
   return () => env.KILOCLAW_INSTANCE.get(env.KILOCLAW_INSTANCE.idFromName(doKey));
+}
+
+/** Parse optional ?instanceId= query param, returning undefined if absent or invalid. */
+function parseInstanceIdQuery(c: Context<AppEnv>): string | undefined {
+  const raw = c.req.query('instanceId');
+  if (!raw) return undefined;
+  const result = InstanceIdParam.safeParse(raw);
+  return result.success ? result.data : undefined;
 }
 
 function statusCodeFromError(err: unknown): number {
@@ -955,12 +964,12 @@ platform.post('/start', async c => {
   if ('error' in result) return result.error;
   const startedAt = performance.now();
 
-  const instanceId = c.req.query('instanceId');
+  const instanceId = parseInstanceIdQuery(c);
 
   try {
     const options = result.data.skipCooldown ? { skipCooldown: true } : undefined;
     const { started } = await withDORetry(
-      instanceStubFactory(c.env, result.data.userId, instanceId || undefined),
+      instanceStubFactory(c.env, result.data.userId, instanceId),
       stub => stub.start(result.data.userId, options),
       'start'
     );
@@ -1027,11 +1036,11 @@ platform.post('/stop', async c => {
   const result = await parseBody(c, UserIdRequestSchema);
   if ('error' in result) return result.error;
 
-  const instanceId = c.req.query('instanceId');
+  const instanceId = parseInstanceIdQuery(c);
 
   try {
     await withDORetry(
-      instanceStubFactory(c.env, result.data.userId, instanceId || undefined),
+      instanceStubFactory(c.env, result.data.userId, instanceId),
       stub => stub.stop(),
       'stop'
     );
@@ -1047,11 +1056,11 @@ platform.post('/destroy', async c => {
   const result = await parseBody(c, DestroyRequestSchema);
   if ('error' in result) return result.error;
 
-  const instanceId = c.req.query('instanceId');
+  const instanceId = parseInstanceIdQuery(c);
 
   try {
     await withDORetry(
-      instanceStubFactory(c.env, result.data.userId, instanceId || undefined),
+      instanceStubFactory(c.env, result.data.userId, instanceId),
       stub => stub.destroy(),
       'destroy'
     );
@@ -1068,11 +1077,11 @@ platform.get('/status', async c => {
   if (!userId) {
     return c.json({ error: 'userId query parameter is required' }, 400);
   }
-  const instanceId = c.req.query('instanceId');
+  const instanceId = parseInstanceIdQuery(c);
 
   try {
     const status = await withDORetry(
-      instanceStubFactory(c.env, userId, instanceId || undefined),
+      instanceStubFactory(c.env, userId, instanceId),
       stub => stub.getStatus(),
       'getStatus'
     );
@@ -1089,11 +1098,11 @@ platform.get('/stream-chat-credentials', async c => {
   if (!userId) {
     return c.json({ error: 'userId query parameter is required' }, 400);
   }
-  const instanceId = c.req.query('instanceId');
+  const instanceId = parseInstanceIdQuery(c);
 
   try {
     const creds = await withDORetry(
-      instanceStubFactory(c.env, userId, instanceId || undefined),
+      instanceStubFactory(c.env, userId, instanceId),
       stub => stub.getStreamChatCredentials(),
       'getStreamChatCredentials'
     );
@@ -1111,11 +1120,11 @@ platform.get('/debug-status', async c => {
   if (!userId) {
     return c.json({ error: 'userId query parameter is required' }, 400);
   }
-  const instanceId = c.req.query('instanceId');
+  const instanceId = parseInstanceIdQuery(c);
 
   try {
     const status = await withDORetry(
-      instanceStubFactory(c.env, userId, instanceId || undefined),
+      instanceStubFactory(c.env, userId, instanceId),
       stub => stub.getDebugState(),
       'getDebugState'
     );
@@ -1134,7 +1143,7 @@ platform.get('/gateway-token', async c => {
   if (!userId) {
     return c.json({ error: 'userId query parameter is required' }, 400);
   }
-  const instanceId = c.req.query('instanceId');
+  const instanceId = parseInstanceIdQuery(c);
 
   if (!c.env.GATEWAY_TOKEN_SECRET) {
     return c.json({ error: 'GATEWAY_TOKEN_SECRET is not configured' }, 503);
@@ -1142,7 +1151,7 @@ platform.get('/gateway-token', async c => {
 
   try {
     const status = await withDORetry(
-      instanceStubFactory(c.env, userId, instanceId || undefined),
+      instanceStubFactory(c.env, userId, instanceId),
       stub => stub.getStatus(),
       'getStatus'
     );

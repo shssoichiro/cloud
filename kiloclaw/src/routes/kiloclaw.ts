@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { SECRET_CATALOG, getFieldKeysByCategory } from '@kilocode/kiloclaw-secret-catalog';
 import { instrumented } from '../middleware/analytics';
-import { isValidInstanceId } from '../auth/sandbox-id';
+import { InstanceIdParam } from '../schemas/instance-config';
 
 /** Channel env var names — excluded from secretCount (channels have their own counts). */
 const CHANNEL_ENV_VARS = new Set(
@@ -25,10 +25,11 @@ const kiloclaw = new Hono<AppEnv>();
 kiloclaw.get('/config', c =>
   instrumented(c, 'GET /api/kiloclaw/config', async () => {
     const userId = c.get('userId');
-    const instanceId = c.req.query('instanceId');
-    if (instanceId && !isValidInstanceId(instanceId)) {
+    const raw = c.req.query('instanceId');
+    if (raw && !InstanceIdParam.safeParse(raw).success) {
       return c.json({ error: 'Invalid instance ID' }, 400);
     }
+    const instanceId = raw || undefined;
     const doKey = instanceId ?? userId;
     const stub = c.env.KILOCLAW_INSTANCE.get(c.env.KILOCLAW_INSTANCE.idFromName(doKey));
 
@@ -59,10 +60,11 @@ kiloclaw.get('/config', c =>
 kiloclaw.get('/status', c =>
   instrumented(c, 'GET /api/kiloclaw/status', async () => {
     const userId = c.get('userId');
-    const instanceId = c.req.query('instanceId');
-    if (instanceId && !isValidInstanceId(instanceId)) {
+    const raw = c.req.query('instanceId');
+    if (raw && !InstanceIdParam.safeParse(raw).success) {
       return c.json({ error: 'Invalid instance ID' }, 400);
     }
+    const instanceId = raw || undefined;
     const doKey = instanceId ?? userId;
     const stub = c.env.KILOCLAW_INSTANCE.get(c.env.KILOCLAW_INSTANCE.idFromName(doKey));
 

@@ -20,7 +20,8 @@ import { accessGatewayRoutes, publicRoutes, api, kiloclaw, platform, controller 
 import { handleSnapshotRestoreQueue } from './queue/snapshot-restore';
 import { redactSensitiveParams } from './utils/logging';
 import { authMiddleware, internalApiMiddleware } from './auth';
-import { sandboxIdFromUserId, isValidInstanceId } from './auth/sandbox-id';
+import { sandboxIdFromUserId } from './auth/sandbox-id';
+import { InstanceIdParam } from './schemas/instance-config';
 import { registerVersionIfNeeded } from './lib/image-version';
 import { startingUpPage } from './pages/starting-up';
 import { buildForwardHeaders } from './utils/proxy-headers';
@@ -182,10 +183,12 @@ app.all('/i/:instanceId/*', async c => {
     return c.json({ error: 'Authentication required' }, 401);
   }
 
-  const instanceId = c.req.param('instanceId');
-  if (!isValidInstanceId(instanceId)) {
+  const rawInstanceId = c.req.param('instanceId');
+  const parsed = InstanceIdParam.safeParse(rawInstanceId);
+  if (!parsed.success) {
     return c.json({ error: 'Invalid instance ID' }, 400);
   }
+  const instanceId = parsed.data;
 
   if (!c.env.GATEWAY_TOKEN_SECRET) {
     return c.json({ error: 'Configuration error' }, 503);
