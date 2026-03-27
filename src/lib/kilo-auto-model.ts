@@ -101,6 +101,7 @@ const FRONTIER_MODE_TO_MODEL: Record<string, ResolvedAutoModel> = {
     verbosity: 'medium',
   },
   code: FRONTIER_CODE_MODEL,
+  kiloclaw: { model: CLAUDE_OPUS_CURRENT_MODEL_ID, reasoning: { enabled: true }, verbosity: 'high' },
 };
 
 const BALANCED_CODE_MODEL: ResolvedAutoModel = {
@@ -122,6 +123,7 @@ const BALANCED_MODE_TO_MODEL: Record<string, ResolvedAutoModel> = {
   build: { model: MINIMAX_CURRENT_MODEL_ID },
   explore: { model: MINIMAX_CURRENT_MODEL_ID },
   code: BALANCED_CODE_MODEL,
+  kiloclaw: { model: KIMI_CURRENT_MODEL_ID, reasoning: { enabled: true } },
 };
 
 export const KILO_AUTO_FRONTIER_MODEL: AutoModel = {
@@ -257,7 +259,7 @@ export async function applyResolvedAutoModel(
   const hasImages = requestContainsImages(request);
   const resolved = await resolveAutoModel(
     model,
-    featureHeader === 'kiloclaw' ? 'plan' : modeHeader,
+    featureHeader === 'kiloclaw' ? 'kiloclaw' : modeHeader,
     balancePromise,
     hasImages
   );
