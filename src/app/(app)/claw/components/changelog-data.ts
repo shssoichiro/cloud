@@ -15,7 +15,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     description:
       'Added Linear integration. Connect your Linear API Key in Settings to give your agent access to all Linear features, via the Linear MCP server.',
     category: 'feature',
-    deployHint: 'redeploy_suggested',
+    deployHint: 'redeploy_required',
   },
   {
     date: '2026-03-27',
