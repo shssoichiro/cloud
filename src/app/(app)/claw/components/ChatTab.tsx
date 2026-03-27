@@ -78,20 +78,17 @@ function StreamChatUI({
 
   // Stable token provider that fetches a fresh short-lived token on every call.
   // stream-chat-react calls this when the current token expires (via `exp` claim).
-  const tokenProvider = useCallback(
-    async () => {
-      const creds = await queryClient.fetchQuery(
-        trpc.kiloclaw.getStreamChatCredentials.queryOptions(undefined, {
-          staleTime: 0,
-        })
-      );
-      if (!creds?.userToken) {
-        throw new Error('Failed to fetch Stream Chat credentials');
-      }
-      return creds.userToken;
-    },
-    [queryClient, trpc]
-  );
+  const tokenProvider = useCallback(async () => {
+    const creds = await queryClient.fetchQuery(
+      trpc.kiloclaw.getStreamChatCredentials.queryOptions(undefined, {
+        staleTime: 0,
+      })
+    );
+    if (!creds?.userToken) {
+      throw new Error('Failed to fetch Stream Chat credentials');
+    }
+    return creds.userToken;
+  }, [queryClient, trpc]);
 
   const client = useCreateChatClient({
     apiKey,

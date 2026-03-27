@@ -1162,10 +1162,11 @@ export class KiloClawInstance extends DurableObject<KiloClawEnv> {
     // Failure is non-fatal — worst case is the same as pre-deactivation behavior.
     if (this.env.STREAM_CHAT_API_KEY && this.env.STREAM_CHAT_API_SECRET && this.s.sandboxId) {
       try {
-        await deactivateStreamChatUsers(this.env.STREAM_CHAT_API_KEY, this.env.STREAM_CHAT_API_SECRET, [
-          this.s.sandboxId,
-          `bot-${this.s.sandboxId}`,
-        ]);
+        await deactivateStreamChatUsers(
+          this.env.STREAM_CHAT_API_KEY,
+          this.env.STREAM_CHAT_API_SECRET,
+          [this.s.sandboxId, `bot-${this.s.sandboxId}`]
+        );
       } catch (err) {
         doWarn(this.s, 'Stream Chat user deactivation failed (non-fatal)', {
           error: toLoggable(err),

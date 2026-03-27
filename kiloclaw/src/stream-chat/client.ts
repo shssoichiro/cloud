@@ -157,7 +157,9 @@ export async function deactivateStreamChatUsers(
     // 404 = user never existed, safe to ignore
     if (!res.ok && res.status !== 404) {
       const body = await res.text().catch(() => '(unreadable)');
-      errors.push(new Error(`Stream Chat deactivateUser failed for ${userId} (${res.status}): ${body}`));
+      errors.push(
+        new Error(`Stream Chat deactivateUser failed for ${userId} (${res.status}): ${body}`)
+      );
     }
   }
   if (errors.length === 1) throw errors[0];
@@ -195,9 +197,9 @@ export async function reactivateStreamChatUsers(
     // 404 = user never existed, safe to ignore
     if (!res.ok && res.status !== 404) {
       const body = await res.text().catch(() => '(unreadable)');
-      errors.push(new Error(
-        `Stream Chat reactivateUser failed for ${userId} (${res.status}): ${body}`
-      ));
+      errors.push(
+        new Error(`Stream Chat reactivateUser failed for ${userId} (${res.status}): ${body}`)
+      );
     }
   }
   if (errors.length === 1) throw errors[0];
