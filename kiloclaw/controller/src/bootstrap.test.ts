@@ -742,7 +742,7 @@ describe('updateToolsMdLinearSection', () => {
 
     expect(harness.writeCalls).toHaveLength(1);
     expect(harness.writeCalls[0]!.data).toContain('<!-- BEGIN:linear -->');
-    expect(harness.writeCalls[0]!.data).toContain('Linear MCP');
+    expect(harness.writeCalls[0]!.data).toContain('## Linear');
     expect(harness.writeCalls[0]!.data).toContain('<!-- END:linear -->');
   });
 
