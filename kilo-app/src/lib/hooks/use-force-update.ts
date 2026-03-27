@@ -13,11 +13,15 @@ function isVersionBelow(current: string, minimum: string): boolean {
   const currentParts = current.split('.').map(Number);
   const minimumParts = minimum.split('.').map(Number);
 
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 3; i += 1) {
     const cur = currentParts[i] ?? 0;
     const min = minimumParts[i] ?? 0;
-    if (cur < min) return true;
-    if (cur > min) return false;
+    if (cur < min) {
+      return true;
+    }
+    if (cur > min) {
+      return false;
+    }
   }
   return false;
 }
@@ -43,7 +47,7 @@ export function useForceUpdate() {
           return;
         }
 
-        const data: MinVersionResponse = await response.json();
+        const data = (await response.json()) as MinVersionResponse;
         const nativeVersion = Application.nativeApplicationVersion;
 
         if (!nativeVersion) {
