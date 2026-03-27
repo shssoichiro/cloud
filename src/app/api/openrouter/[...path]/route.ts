@@ -76,6 +76,7 @@ import { grokCodeFastOptimizedRequest } from '@/lib/custom-llm/customLlmRequest'
 import { normalizeModelId } from '@/lib/model-utils';
 import { isForbiddenFreeModel } from '@/lib/forbidden-free-models';
 import { isActiveReviewPromo } from '@/lib/code-reviews/core/constants';
+import { isCloudflareIP } from '@/lib/cloudflare-ip';
 import { applyResolvedAutoModel, isKiloAutoModel } from '@/lib/kilo-auto-model';
 import { fixOpenCodeDuplicateReasoning } from '@/lib/providers/fixOpenCodeDuplicateReasoning';
 import type { MicrodollarUsageContext, PromptInfo } from '@/lib/processUsage.types';
@@ -133,7 +134,7 @@ async function resolveRateLimit(
   | NextResponseType<unknown>
   | { result: { allowed: boolean; requestCount: number }; subject: string }
 > {
-  if (isUserRateLimitedFeature(feature)) {
+  if (isUserRateLimitedFeature(feature) && isCloudflareIP(ipAddress)) {
     const { user } = await authPromise;
     if (!user) {
       return NextResponse.json(
@@ -235,7 +236,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
 
   // For FREE models: check rate limit, log at start.
   // Server-side products (cloud-agent, code-review, app-builder) rate-limit
-  // per user because they share infrastructure IPs.
+  // per user when the request comes from Cloudflare IPs (Kilo infrastructure).
   // All other products rate-limit per IP (fast pre-auth path).
   if (isKiloFreeModel(originalModelIdLowerCased)) {
     const rateLimit = await resolveRateLimit(feature, ipAddress, authPromise);
