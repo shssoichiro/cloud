@@ -1604,13 +1604,10 @@ export const kiloclawRouter = createTRPCRouter({
         instance = row;
       } else {
         const active = await getActiveInstance(ctx.user.id);
-        if (!active) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'No active instance found. Provision an instance first.',
-          });
-        }
-        instance = active;
+        // If the user has no active instance (e.g. their trial expired and the
+        // instance was destroyed), create a new registry row so they can
+        // subscribe without being blocked by the "provision first" requirement.
+        instance = active ?? (await ensureActiveInstance(ctx.user.id));
       }
 
       // Intro pricing eligibility (spec Credit Enrollment rule 3).
@@ -1640,14 +1637,11 @@ export const kiloclawRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Missing Stripe customer for user.' });
       }
 
-      // Get the user's active instance first — needed for both the guard and callback URL
-      const instance = await getActiveInstance(ctx.user.id);
-      if (!instance) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'No active instance found. Provision an instance first.',
-        });
-      }
+      // Get the user's active instance — needed for both the guard and callback URL.
+      // If none exists (e.g. trial expired and instance was destroyed) create a new
+      // registry row so the user is not deadlocked out of subscribing.
+      const instance =
+        (await getActiveInstance(ctx.user.id)) ?? (await ensureActiveInstance(ctx.user.id));
 
       // Reject if this instance already has a non-ended KiloClaw subscription
       const [existing] = await db
