@@ -78,10 +78,11 @@ const UNSAFE_ERROR_CODES = new Set(['config_read_failed', 'config_replace_failed
  * Return the user's active instance, creating a new registry row if none
  * exists (e.g. trial expired and instance was destroyed).
  *
- * When a new row is created, any existing kiloclaw_subscriptions row for this
- * user is reassigned to the new instance_id so that user_id-based reads
- * (requireKiloClawAccess, getBillingStatus, cancelSubscription, …) keep
- * returning the canonical row instead of inserting a duplicate.
+ * When a new row is created, the subscription row that was linked to the
+ * now-destroyed instance is reassigned to the new instance_id. The update is
+ * scoped to that specific row (matched by its destroyed instance_id) so that
+ * unrelated subscription rows on other instances are not touched and the
+ * UQ_kiloclaw_subscriptions_instance constraint is not violated.
  *
  * This mirrors the reassignment already performed in ensureProvisionAccess
  * (lines 485–497) for the Stripe hosting-only checkout path.
@@ -90,14 +91,38 @@ async function getOrCreateInstanceForBilling(userId: string): Promise<ActiveKilo
   const active = await getActiveInstance(userId);
   if (active) return active;
 
+  // Find the subscription row whose instance was destroyed (the one we need to
+  // repair). We join to kiloclaw_instances to confirm destroyed_at is set so we
+  // never accidentally touch a row linked to a still-active instance on another
+  // flow.
+  const [staleSub] = await db
+    .select({ instance_id: kiloclaw_subscriptions.instance_id })
+    .from(kiloclaw_subscriptions)
+    .innerJoin(
+      kiloclaw_instances,
+      and(
+        eq(kiloclaw_instances.id, kiloclaw_subscriptions.instance_id),
+        isNotNull(kiloclaw_instances.destroyed_at)
+      )
+    )
+    .where(eq(kiloclaw_subscriptions.user_id, userId))
+    .limit(1);
+
   const newInstance = await ensureActiveInstance(userId);
 
-  // Reassign the existing subscription row (if any) to the new instance so
-  // duplicate-subscription guards and user_id-based reads all see one row.
-  await db
-    .update(kiloclaw_subscriptions)
-    .set({ instance_id: newInstance.id })
-    .where(eq(kiloclaw_subscriptions.user_id, userId));
+  // Reassign only the stale row so the unique-per-instance constraint is
+  // respected and subscriptions on other instances are not disturbed.
+  if (staleSub?.instance_id) {
+    await db
+      .update(kiloclaw_subscriptions)
+      .set({ instance_id: newInstance.id })
+      .where(
+        and(
+          eq(kiloclaw_subscriptions.user_id, userId),
+          eq(kiloclaw_subscriptions.instance_id, staleSub.instance_id)
+        )
+      );
+  }
 
   return newInstance;
 }
