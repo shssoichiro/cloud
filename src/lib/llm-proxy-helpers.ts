@@ -147,6 +147,18 @@ function estimateTokenCount(request: GatewayRequest) {
   return Math.round(JSON.stringify(request).length / 4 + (getMaxTokens(request) ?? 0));
 }
 
+function hasProviderRestrictions(request: GatewayRequest): boolean {
+  const provider = request.body.provider;
+  const providerOptions = request.body.providerOptions;
+  return !!(
+    provider?.ignore?.length ||
+    provider?.only?.length ||
+    provider?.data_collection === 'deny' ||
+    provider?.zdr ||
+    providerOptions?.gateway?.zeroDataRetention
+  );
+}
+
 export async function makeErrorReadable({
   requestedModel,
   request,
@@ -177,7 +189,12 @@ export async function makeErrorReadable({
     }
   }
 
-  if (response.status === 404) {
+  if (
+    (response.status === 404 ||
+      (response.status === 400 &&
+        requestedModel === 'kilo/auto-frontier')) /*discontinued variant of kilo-auto/frontier*/ &&
+    !hasProviderRestrictions(request)
+  ) {
     const recommendedModel = balance <= 0 ? KILO_AUTO_FREE_MODEL : KILO_AUTO_BALANCED_MODEL;
     const recommendation =
       feature === 'kiloclaw' || feature === 'openclaw'
