@@ -199,10 +199,24 @@ function sanitizeError(err: unknown, operation: string): { message: string; stat
 
   // Allow known-safe messages through
   if (SAFE_ERROR_PREFIXES.some(prefix => normalized.startsWith(prefix))) {
-    return { message: normalized, status };
+    return { message: normalized, status: correctLostStatus(normalized, status) };
   }
 
   return { message: `${operation} failed`, status };
+}
+
+/**
+ * DO lifecycle methods throw `Object.assign(new Error('Instance not provisioned'), { status: 404 })`
+ * but `.status` is lost crossing the DO RPC boundary, so `statusCodeFromError`
+ * defaults to 500. Correct it here for this specific message only.
+ *
+ * Note: `requireGatewayControllerContext()` in gateway.ts throws the same message
+ * with status 409 (conflict). We only correct when status === 500 (i.e. lost),
+ * so a preserved 409 passes through unchanged.
+ */
+function correctLostStatus(message: string, status: number): number {
+  if (status === 500 && message === 'Instance not provisioned') return 404;
+  return status;
 }
 
 const OPENCLAW_CONFIG_ERROR_CODES = new Set([
@@ -236,7 +250,11 @@ function sanitizeOpenclawConfigError(
   }
 
   if (SAFE_ERROR_PREFIXES.some(prefix => normalized.startsWith(prefix))) {
-    return { message: normalized, status, ...(code ? { code } : {}) };
+    return {
+      message: normalized,
+      status: correctLostStatus(normalized, status),
+      ...(code ? { code } : {}),
+    };
   }
 
   return { message: `${operation} failed`, status, ...(code ? { code } : {}) };
