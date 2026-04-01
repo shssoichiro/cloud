@@ -154,6 +154,21 @@ async function processKiloclawChatMessage(
 
   const internalApiSecret = await env.INTERNAL_API_SECRET.get();
 
+  // Mark as inprogress immediately before the fetch to prevent duplicate delivery on retry.
+  // This is placed after all preparatory work (template rendering, secret fetch) so that
+  // failures in those steps leave the status as 'captured' and allow normal retries.
+  // On retry after this point, the outer guard in processWebhookMessage sees
+  // processStatus === 'inprogress' without a cloudAgentSessionId and acks the message.
+  await withDORetry(
+    () => stub,
+    doStub =>
+      doStub.updateRequest(webhook.requestId, {
+        process_status: 'inprogress',
+        started_at: new Date().toISOString(),
+      }),
+    'updateRequest'
+  );
+
   const response = await fetch(`${env.KILOCLAW_API_URL}/api/platform/send-chat-message`, {
     method: 'POST',
     headers: {
