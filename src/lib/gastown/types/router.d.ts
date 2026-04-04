@@ -44,6 +44,16 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
       };
       meta: object;
     }>;
+    getDrainStatus: import('@trpc/server').TRPCQueryProcedure<{
+      input: {
+        townId: string;
+      };
+      output: {
+        draining: boolean;
+        drainStartedAt: string | null;
+      };
+      meta: object;
+    }>;
     /**
      * Check whether the current user is an admin viewing a town they don't own.
      * Used by the frontend to show an admin banner.
@@ -56,16 +66,6 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
         isAdminViewing: boolean;
         ownerUserId: string | null;
         ownerOrgId: string | null;
-      };
-      meta: object;
-    }>;
-    getDrainStatus: import('@trpc/server').TRPCQueryProcedure<{
-      input: {
-        townId: string;
-      };
-      output: {
-        draining: boolean;
-        drainStartedAt: string | null;
       };
       meta: object;
     }>;
@@ -485,6 +485,9 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
               gates: string[];
               auto_merge: boolean;
               require_clean_merge: boolean;
+              code_review: boolean;
+              auto_resolve_pr_feedback: boolean;
+              auto_merge_delay_minutes: number | null;
             }
           | undefined;
         alarm_interval_active?: number | undefined;
@@ -537,6 +540,9 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
                 gates?: string[] | undefined;
                 auto_merge?: boolean | undefined;
                 require_clean_merge?: boolean | undefined;
+                code_review?: boolean | undefined;
+                auto_resolve_pr_feedback?: boolean | undefined;
+                auto_merge_delay_minutes?: number | null | undefined;
               }
             | undefined;
           alarm_interval_active?: number | undefined;
@@ -583,6 +589,9 @@ export declare const gastownRouter: import('@trpc/server').TRPCBuiltRouter<
               gates: string[];
               auto_merge: boolean;
               require_clean_merge: boolean;
+              code_review: boolean;
+              auto_resolve_pr_feedback: boolean;
+              auto_merge_delay_minutes: number | null;
             }
           | undefined;
         alarm_interval_active?: number | undefined;
@@ -1340,6 +1349,16 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
           };
           meta: object;
         }>;
+        getDrainStatus: import('@trpc/server').TRPCQueryProcedure<{
+          input: {
+            townId: string;
+          };
+          output: {
+            draining: boolean;
+            drainStartedAt: string | null;
+          };
+          meta: object;
+        }>;
         /**
          * Check whether the current user is an admin viewing a town they don't own.
          * Used by the frontend to show an admin banner.
@@ -1352,16 +1371,6 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
             isAdminViewing: boolean;
             ownerUserId: string | null;
             ownerOrgId: string | null;
-          };
-          meta: object;
-        }>;
-        getDrainStatus: import('@trpc/server').TRPCQueryProcedure<{
-          input: {
-            townId: string;
-          };
-          output: {
-            draining: boolean;
-            drainStartedAt: string | null;
           };
           meta: object;
         }>;
@@ -1781,6 +1790,9 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
                   gates: string[];
                   auto_merge: boolean;
                   require_clean_merge: boolean;
+                  code_review: boolean;
+                  auto_resolve_pr_feedback: boolean;
+                  auto_merge_delay_minutes: number | null;
                 }
               | undefined;
             alarm_interval_active?: number | undefined;
@@ -1833,6 +1845,9 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
                     gates?: string[] | undefined;
                     auto_merge?: boolean | undefined;
                     require_clean_merge?: boolean | undefined;
+                    code_review?: boolean | undefined;
+                    auto_resolve_pr_feedback?: boolean | undefined;
+                    auto_merge_delay_minutes?: number | null | undefined;
                   }
                 | undefined;
               alarm_interval_active?: number | undefined;
@@ -1879,6 +1894,9 @@ export declare const wrappedGastownRouter: import('@trpc/server').TRPCBuiltRoute
                   gates: string[];
                   auto_merge: boolean;
                   require_clean_merge: boolean;
+                  code_review: boolean;
+                  auto_resolve_pr_feedback: boolean;
+                  auto_merge_delay_minutes: number | null;
                 }
               | undefined;
             alarm_interval_active?: number | undefined;

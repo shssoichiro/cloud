@@ -82,6 +82,15 @@ export async function updateTownConfig(
             auto_merge: update.refinery.auto_merge ?? current.refinery?.auto_merge ?? true,
             require_clean_merge:
               update.refinery.require_clean_merge ?? current.refinery?.require_clean_merge ?? true,
+            code_review: update.refinery.code_review ?? current.refinery?.code_review ?? true,
+            auto_resolve_pr_feedback:
+              update.refinery.auto_resolve_pr_feedback ??
+              current.refinery?.auto_resolve_pr_feedback ??
+              false,
+            auto_merge_delay_minutes:
+              update.refinery.auto_merge_delay_minutes !== undefined
+                ? update.refinery.auto_merge_delay_minutes
+                : (current.refinery?.auto_merge_delay_minutes ?? null),
           }
         : current.refinery,
     container:
@@ -150,5 +159,6 @@ export async function buildContainerConfig(
     disable_ai_coauthor: config.disable_ai_coauthor,
     kilo_api_url: env.KILO_API_URL ?? '',
     gastown_api_url: env.GASTOWN_API_URL ?? '',
+    organization_id: config.organization_id,
   };
 }

@@ -71,7 +71,9 @@ const REVIEW_JOIN = /* sql */ `
   SELECT ${beads}.*,
          ${review_metadata.branch}, ${review_metadata.target_branch},
          ${review_metadata.merge_commit}, ${review_metadata.pr_url},
-         ${review_metadata.retry_count}
+         ${review_metadata.retry_count},
+         ${review_metadata.auto_merge_ready_since},
+         ${review_metadata.last_feedback_check_at}
   FROM ${beads}
   INNER JOIN ${review_metadata} ON ${beads.bead_id} = ${review_metadata.bead_id}
 `;
@@ -571,6 +573,17 @@ export function agentDone(sql: SqlStorage, agentId: string, input: AgentDoneInpu
   if (hookedBead?.labels.includes('gt:rework')) {
     console.log(
       `[review-queue] agentDone: rework bead ${agent.current_hook_bead_id} — closing directly (skip review)`
+    );
+    closeBead(sql, agent.current_hook_bead_id, agentId);
+    unhookBead(sql, agentId);
+    return;
+  }
+
+  // PR-fixup beads skip the review queue. The polecat pushed fixup commits
+  // to an existing PR branch — no separate review is needed.
+  if (hookedBead?.labels.includes('gt:pr-fixup')) {
+    console.log(
+      `[review-queue] agentDone: pr-fixup bead ${agent.current_hook_bead_id} — closing directly (skip review)`
     );
     closeBead(sql, agent.current_hook_bead_id, agentId);
     unhookBead(sql, agentId);

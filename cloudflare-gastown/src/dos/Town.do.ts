@@ -31,7 +31,8 @@ import * as scheduling from './town/scheduling';
 import * as events from './town/events';
 import * as reconciler from './town/reconciler';
 import { applyAction } from './town/actions';
-import type { Action, ApplyActionContext } from './town/actions';
+import type { Action, ApplyActionContext, PRFeedbackCheckResult } from './town/actions';
+import { buildPolecatSystemPrompt } from '../prompts/polecat-system.prompt';
 import { buildRefinerySystemPrompt } from '../prompts/refinery-system.prompt';
 import { GitHubPRStatusSchema, GitLabMRStatusSchema } from '../util/platform-pr.util';
 
@@ -278,11 +279,17 @@ export class TownDO extends DurableObject<Env> {
         const bead = beadOps.getBead(this.sql, beadId);
         if (!agent || !bead) return false;
 
-        // Build refinery-specific system prompt with branch/target info
         let systemPromptOverride: string | undefined;
+        const townConfig = await this.getTownConfig();
+
+        // Build refinery-specific system prompt with branch/target info.
+        // When the MR bead already has a pr_url (polecat created the PR),
+        // the refinery reviews the existing PR and adds GitHub comments
+        // instead of creating a new PR.
         if (agent.role === 'refinery' && bead.type === 'merge_request') {
           const reviewMeta = reviewQueue.getReviewMetadata(this.sql, beadId);
-          const townConfig = await this.getTownConfig();
+          const existingPrUrl =
+            typeof reviewMeta?.pr_url === 'string' ? reviewMeta.pr_url : undefined;
           systemPromptOverride = buildRefinerySystemPrompt({
             identity: agent.identity,
             rigId,
@@ -295,7 +302,31 @@ export class TownDO extends DurableObject<Env> {
                 ? bead.metadata.source_agent_id
                 : 'unknown',
             mergeStrategy: townConfig.merge_strategy ?? 'direct',
+            existingPrUrl,
           });
+        }
+
+        // When merge_strategy is 'pr', polecats create the PR themselves.
+        // Exception: review-then-land convoy intermediate beads merge directly
+        // into the convoy feature branch (the refinery handles that).
+        if (agent.role === 'polecat' && townConfig.merge_strategy === 'pr') {
+          const convoyId = beadOps.getConvoyForBead(this.sql, beadId);
+          const convoyMergeMode = convoyId ? beadOps.getConvoyMergeMode(this.sql, convoyId) : null;
+          const isReviewThenLandIntermediate =
+            convoyMergeMode === 'review-then-land' && convoyId !== beadId;
+
+          if (!isReviewThenLandIntermediate) {
+            const rig = rigs.getRig(this.sql, rigId);
+            systemPromptOverride = buildPolecatSystemPrompt({
+              agentName: agent.name,
+              rigId,
+              townId: this.townId,
+              identity: agent.identity,
+              gates: townConfig.refinery?.gates ?? [],
+              mergeStrategy: 'pr',
+              targetBranch: rig?.default_branch ?? 'main',
+            });
+          }
         }
 
         return scheduling.dispatchAgent(schedulingCtx, agent, bead, {
@@ -308,6 +339,17 @@ export class TownDO extends DurableObject<Env> {
       checkPRStatus: async prUrl => {
         const townConfig = await this.getTownConfig();
         return this.checkPRStatus(prUrl, townConfig);
+      },
+      checkPRFeedback: async prUrl => {
+        const townConfig = await this.getTownConfig();
+        return this.checkPRFeedback(prUrl, townConfig);
+      },
+      mergePR: async prUrl => {
+        const townConfig = await this.getTownConfig();
+        return this.mergePR(prUrl, townConfig);
+      },
+      getTownConfig: async () => {
+        return this.getTownConfig();
       },
       queueNudge: async (agentId, message, _tier) => {
         await this.queueNudge(agentId, message, {
@@ -1709,6 +1751,7 @@ export class TownDO extends DurableObject<Env> {
       body: input.feedback,
       priority: sourceBead?.priority ?? 'medium',
       rig_id: mrBead.rig_id ?? undefined,
+      parent_bead_id: mrBead.bead_id,
       labels: ['gt:rework'],
       metadata: {
         rework_for: sourceBeadId,
@@ -2074,6 +2117,7 @@ export class TownDO extends DurableObject<Env> {
     body?: string;
     priority?: string;
     metadata?: Record<string, unknown>;
+    labels?: string[];
   }): Promise<{ bead: Bead; agent: Agent }> {
     const createdBead = beadOps.createBead(this.sql, {
       type: 'issue',
@@ -2082,6 +2126,7 @@ export class TownDO extends DurableObject<Env> {
       priority: BeadPriority.catch('medium').parse(input.priority ?? 'medium'),
       rig_id: input.rigId,
       metadata: input.metadata,
+      labels: input.labels,
     });
 
     events.insertEvent(this.sql, 'bead_created', {
@@ -2380,6 +2425,11 @@ export class TownDO extends DurableObject<Env> {
       // before restarting the SDK server (tokens, git identity, etc.).
       const containerConfig = await config.buildContainerConfig(this.ctx.storage, this.env);
 
+      // Resolve townConfig to thread the organization_id into the request body
+      // (belt-and-suspenders: ensures org billing survives even if X-Town-Config
+      // header parsing fails on the container side).
+      const townConfig = await config.getTownConfig(this.ctx.storage);
+
       const updated = await dispatch.updateAgentModelInContainer(
         this.env,
         townId,
@@ -2387,7 +2437,8 @@ export class TownDO extends DurableObject<Env> {
         model,
         smallModel,
         conversationHistory || undefined,
-        containerConfig
+        containerConfig,
+        townConfig.organization_id
       );
       if (updated) {
         console.log(
@@ -3317,12 +3368,11 @@ export class TownDO extends DurableObject<Env> {
         });
       }
 
-      // Refresh the container-scoped JWT before any work that might
-      // trigger API calls. Throttled to once per hour (tokens have 8h
-      // expiry, so hourly refresh provides ample safety margin).
-      // Gated on hasRigs (not hasActiveWork) because the container may
-      // still be running with an idle mayor accepting user messages,
-      // even when there are no active beads or agents.
+      // Refresh the container-scoped JWT. Throttled to once per hour (tokens
+      // have 8h expiry). Skips when no active work AND no alive mayor — the
+      // container is sleeping and the token will be refreshed at dispatch time.
+      // Keeps refreshing for waiting mayors since sendMayorMessage reuses the
+      // container without calling ensureContainerToken.
       try {
         await this.refreshContainerToken();
       } catch (err) {
@@ -3459,7 +3509,11 @@ export class TownDO extends DurableObject<Env> {
     // Phase 1: Reconcile — compute desired state vs actual state
     const sideEffects: Array<() => Promise<void>> = [];
     try {
-      const actions = reconciler.reconcile(this.sql, { draining: this._draining });
+      const townConfig = await this.getTownConfig();
+      const actions = reconciler.reconcile(this.sql, {
+        draining: this._draining,
+        refineryCodeReview: townConfig.refinery?.code_review ?? true,
+      });
       metrics.actionsEmitted = actions.length;
       for (const a of actions) {
         metrics.actionsByType[a.type] = (metrics.actionsByType[a.type] ?? 0) + 1;
@@ -3647,6 +3701,19 @@ export class TownDO extends DurableObject<Env> {
    * requests that reset the container's sleepAfter timer (#1409).
    */
   private async refreshContainerToken(): Promise<void> {
+    // Skip if no active work AND no alive mayor — the container is sleeping
+    // and doesn't need a fresh token. The token will be refreshed when work
+    // is next dispatched (ensureContainerToken is called in
+    // startAgentInContainer at container-dispatch.ts:329).
+    // However, a waiting mayor IS alive in the container and needs a valid
+    // token for GT tool calls when the user sends the next message
+    // (sendMayorMessage → sendMessageToAgent does NOT call ensureContainerToken).
+    const mayor = agents.listAgents(this.sql, { role: 'mayor' })[0] ?? null;
+    const mayorAlive =
+      mayor &&
+      (mayor.status === 'working' || mayor.status === 'stalled' || mayor.status === 'waiting');
+    if (!this.hasActiveWork() && !mayorAlive) return;
+
     const TOKEN_REFRESH_INTERVAL_MS = 60 * 60_000; // 1 hour
     const now = Date.now();
     const lastRefresh = (await this.ctx.storage.get<number>('container:lastTokenRefreshAt')) ?? 0;
@@ -3935,6 +4002,28 @@ export class TownDO extends DurableObject<Env> {
   }
 
   /**
+   * Resolve a GitHub API token from the town config.
+   * Fallback chain: github_token → github_cli_pat → platform integration (GitHub App).
+   */
+  private async resolveGitHubToken(townConfig: TownConfig): Promise<string | null> {
+    let token = townConfig.git_auth?.github_token ?? townConfig.github_cli_pat;
+    if (!token) {
+      const integrationId = townConfig.git_auth?.platform_integration_id;
+      if (integrationId && this.env.GIT_TOKEN_SERVICE) {
+        try {
+          token = await this.env.GIT_TOKEN_SERVICE.getToken(integrationId);
+        } catch (err) {
+          console.warn(
+            `${TOWN_LOG} resolveGitHubToken: platform integration token lookup failed for ${integrationId}`,
+            err
+          );
+        }
+      }
+    }
+    return token ?? null;
+  }
+
+  /**
    * Check the status of a PR/MR via its URL.
    * Returns 'open', 'merged', or 'closed' (null if cannot determine).
    */
@@ -3946,9 +4035,9 @@ export class TownDO extends DurableObject<Env> {
     const ghMatch = prUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
     if (ghMatch) {
       const [, owner, repo, numberStr] = ghMatch;
-      const token = townConfig.git_auth.github_token;
+      const token = await this.resolveGitHubToken(townConfig);
       if (!token) {
-        console.warn(`${TOWN_LOG} checkPRStatus: no github_token configured, cannot poll ${prUrl}`);
+        console.warn(`${TOWN_LOG} checkPRStatus: no GitHub token available, cannot poll ${prUrl}`);
         return null;
       }
 
@@ -4028,6 +4117,230 @@ export class TownDO extends DurableObject<Env> {
 
     console.warn(`${TOWN_LOG} checkPRStatus: unrecognized PR URL format: ${prUrl}`);
     return null;
+  }
+
+  /**
+   * Check a PR for unresolved review comments and failing CI checks.
+   * Used by the auto-resolve PR feedback feature.
+   */
+  private async checkPRFeedback(
+    prUrl: string,
+    townConfig: TownConfig
+  ): Promise<PRFeedbackCheckResult | null> {
+    const ghMatch = prUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+    if (!ghMatch) {
+      // GitLab feedback detection not yet supported
+      return null;
+    }
+
+    const [, owner, repo, numberStr] = ghMatch;
+    const token = await this.resolveGitHubToken(townConfig);
+    if (!token) return null;
+
+    const headers = {
+      Authorization: `token ${token}`,
+      Accept: 'application/vnd.github.v3+json',
+      'User-Agent': 'Gastown-Refinery/1.0',
+    };
+
+    // Check for unresolved review threads via GraphQL.
+    // Fetches the first 100 threads; if there are more (hasNextPage),
+    // conservatively treat the PR as having unresolved comments to avoid
+    // auto-merging with un-checked reviewer feedback.
+    let hasUnresolvedComments = false;
+    try {
+      const graphqlRes = await fetch('https://api.github.com/graphql', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `query($owner: String!, $repo: String!, $number: Int!) {
+            repository(owner: $owner, name: $repo) {
+              pullRequest(number: $number) {
+                reviewThreads(first: 100) {
+                  pageInfo { hasNextPage }
+                  nodes { isResolved }
+                }
+              }
+            }
+          }`,
+          variables: { owner, repo, number: parseInt(numberStr, 10) },
+        }),
+      });
+      if (graphqlRes.ok) {
+        const gqlRaw: unknown = await graphqlRes.json();
+        const gql = z
+          .object({
+            data: z
+              .object({
+                repository: z
+                  .object({
+                    pullRequest: z
+                      .object({
+                        reviewThreads: z
+                          .object({
+                            pageInfo: z.object({ hasNextPage: z.boolean() }).optional(),
+                            nodes: z.array(z.object({ isResolved: z.boolean() })),
+                          })
+                          .optional(),
+                      })
+                      .optional(),
+                  })
+                  .optional(),
+              })
+              .optional(),
+          })
+          .safeParse(gqlRaw);
+        const reviewThreads = gql.success
+          ? gql.data.data?.repository?.pullRequest?.reviewThreads
+          : undefined;
+        const threads = reviewThreads?.nodes ?? [];
+        const hasMorePages = reviewThreads?.pageInfo?.hasNextPage === true;
+        hasUnresolvedComments = threads.some(t => !t.isResolved) || hasMorePages;
+      }
+    } catch (err) {
+      console.warn(`${TOWN_LOG} checkPRFeedback: GraphQL failed for ${prUrl}`, err);
+    }
+
+    // Check CI status via check-runs API.
+    // Uses per_page=100 (GitHub max) and compares total_count to detect
+    // unpaginated runs — if there are more runs than returned, conservatively
+    // marks allChecksPass as false to prevent premature auto-merge.
+    let hasFailingChecks = false;
+    let allChecksPass = false;
+    let hasUncheckedRuns = false;
+    try {
+      // Get the PR's head SHA
+      const prRes = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/pulls/${numberStr}`,
+        { headers }
+      );
+      if (prRes.ok) {
+        const prRaw: unknown = await prRes.json();
+        const prData = z
+          .object({ head: z.object({ sha: z.string() }).optional() })
+          .safeParse(prRaw);
+        const sha = prData.success ? prData.data.head?.sha : undefined;
+        if (sha) {
+          const checksRes = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`,
+            { headers }
+          );
+          if (checksRes.ok) {
+            const checksRaw: unknown = await checksRes.json();
+            const checksData = z
+              .object({
+                total_count: z.number().optional(),
+                check_runs: z
+                  .array(
+                    z.object({
+                      status: z.string(),
+                      conclusion: z.string().nullable(),
+                    })
+                  )
+                  .optional(),
+              })
+              .safeParse(checksRaw);
+            const runs = checksData.success ? (checksData.data.check_runs ?? []) : [];
+            const totalCount = checksData.success
+              ? (checksData.data.total_count ?? runs.length)
+              : runs.length;
+            const hasMorePages = totalCount > runs.length;
+            hasUncheckedRuns = hasMorePages;
+
+            hasFailingChecks = runs.some(
+              r =>
+                r.status === 'completed' && r.conclusion !== 'success' && r.conclusion !== 'skipped'
+            );
+            // All checks pass when:
+            // - No check-runs exist (repo has no CI — nothing to fail), OR
+            // - All returned runs completed successfully and no unpaginated runs exist
+            allChecksPass =
+              runs.length === 0 ||
+              (!hasMorePages &&
+                runs.every(
+                  r =>
+                    r.status === 'completed' &&
+                    (r.conclusion === 'success' || r.conclusion === 'skipped')
+                ));
+          }
+
+          // Also check combined commit statuses (legacy status API).
+          // Some repos gate merges with commit statuses that don't appear
+          // in check-runs. If any status is pending/failure/error, block.
+          if (allChecksPass) {
+            const statusRes = await fetch(
+              `https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`,
+              { headers }
+            );
+            if (statusRes.ok) {
+              const statusRaw: unknown = await statusRes.json();
+              const statusData = z
+                .object({
+                  state: z.string(),
+                  total_count: z.number(),
+                })
+                .safeParse(statusRaw);
+              if (statusData.success && statusData.data.total_count > 0) {
+                const combinedState = statusData.data.state;
+                if (combinedState !== 'success') {
+                  allChecksPass = false;
+                  if (combinedState === 'failure' || combinedState === 'error') {
+                    hasFailingChecks = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`${TOWN_LOG} checkPRFeedback: check-runs failed for ${prUrl}`, err);
+    }
+
+    return { hasUnresolvedComments, hasFailingChecks, allChecksPass, hasUncheckedRuns };
+  }
+
+  /**
+   * Merge a PR via GitHub API. Used by the auto-merge feature.
+   * Returns true if the merge succeeded.
+   */
+  private async mergePR(prUrl: string, townConfig: TownConfig): Promise<boolean> {
+    const ghMatch = prUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+    if (!ghMatch) {
+      console.warn(`${TOWN_LOG} mergePR: unsupported PR URL format: ${prUrl}`);
+      return false;
+    }
+
+    const [, owner, repo, numberStr] = ghMatch;
+    const token = await this.resolveGitHubToken(townConfig);
+    if (!token) {
+      console.warn(`${TOWN_LOG} mergePR: no GitHub token available`);
+      return false;
+    }
+
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/pulls/${numberStr}/merge`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Gastown-Refinery/1.0',
+        },
+        body: JSON.stringify({ merge_method: 'merge' }),
+      }
+    );
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '(unreadable)');
+      console.warn(
+        `${TOWN_LOG} mergePR: GitHub API returned ${response.status} for ${prUrl}: ${text.slice(0, 500)}`
+      );
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -4435,7 +4748,10 @@ export class TownDO extends DurableObject<Env> {
       }
 
       // Run reconciler against the resulting state
-      const actions = reconciler.reconcile(this.sql);
+      const tc = await this.getTownConfig();
+      const actions = reconciler.reconcile(this.sql, {
+        refineryCodeReview: tc.refinery?.code_review ?? true,
+      });
 
       // Capture a state snapshot before rollback
       const agentSnapshot = [
@@ -4514,7 +4830,10 @@ export class TownDO extends DurableObject<Env> {
       }
 
       // Phase 1: Reconcile against now-current state
-      const actions = reconciler.reconcile(this.sql);
+      const tc2 = await this.getTownConfig();
+      const actions = reconciler.reconcile(this.sql, {
+        refineryCodeReview: tc2.refinery?.code_review ?? true,
+      });
       const pendingEventCount = events.pendingEventCount(this.sql);
       const actionsByType: Record<string, number> = {};
       for (const a of actions) {
@@ -4582,6 +4901,29 @@ export class TownDO extends DurableObject<Env> {
         []
       ),
     ];
+  }
+
+  async debugGetBead(beadId: string): Promise<unknown> {
+    const bead = beadOps.getBead(this.sql, beadId);
+    if (!bead) return { error: 'bead not found' };
+
+    const reviewMeta = reviewQueue.getReviewMetadata(this.sql, beadId);
+    const deps = [
+      ...query(
+        this.sql,
+        /* sql */ `
+          SELECT ${bead_dependencies.bead_id},
+                 ${bead_dependencies.depends_on_bead_id},
+                 ${bead_dependencies.dependency_type}
+          FROM ${bead_dependencies}
+          WHERE ${bead_dependencies.bead_id} = ?
+             OR ${bead_dependencies.depends_on_bead_id} = ?
+        `,
+        [beadId, beadId]
+      ),
+    ];
+
+    return { bead, reviewMetadata: reviewMeta ?? null, dependencies: deps };
   }
 
   async debugAgentMetadata(): Promise<unknown[]> {
