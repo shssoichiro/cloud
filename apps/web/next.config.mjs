@@ -20,14 +20,20 @@ function validateGitLfs() {
 
 validateGitLfs();
 
+const monorepoRoot = resolve(import.meta.dirname, '../..');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
 
-  // In a monorepo, Turbopack can't resolve `next/package.json` from apps/web/src/app
-  // because dependencies are hoisted to the workspace root.
+  // Both values MUST be set to the monorepo root and kept in sync.
+  // `vercel build` sets NEXT_PRIVATE_OUTPUT_TRACE_ROOT to the project dir (apps/web)
+  // as the default outputFileTracingRoot; if only turbopack.root is set, the two
+  // values diverge and Next.js overrides turbopack.root with the wrong value,
+  // causing "can't find next/package.json" errors.
+  outputFileTracingRoot: monorepoRoot,
   turbopack: {
-    root: resolve(import.meta.dirname, '../..'),
+    root: monorepoRoot,
   },
 
   devIndicators: { position: 'bottom-right' },
