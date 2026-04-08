@@ -143,6 +143,19 @@ function displayPlan(plan: EnvSyncPlan): void {
     hasOutput = true;
   }
 
+  // @exec annotation failures (always shown, even if existing value is preserved)
+  if (plan.execWarnings.length > 0) {
+    if (hasOutput) console.log();
+    for (const warning of plan.execWarnings) {
+      const cmd = [warning.command, ...warning.args].join(' ');
+      console.log(
+        `${YELLOW}⚠ ${warning.workerDir}${RESET}: ${RED}${warning.key}${RESET} — \`${cmd}\` failed`
+      );
+      console.log(`    Run the command manually to diagnose.`);
+    }
+    hasOutput = true;
+  }
+
   if (!hasOutput) {
     console.log(`${GREEN}✓ All env vars are up to date${RESET}`);
     return;

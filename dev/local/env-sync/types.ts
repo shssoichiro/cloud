@@ -46,6 +46,12 @@ type SecretStoreAutoCreate = {
   value: string;
 };
 
+type ExecWarning = {
+  workerDir: string;
+  key: string;
+  command: string;
+  args: string[];
+};
 type EnvSyncPlan = {
   lanIp: string | undefined;
   devVarsChanges: DevVarsFileChange[];
@@ -53,6 +59,7 @@ type EnvSyncPlan = {
   secretStoreWarnings: SecretStoreWarning[];
   secretStoreAutoCreates: SecretStoreAutoCreate[];
   consistencyWarnings: ConsistencyWarning[];
+  execWarnings: ExecWarning[];
   missingEnvLocal: boolean;
 };
 
@@ -64,7 +71,8 @@ type Annotation =
   | { type: 'passthrough' }
   | { type: 'from'; envLocalKey: string }
   | { type: 'url'; services: { name: string; path?: string }[] }
-  | { type: 'pkcs8' };
+  | { type: 'pkcs8' }
+  | { type: 'exec'; command: string; args: string[] };
 
 type ExampleEntry = {
   key: string;
@@ -97,6 +105,7 @@ export type {
   SecretStoreWarning,
   SecretStoreAutoCreate,
   ConsistencyWarning,
+  ExecWarning,
   EnvSyncPlan,
   Annotation,
   ExampleEntry,
