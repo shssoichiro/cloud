@@ -3,16 +3,15 @@
  */
 
 import {
-  isKiloAutoModel,
   KILO_AUTO_BALANCED_MODEL,
   KILO_AUTO_FREE_MODEL,
   KILO_AUTO_FRONTIER_MODEL,
-  resolveAutoModel,
-} from '@/lib/kilo-auto-model';
+} from '@/lib/kilo-auto';
 import {
   CLAUDE_OPUS_CURRENT_MODEL_ID,
+  claude_sonnet_clawsetup_model,
   CLAUDE_SONNET_CURRENT_MODEL_ID,
-} from '@/lib/providers/anthropic';
+} from '@/lib/providers/anthropic.constants';
 import { trinity_large_thinking_free_model } from '@/lib/providers/arcee';
 import { seed_20_pro_free_model } from '@/lib/providers/bytedance';
 import { corethink_free_model } from '@/lib/providers/corethink';
@@ -45,18 +44,6 @@ export const preferredModels = [
   'z-ai/glm-5.1',
 ].filter(m => m !== null);
 
-export async function getMonitoredModels() {
-  const set = new Set<string>();
-  for (const model of preferredModels) {
-    if (isKiloAutoModel(model)) {
-      set.add((await resolveAutoModel(model, null, Promise.resolve(0), false)).model);
-    } else {
-      set.add(model);
-    }
-  }
-  return [...set];
-}
-
 export function isFreeModel(model: string): boolean {
   return (
     isKiloExclusiveFreeModel(model) ||
@@ -87,6 +74,7 @@ export const kiloExclusiveModels = [
   seed_20_pro_free_model,
   qwen36_plus_model,
   trinity_large_thinking_free_model,
+  claude_sonnet_clawsetup_model,
 ] as KiloExclusiveModel[];
 
 export function isKiloStealthModel(model: string): boolean {
