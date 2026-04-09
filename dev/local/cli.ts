@@ -171,7 +171,7 @@ async function cmdUp(targets: string[], repoRoot: string): Promise<void> {
       oldMtimes.set('tunnel', readEnvMtime(tunnelEnvPath));
     }
     if (captureServices.includes('kiloclaw-stripe')) {
-      const stripeEnvPath = path.join(repoRoot, '.env.development.local');
+      const stripeEnvPath = path.join(repoRoot, 'apps/web/.env.development.local');
       oldValues.set('stripe', readEnvValue(stripeEnvPath, 'STRIPE_WEBHOOK_SECRET'));
       oldMtimes.set('stripe', readEnvMtime(stripeEnvPath));
     }
@@ -214,7 +214,7 @@ async function cmdUp(targets: string[], repoRoot: string): Promise<void> {
     if (captureServices.includes('kiloclaw-stripe')) {
       waits.push(
         waitForEnvValueChange(
-          path.join(repoRoot, '.env.development.local'),
+          path.join(repoRoot, 'apps/web/.env.development.local'),
           'STRIPE_WEBHOOK_SECRET',
           oldValues.get('stripe'),
           CAPTURE_TIMEOUT_MS,
