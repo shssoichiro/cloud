@@ -137,6 +137,22 @@ describe('generateBaseConfig', () => {
     expect(config.tools.profile).toBe('full');
   });
 
+  it('preserves existing web search provider on non-fresh boot', () => {
+    const existing = JSON.stringify({
+      tools: {
+        web: {
+          search: {
+            provider: 'brave',
+          },
+        },
+      },
+    });
+    const { deps } = fakeDeps(existing);
+    const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
+
+    expect(config.tools.web.search.provider).toBe('brave');
+  });
+
   it('defaults tool profile to full when not previously set', () => {
     const { deps } = fakeDeps();
     const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
@@ -939,6 +955,17 @@ describe('writeBaseConfig', () => {
 
     const config = JSON.parse(written[0].data);
     expect(config.tools.profile).toBe('full');
+  });
+
+  it('does not steer web search provider on config restore path', () => {
+    const { deps, written } = fakeDeps();
+    const env = minimalEnv();
+    delete env.KILOCLAW_FRESH_INSTALL;
+
+    writeBaseConfig(env, '/tmp/openclaw.json', deps);
+
+    const config = JSON.parse(written[0].data);
+    expect(config.tools?.web?.search?.provider).toBeUndefined();
   });
 
   it('throws if KILOCODE_API_KEY is missing', () => {
