@@ -51,6 +51,7 @@ import { DetailTile } from './DetailTile';
 
 import { getEntriesByCategory } from '@kilocode/kiloclaw-secret-catalog';
 import { SecretEntrySection } from './SecretEntrySection';
+import { ExaSearchEntrySection } from './ExaSearchEntrySection';
 import { AnimatedDots } from './AnimatedDots';
 import { ConfirmActionDialog } from './ConfirmActionDialog';
 import { PairingSection } from './PairingSection';
@@ -61,6 +62,8 @@ import { CustomSecretsSection } from './CustomSecretsSection';
 import { WebhookIntegrationSection } from './WebhookIntegrationSection';
 import { type ExecPreset, configToExecPreset, execPresetToConfig } from './claw.types';
 type ClawMutations = ReturnType<typeof useKiloClawMutations>;
+
+const EXA_SEARCH_UI_MIN_CONTROLLER_VERSION = '2026.4.14';
 
 // ---------------------------------------------------------------------------
 // 1Password setup guide dialog
@@ -758,8 +761,19 @@ export function SettingsTab({
     cleanVersion(controllerVersion?.version),
     '2026.2.26'
   );
+  const supportsExaSearchUi = calverAtLeast(
+    cleanVersion(controllerVersion?.version),
+    EXA_SEARCH_UI_MIN_CONTROLLER_VERSION
+  );
 
   const configuredSecrets = config?.configuredSecrets ?? {};
+  const kiloExaSearchMode = config?.kiloExaSearchMode ?? null;
+  const braveSearchConfigured = configuredSecrets['brave-search'] ?? false;
+  const exaSearchConfigured =
+    supportsExaSearchUi && (kiloExaSearchMode === 'kilo-proxy' || kiloExaSearchMode === null);
+  const exaSearchDisplayMode =
+    supportsExaSearchUi && kiloExaSearchMode === null ? 'kilo-proxy' : kiloExaSearchMode;
+  const braveSearchEnabled = braveSearchConfigured && !exaSearchConfigured;
   const toolEntries = getEntriesByCategory('tool');
 
   function handleSave() {
@@ -982,12 +996,60 @@ export function SettingsTab({
                 <SecretEntrySection
                   key={entry.id}
                   entry={entry}
-                  configured={configuredSecrets[entry.id] ?? false}
+                  configured={braveSearchEnabled}
                   mutations={mutations}
                   onSecretsChanged={onSecretsChanged}
                   isDirty={dirtySecrets.has(entry.id)}
+                  actionRowInlineExtra={
+                    supportsExaSearchUi && braveSearchConfigured && exaSearchConfigured ? (
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-8 px-1 text-xs"
+                        disabled={mutations.patchWebSearchConfig.isPending}
+                        onClick={() => {
+                          mutations.patchWebSearchConfig.mutate(
+                            { exaMode: 'disabled' },
+                            {
+                              onSuccess: () => {
+                                toast.success('Brave Search re-enabled. Redeploy to apply.', {
+                                  duration: 8000,
+                                });
+                                onSecretsChanged?.('brave-search');
+                              },
+                              onError: err => {
+                                toast.error(`Failed to re-enable Brave Search: ${err.message}`);
+                              },
+                            }
+                          );
+                        }}
+                      >
+                        Re-enable Brave Search
+                      </Button>
+                    ) : undefined
+                  }
+                  saveConfirmation={
+                    supportsExaSearchUi && exaSearchConfigured
+                      ? {
+                          title: 'Enable Brave Search?',
+                          description:
+                            'Exa Search is currently configured. Enabling Brave will disable Exa on the next redeploy.',
+                          confirmLabel: 'Enable Brave and disable Exa',
+                        }
+                      : undefined
+                  }
                 />
               ))}
+            {supportsExaSearchUi && (
+              <ExaSearchEntrySection
+                mode={exaSearchDisplayMode}
+                configured={exaSearchConfigured}
+                braveConfigured={braveSearchConfigured}
+                mutations={mutations}
+                onSecretsChanged={onSecretsChanged}
+                isDirty={dirtySecrets.has('kilo-exa-search')}
+              />
+            )}
           </div>
         </div>
       )}
