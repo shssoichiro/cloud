@@ -8,6 +8,7 @@ import { getMonitoredModels } from '@/lib/monitored-models';
 const HEALTH_CHECK_KEY = 'kilo-models-health-check';
 
 type ModelHealthMetrics = {
+  healthy: boolean;
   currentRequests: number;
   previousRequests: number;
   baselineRequests: number;
@@ -55,10 +56,28 @@ export async function GET(
     return NextResponse.json({ healthy: false }, { status: 401 });
   }
 
+  // Optional `at` parameter: ISO 8601 timestamp to anchor the query window.
+  // When omitted the query uses NOW(). Must be within the last 24 hours.
+  const atParam = searchParams.get('at');
+  let anchorTime: Date | null = null;
+  if (atParam) {
+    const parsed = new Date(atParam);
+    if (Number.isNaN(parsed.getTime())) {
+      return NextResponse.json({ healthy: false }, { status: 400 });
+    }
+    const ageMs = Date.now() - parsed.getTime();
+    if (ageMs < 0 || ageMs > 24 * 60 * 60 * 1000) {
+      return NextResponse.json({ healthy: false }, { status: 400 });
+    }
+    anchorTime = parsed;
+  }
+
   const monitoredModels = await getMonitoredModels();
 
   try {
     const queryStartTime = Date.now();
+    // When an anchor time is provided, replace NOW() with the fixed timestamp.
+    const ref = anchorTime ? sql`${anchorTime.toISOString()}::timestamptz` : sql`NOW()`;
     const result = await db.transaction(async tx => {
       await tx.execute(sql.raw(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT_MS}'`));
       return tx.execute<{
@@ -72,19 +91,22 @@ export async function GET(
         WITH all_periods AS (
           SELECT
             requested_model,
-            COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '15 minutes') AS current_requests,
-            COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 minutes'
-                             AND created_at < NOW() - INTERVAL '15 minutes') AS previous_requests,
-            COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '2 hours'
-                             AND created_at < NOW() - INTERVAL '30 minutes') / 6.0 AS avg_baseline,
-            COUNT(DISTINCT kilo_user_id) FILTER (WHERE created_at >= NOW() - INTERVAL '15 minutes')
+            COUNT(*) FILTER (WHERE created_at >= ${ref} - INTERVAL '15 minutes'
+                                  AND created_at <= ${ref}) AS current_requests,
+            COUNT(*) FILTER (WHERE created_at >= ${ref} - INTERVAL '30 minutes'
+                             AND created_at < ${ref} - INTERVAL '15 minutes') AS previous_requests,
+            COUNT(*) FILTER (WHERE created_at >= ${ref} - INTERVAL '2 hours'
+                             AND created_at < ${ref} - INTERVAL '30 minutes') / 6.0 AS avg_baseline,
+            COUNT(DISTINCT kilo_user_id) FILTER (WHERE created_at >= ${ref} - INTERVAL '15 minutes'
+                                                       AND created_at <= ${ref})
               AS unique_users_current,
-            COUNT(DISTINCT kilo_user_id) FILTER (WHERE created_at >= NOW() - INTERVAL '2 hours'
-                                                  AND created_at < NOW() - INTERVAL '30 minutes')
+            COUNT(DISTINCT kilo_user_id) FILTER (WHERE created_at >= ${ref} - INTERVAL '2 hours'
+                                                  AND created_at < ${ref} - INTERVAL '30 minutes')
               AS unique_users_baseline
           FROM ${microdollar_usage}
           WHERE
-            created_at >= NOW() - INTERVAL '2 hours'
+            created_at >= ${ref} - INTERVAL '2 hours'
+            AND created_at <= ${ref}
             AND has_error = false
             AND requested_model IN (${sql.join(monitoredModels, sql`, `)})
           GROUP BY requested_model
@@ -101,7 +123,6 @@ export async function GET(
     });
 
     const models: Record<string, ModelHealthMetrics> = {};
-    let hasSignificantDrop = false;
 
     result.rows.forEach(row => {
       const currentRequests = parseInt(row.current_requests, 10);
@@ -115,7 +136,19 @@ export async function GET(
           : 0;
       const absoluteDrop = currentRequests - baselineRequests;
 
+      // Per-model health: unhealthy when the baseline had enough distinct organic
+      // users AND the model shows a significant traffic drop.
+      const healthy = !(
+        uniqueUsersBaseline >= MIN_UNIQUE_USERS_FOR_ALERT &&
+        ((baselineRequests > HIGH_BASELINE && percentChange < -90) ||
+          (baselineRequests > LOW_BASELINE &&
+            baselineRequests < HIGH_BASELINE &&
+            currentRequests === 0 &&
+            previousRequests === 0))
+      );
+
       models[row.requested_model] = {
+        healthy,
         currentRequests,
         previousRequests,
         baselineRequests,
@@ -124,29 +157,13 @@ export async function GET(
         uniqueUsersCurrent,
         uniqueUsersBaseline,
       };
-
-      // Alert logic:
-      // - High traffic models (>HIGH_BASELINE): Alert on >90% drop
-      // - Low traffic models (>LOW_BASELINE && <HIGH_BASELINE): Alert on consecutive zeros (current AND previous)
-      // - Only alert if the baseline had enough distinct users to represent organic traffic
-
-      if (uniqueUsersBaseline >= MIN_UNIQUE_USERS_FOR_ALERT) {
-        if (
-          (baselineRequests > HIGH_BASELINE && percentChange < -90) ||
-          (baselineRequests > LOW_BASELINE &&
-            baselineRequests < HIGH_BASELINE &&
-            currentRequests === 0 &&
-            previousRequests === 0)
-        ) {
-          hasSignificantDrop = true;
-        }
-      }
     });
 
     // Ensure all preferred models are in the response (even if no data)
-    monitoredModels.forEach(requested_model => {
+    for (const requested_model of monitoredModels) {
       if (!models[requested_model]) {
         models[requested_model] = {
+          healthy: true,
           currentRequests: 0,
           previousRequests: 0,
           baselineRequests: 0,
@@ -155,11 +172,11 @@ export async function GET(
           uniqueUsersCurrent: 0,
           uniqueUsersBaseline: 0,
         };
-        // Don't mark as unhealthy if no data - baseline is 0 anyway
       }
-    });
+    }
 
     const queryExecutionTimeMs = Date.now() - queryStartTime;
+    const hasSignificantDrop = Object.values(models).some(m => !m.healthy);
     const status = hasSignificantDrop ? 503 : 200;
 
     return NextResponse.json(
@@ -167,7 +184,7 @@ export async function GET(
         healthy: !hasSignificantDrop,
         models,
         metadata: {
-          timestamp: new Date().toISOString(),
+          timestamp: (anchorTime ?? new Date()).toISOString(),
           queryExecutionTimeMs,
         },
       },
