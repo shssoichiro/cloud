@@ -38,6 +38,7 @@ import { and, eq, ne, desc, isNotNull, isNull, inArray, sql, like, or } from 'dr
 import { deleteWorkerTrigger } from '@/lib/webhook-agent/webhook-agent-client';
 import { sentryLogger } from '@/lib/utils.server';
 import type { KiloClawDashboardStatus, KiloCodeConfigResponse } from '@/lib/kiloclaw/types';
+import { queryDiskUsage } from '@/lib/kiloclaw/disk-usage';
 import {
   ensureActiveInstance,
   getActiveInstance,
@@ -606,6 +607,7 @@ const STATUS_PAGE_TIMEOUT_MS = 5_000;
 
 const logStatusPageWarning = sentryLogger('kiloclaw-status-page', 'warning');
 const logBillingError = sentryLogger('kiloclaw-billing', 'error');
+const logDiskUsageError = sentryLogger('kiloclaw-disk-usage', 'error');
 
 /** Returns true if a Stripe error indicates the schedule is already in a terminal state. */
 function isScheduleAlreadyInactive(error: unknown): boolean {
@@ -1526,6 +1528,23 @@ export const kiloclawRouter = createTRPCRouter({
       // cause the frontend/gateway to resolve the wrong DO.
       instanceId: workerInstanceId(instance) ? instance.id : null,
     } satisfies KiloClawDashboardStatus;
+  }),
+
+  getDiskUsage: baseProcedure.query(async ({ ctx }) => {
+    const instance = await getActiveInstance(ctx.user.id);
+    if (!instance) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'No active instance' });
+    }
+    try {
+      return await queryDiskUsage(instance.sandboxId);
+    } catch (error) {
+      logDiskUsageError('Failed to fetch disk usage', { error, sandboxId: instance.sandboxId });
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to fetch disk usage',
+        cause: error,
+      });
+    }
   }),
 
   renameInstance: baseProcedure
