@@ -22,6 +22,7 @@ import {
   kiloclaw_version_pins,
   kiloclaw_image_catalog,
   kiloclaw_cli_runs,
+  kiloclaw_subscriptions,
 } from '@kilocode/db/schema';
 import { and, eq, desc, sql } from 'drizzle-orm';
 import type { KiloClawDashboardStatus, KiloCodeConfigResponse } from '@/lib/kiloclaw/types';
@@ -451,14 +452,31 @@ export const organizationKiloclawRouter = createTRPCRouter({
     const instance = await requireOrgInstance(ctx.user.id, input.organizationId);
     const destroyedRow = await markActiveInstanceDestroyed(ctx.user.id, instance.id);
     const client = new KiloClawInternalClient();
+    let result: Awaited<ReturnType<KiloClawInternalClient['destroy']>>;
     try {
-      return await client.destroy(ctx.user.id, workerInstanceId(instance));
+      result = await client.destroy(ctx.user.id, workerInstanceId(instance));
     } catch (error) {
       if (destroyedRow) {
         await restoreDestroyedInstance(destroyedRow.id);
       }
       throw error;
     }
+
+    try {
+      await db
+        .update(kiloclaw_subscriptions)
+        .set({ destruction_deadline: null })
+        .where(
+          and(
+            eq(kiloclaw_subscriptions.user_id, ctx.user.id),
+            eq(kiloclaw_subscriptions.instance_id, instance.id)
+          )
+        );
+    } catch (cleanupError) {
+      console.error('[organization-kiloclaw] Post-destroy cleanup failed:', cleanupError);
+    }
+
+    return result;
   }),
 
   // ── Config ────────────────────────────────────────────────────
