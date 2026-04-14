@@ -257,6 +257,10 @@ export const organizationKiloclawRouter = createTRPCRouter({
       return {
         userId: ctx.user.id,
         sandboxId: null,
+        provider: null,
+        runtimeId: null,
+        storageId: null,
+        region: null,
         status: null,
         provisionedAt: null,
         lastStartedAt: null,

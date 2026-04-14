@@ -33,7 +33,7 @@ import { sandboxIdFromUserId } from '../auth/sandbox-id';
 import { writeEvent } from '../utils/analytics';
 import { deriveHttpEventName } from '../middleware/analytics';
 import { sendMessage } from '../stream-chat/client';
-import { assertImplementedProvider } from '../providers';
+import { assertAvailableProvider } from '../providers';
 import type { ProviderCapability } from '../providers/types';
 import { doKeyFromActiveInstance, resolveDoKeyForUser } from '../lib/instance-routing';
 import { getInstanceById, getWorkerDb } from '../db';
@@ -480,7 +480,7 @@ platform.post('/provision', async c => {
   let provision;
   try {
     if (provider) {
-      assertImplementedProvider(provider);
+      assertAvailableProvider(c.env, provider);
     }
     provision = await withResolvedDORetry(
       c.env,

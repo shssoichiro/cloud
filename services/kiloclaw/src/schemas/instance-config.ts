@@ -55,7 +55,8 @@ export const CustomSecretMetaSchema = z.object({
 
 export type CustomSecretMeta = z.infer<typeof CustomSecretMetaSchema>;
 
-export const ProviderIdSchema = z.enum(['fly', 'northflank', 'aws', 'k8s']);
+// Keep in sync with apps/web/src/lib/kiloclaw/types.ts KiloClawProviderId.
+export const ProviderIdSchema = z.enum(['fly', 'docker-local', 'northflank']);
 export type ProviderId = z.infer<typeof ProviderIdSchema>;
 
 export const FlyProviderStateSchema = z.object({
@@ -66,8 +67,19 @@ export const FlyProviderStateSchema = z.object({
   region: z.string().nullable().default(null),
 });
 
-export const ProviderStateSchema = FlyProviderStateSchema;
+export const DockerLocalProviderStateSchema = z.object({
+  provider: z.literal('docker-local'),
+  containerName: z.string().nullable().default(null),
+  volumeName: z.string().nullable().default(null),
+  hostPort: z.number().int().nullable().default(null),
+});
+
+export const ProviderStateSchema = z.discriminatedUnion('provider', [
+  FlyProviderStateSchema,
+  DockerLocalProviderStateSchema,
+]);
 export type FlyProviderState = z.infer<typeof FlyProviderStateSchema>;
+export type DockerLocalProviderState = z.infer<typeof DockerLocalProviderStateSchema>;
 export type ProviderState = z.infer<typeof ProviderStateSchema>;
 
 export const InstanceConfigSchema = z.object({
