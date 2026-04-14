@@ -55,6 +55,29 @@ const ONBOARD_FLAGS = [
   '--skip-health',
 ] as const;
 
+const KILOCLAW_CUSTOMIZER_PLUGIN_ID = 'kiloclaw-customizer';
+const KILOCLAW_CUSTOMIZER_PLUGIN_PATH = '/usr/local/lib/node_modules/@kiloclaw/kiloclaw-customizer';
+const KILO_EXA_PROVIDER_ID = 'kilo-exa';
+
+type KiloExaSearchMode = 'kilo-proxy' | 'disabled';
+
+type KiloExaSearchModeState = KiloExaSearchMode | 'unset';
+
+function resolveKiloExaSearchMode(value: string | undefined): KiloExaSearchModeState {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === 'kilo-proxy') {
+    return 'kilo-proxy';
+  }
+  if (normalized === 'disabled') {
+    return 'disabled';
+  }
+  if (normalized === undefined || normalized === '') {
+    return 'unset';
+  }
+  console.warn(`Unknown KILO_EXA_SEARCH_MODE value "${value}"; treating as "disabled"`);
+  return 'disabled';
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ConfigObject = Record<string, any>;
 
@@ -272,14 +295,56 @@ export function generateBaseConfig(
   config.plugins.load.paths = Array.isArray(config.plugins.load.paths)
     ? config.plugins.load.paths
     : [];
-  const customizerPluginPath = '/usr/local/lib/node_modules/@kiloclaw/kiloclaw-customizer';
-  if (!(config.plugins.load.paths as string[]).includes(customizerPluginPath)) {
-    (config.plugins.load.paths as string[]).push(customizerPluginPath);
+  if (!(config.plugins.load.paths as string[]).includes(KILOCLAW_CUSTOMIZER_PLUGIN_PATH)) {
+    (config.plugins.load.paths as string[]).push(KILOCLAW_CUSTOMIZER_PLUGIN_PATH);
   }
   config.plugins.entries = config.plugins.entries ?? {};
-  const customizerEntry = 'kiloclaw-customizer';
-  config.plugins.entries[customizerEntry] = config.plugins.entries[customizerEntry] ?? {};
-  config.plugins.entries[customizerEntry].enabled = true;
+  config.plugins.entries[KILOCLAW_CUSTOMIZER_PLUGIN_ID] =
+    config.plugins.entries[KILOCLAW_CUSTOMIZER_PLUGIN_ID] ?? {};
+  config.plugins.entries[KILOCLAW_CUSTOMIZER_PLUGIN_ID].enabled = true;
+
+  const customizerPluginConfig = config.plugins.entries[KILOCLAW_CUSTOMIZER_PLUGIN_ID].config ?? {};
+  const customizerWebSearchConfig = customizerPluginConfig.webSearch ?? {};
+  const searchProvider = config.tools?.web?.search?.provider;
+  const hasExplicitSearchProvider =
+    typeof searchProvider === 'string' && searchProvider.trim().length > 0;
+
+  const kiloExaSearchMode = resolveKiloExaSearchMode(env.KILO_EXA_SEARCH_MODE);
+  const shouldForceExa = kiloExaSearchMode === 'kilo-proxy';
+  const shouldAutoAssignExa = kiloExaSearchMode === 'unset' && !hasExplicitSearchProvider;
+  if (shouldForceExa || shouldAutoAssignExa) {
+    customizerWebSearchConfig.enabled = true;
+    config.tools = config.tools ?? {};
+    config.tools.web = config.tools.web ?? {};
+    config.tools.web.search = config.tools.web.search ?? {};
+    config.tools.web.search.enabled = true;
+    config.tools.web.search.provider = KILO_EXA_PROVIDER_ID;
+    if (shouldAutoAssignExa) {
+      console.log('[config-writer] Auto-assigned web search provider to kilo-exa (mode=unset)');
+    }
+  } else if (kiloExaSearchMode === 'disabled') {
+    customizerWebSearchConfig.enabled = false;
+
+    const braveConfigured = Boolean(env.BRAVE_API_KEY?.trim());
+    if (
+      braveConfigured &&
+      (!hasExplicitSearchProvider || config.tools?.web?.search?.provider === KILO_EXA_PROVIDER_ID)
+    ) {
+      config.tools = config.tools ?? {};
+      config.tools.web = config.tools.web ?? {};
+      config.tools.web.search = config.tools.web.search ?? {};
+      config.tools.web.search.enabled = true;
+      config.tools.web.search.provider = 'brave';
+    } else if (config.tools?.web?.search?.provider === KILO_EXA_PROVIDER_ID) {
+      delete config.tools.web.search.provider;
+    }
+  } else if (hasExplicitSearchProvider) {
+    customizerWebSearchConfig.enabled =
+      config.tools?.web?.search?.provider === KILO_EXA_PROVIDER_ID;
+  }
+
+  customizerPluginConfig.webSearch = customizerWebSearchConfig;
+  config.plugins.entries[KILOCLAW_CUSTOMIZER_PLUGIN_ID].config = customizerPluginConfig;
 
   // Telegram
   if (env.TELEGRAM_BOT_TOKEN) {

@@ -153,6 +153,127 @@ describe('generateBaseConfig', () => {
     expect(config.tools.web.search.provider).toBe('brave');
   });
 
+  it('auto-assigns kilo-exa when provider is missing and mode is unset', () => {
+    const existing = JSON.stringify({ tools: { web: { search: {} } } });
+    const { deps } = fakeDeps(existing);
+    const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
+
+    expect(config.tools.web.search.provider).toBe('kilo-exa');
+    expect(config.tools.web.search.enabled).toBe(true);
+    expect(config.plugins.entries['kiloclaw-customizer'].config.webSearch.enabled).toBe(true);
+  });
+
+  it('auto-assigns kilo-exa even when web search was explicitly disabled but provider is missing', () => {
+    const existing = JSON.stringify({
+      tools: {
+        web: {
+          search: {
+            enabled: false,
+          },
+        },
+      },
+    });
+    const { deps } = fakeDeps(existing);
+    const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
+
+    expect(config.tools.web.search.provider).toBe('kilo-exa');
+    expect(config.tools.web.search.enabled).toBe(true);
+    expect(config.plugins.entries['kiloclaw-customizer'].config.webSearch.enabled).toBe(true);
+  });
+
+  it('preserves explicit kilo-exa provider when mode is unset', () => {
+    const existing = JSON.stringify({
+      tools: {
+        web: {
+          search: {
+            provider: 'kilo-exa',
+          },
+        },
+      },
+    });
+    const { deps } = fakeDeps(existing);
+    const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
+
+    expect(config.tools.web.search.provider).toBe('kilo-exa');
+    expect(config.plugins.entries['kiloclaw-customizer'].config.webSearch.enabled).toBe(true);
+  });
+
+  it('selects kilo-exa provider when KILO_EXA_SEARCH_MODE=kilo-proxy', () => {
+    const { deps } = fakeDeps();
+    const env = { ...minimalEnv(), KILO_EXA_SEARCH_MODE: 'kilo-proxy' };
+    const config = generateBaseConfig(env, '/tmp/openclaw.json', deps);
+
+    expect(config.tools.web.search.provider).toBe('kilo-exa');
+    expect(config.tools.web.search.enabled).toBe(true);
+    expect(config.plugins.entries['kiloclaw-customizer'].config.webSearch.enabled).toBe(true);
+  });
+
+  it('switches to brave when Exa is disabled and BRAVE_API_KEY is configured', () => {
+    const existing = JSON.stringify({
+      tools: {
+        web: {
+          search: {
+            provider: 'kilo-exa',
+          },
+        },
+      },
+    });
+    const { deps } = fakeDeps(existing);
+    const env = {
+      ...minimalEnv(),
+      KILO_EXA_SEARCH_MODE: 'disabled',
+      BRAVE_API_KEY: 'BSA' + 'A'.repeat(20),
+    };
+    const config = generateBaseConfig(env, '/tmp/openclaw.json', deps);
+
+    expect(config.tools.web.search.provider).toBe('brave');
+    expect(config.tools.web.search.enabled).toBe(true);
+    expect(config.plugins.entries['kiloclaw-customizer'].config.webSearch.enabled).toBe(false);
+  });
+
+  it('preserves explicit non-Exa provider when Exa is disabled and BRAVE_API_KEY is configured', () => {
+    const existing = JSON.stringify({
+      tools: {
+        web: {
+          search: {
+            provider: 'perplexity',
+          },
+        },
+      },
+    });
+    const { deps } = fakeDeps(existing);
+    const env = {
+      ...minimalEnv(),
+      KILO_EXA_SEARCH_MODE: 'disabled',
+      BRAVE_API_KEY: 'BSA' + 'A'.repeat(20),
+    };
+    const config = generateBaseConfig(env, '/tmp/openclaw.json', deps);
+
+    expect(config.tools.web.search.provider).toBe('perplexity');
+    expect(config.plugins.entries['kiloclaw-customizer'].config.webSearch.enabled).toBe(false);
+  });
+
+  it('clears kilo-exa provider when Exa is disabled and Brave is not configured', () => {
+    const existing = JSON.stringify({
+      tools: {
+        web: {
+          search: {
+            provider: 'kilo-exa',
+          },
+        },
+      },
+    });
+    const { deps } = fakeDeps(existing);
+    const env = {
+      ...minimalEnv(),
+      KILO_EXA_SEARCH_MODE: 'disabled',
+    };
+    const config = generateBaseConfig(env, '/tmp/openclaw.json', deps);
+
+    expect(config.tools.web.search.provider).toBeUndefined();
+    expect(config.plugins.entries['kiloclaw-customizer'].config.webSearch.enabled).toBe(false);
+  });
+
   it('defaults tool profile to full when not previously set', () => {
     const { deps } = fakeDeps();
     const config = generateBaseConfig(minimalEnv(), '/tmp/openclaw.json', deps);
@@ -984,7 +1105,7 @@ describe('writeBaseConfig', () => {
     expect(config.tools.profile).toBe('full');
   });
 
-  it('does not steer web search provider on config restore path', () => {
+  it('auto-assigns Exa web search provider on restore path when provider is missing', () => {
     const { deps, written } = fakeDeps();
     const env = minimalEnv();
     delete env.KILOCLAW_FRESH_INSTALL;
@@ -992,7 +1113,8 @@ describe('writeBaseConfig', () => {
     writeBaseConfig(env, '/tmp/openclaw.json', deps);
 
     const config = JSON.parse(written[0].data);
-    expect(config.tools?.web?.search?.provider).toBeUndefined();
+    expect(config.tools?.web?.search?.provider).toBe('kilo-exa');
+    expect(config.tools?.web?.search?.enabled).toBe(true);
   });
 
   it('throws if KILOCODE_API_KEY is missing', () => {
