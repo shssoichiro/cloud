@@ -114,6 +114,47 @@ describe('cancelCliRun', () => {
     });
   });
 
+  it('persists failed and does not cancel when controller has no active run', async () => {
+    const user = await insertTestUser();
+    const instanceId = await createTestInstance(user.id);
+    const runId = await createCliRun({
+      userId: user.id,
+      instanceId,
+      prompt: 'lost run before cancel',
+      startedAt: '2026-04-12T12:00:00.000Z',
+      initiatedByAdminId: null,
+    });
+    const cancelControllerRun = jest.fn(async () => ({ ok: true }));
+
+    await expect(
+      cancelCliRun({
+        runId,
+        userId: user.id,
+        instanceId,
+        workerInstanceId: 'ki_current',
+        getControllerStatus: async () => ({
+          hasRun: false,
+          status: null,
+          output: null,
+          exitCode: null,
+          startedAt: null,
+          completedAt: null,
+          prompt: null,
+        }),
+        cancelControllerRun,
+      })
+    ).resolves.toEqual({ ok: true, runFound: true, cancelled: false });
+
+    expect(cancelControllerRun).not.toHaveBeenCalled();
+
+    const row = await getRunRow(runId);
+    expect(row.status).toBe('failed');
+    expect(row.output).toBe(
+      '[run state unavailable: controller no longer has an active CLI run for this record]'
+    );
+    expect(row.completed_at).not.toBeNull();
+  });
+
   it('persists failed and does not cancel when controller timestamp belongs to a different run', async () => {
     const user = await insertTestUser();
     const instanceId = await createTestInstance(user.id);
@@ -150,6 +191,54 @@ describe('cancelCliRun', () => {
     const row = await getRunRow(runId);
     expect(row.status).toBe('failed');
     expect(row.output).toBe('[run state unavailable: controller has moved on to a newer run]');
+    expect(row.completed_at).not.toBeNull();
+  });
+
+  it('preserves existing partial output when controller reports hasRun: false during cancel', async () => {
+    const user = await insertTestUser();
+    const instanceId = await createTestInstance(user.id);
+    const runId = await createCliRun({
+      userId: user.id,
+      instanceId,
+      prompt: 'run with partial output before lost',
+      startedAt: '2026-04-12T12:00:00.000Z',
+      initiatedByAdminId: null,
+    });
+
+    // Simulate partial output already written to the row while it was running.
+    await db
+      .update(kiloclaw_cli_runs)
+      .set({ output: 'partial output before cancel' })
+      .where(eq(kiloclaw_cli_runs.id, runId));
+
+    const cancelControllerRun = jest.fn(async () => ({ ok: true }));
+
+    await expect(
+      cancelCliRun({
+        runId,
+        userId: user.id,
+        instanceId,
+        workerInstanceId: 'ki_current',
+        getControllerStatus: async () => ({
+          hasRun: false,
+          status: null,
+          output: null,
+          exitCode: null,
+          startedAt: null,
+          completedAt: null,
+          prompt: null,
+        }),
+        cancelControllerRun,
+      })
+    ).resolves.toEqual({ ok: true, runFound: true, cancelled: false });
+
+    expect(cancelControllerRun).not.toHaveBeenCalled();
+
+    // The row's existing partial output should be preserved, not replaced with
+    // the LOST_CONTROLLER_RUN_OUTPUT sentinel.
+    const row = await getRunRow(runId);
+    expect(row.status).toBe('failed');
+    expect(row.output).toBe('partial output before cancel');
     expect(row.completed_at).not.toBeNull();
   });
 
@@ -193,6 +282,45 @@ describe('cancelCliRun', () => {
     await expect(getRunStatus(runId)).resolves.toEqual({
       status: 'completed',
       completed_at: '2026-04-12T12:01:00.000Z',
+    });
+  });
+
+  it('returns ok: false when the controller rejects the cancel', async () => {
+    const user = await insertTestUser();
+    const instanceId = await createTestInstance(user.id);
+    const startedAt = '2026-04-12T12:00:00.000Z';
+    const runId = await createCliRun({
+      userId: user.id,
+      instanceId,
+      prompt: 'run that exits between status poll and cancel',
+      startedAt,
+      initiatedByAdminId: null,
+    });
+
+    const result = await cancelCliRun({
+      runId,
+      userId: user.id,
+      instanceId,
+      workerInstanceId: 'ki_current',
+      getControllerStatus: async () => ({
+        hasRun: true,
+        status: 'running',
+        output: null,
+        exitCode: null,
+        startedAt,
+        completedAt: null,
+        prompt: 'run that exits between status poll and cancel',
+      }),
+      // The run exited between the status poll and the cancel request.
+      cancelControllerRun: async () => ({ ok: false }),
+    });
+
+    expect(result).toEqual({ ok: false, runFound: true, cancelled: false });
+
+    // The DB row should remain 'running' so the caller can retry or poll.
+    await expect(getRunStatus(runId)).resolves.toEqual({
+      status: 'running',
+      completed_at: null,
     });
   });
 });

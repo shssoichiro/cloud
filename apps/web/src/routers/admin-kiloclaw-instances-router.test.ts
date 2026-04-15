@@ -9,15 +9,19 @@ import {
   kiloclaw_instances,
 } from '@kilocode/db/schema';
 import { and, eq } from 'drizzle-orm';
+import { TRPCError } from '@trpc/server';
+import { UpstreamApiError } from '@/lib/trpc/init';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const mockGetDebugStatus: jest.Mock<any, any> = jest.fn();
 const mockDestroyFlyMachine: jest.Mock<any, any> = jest.fn();
+const mockStartKiloCliRun: jest.Mock<any, any> = jest.fn();
 
 jest.mock('@/lib/kiloclaw/kiloclaw-internal-client', () => ({
   KiloClawInternalClient: jest.fn().mockImplementation(() => ({
     getDebugStatus: mockGetDebugStatus,
     destroyFlyMachine: mockDestroyFlyMachine,
+    startKiloCliRun: mockStartKiloCliRun,
   })),
   KiloClawApiError: class KiloClawApiError extends Error {
     statusCode: number;
@@ -78,6 +82,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   mockGetDebugStatus.mockReset();
   mockDestroyFlyMachine.mockReset();
+  mockStartKiloCliRun.mockReset();
   // Clean audit logs between tests so counts are accurate
   await db
     .delete(kiloclaw_admin_audit_logs)
@@ -249,6 +254,88 @@ describe('admin.kiloclawInstances.destroyFlyMachine', () => {
     ).rejects.toThrow('Invalid Fly machine ID');
 
     expect(mockGetDebugStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe('admin.kiloclawInstances.startKiloCliRun', () => {
+  it('maps worker 409 to tRPC CONFLICT', async () => {
+    const { KiloClawApiError } = jest.requireMock<{
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      KiloClawApiError: new (statusCode: number, responseBody: string) => any;
+    }>('@/lib/kiloclaw/kiloclaw-internal-client');
+
+    mockStartKiloCliRun.mockRejectedValue(
+      new KiloClawApiError(409, JSON.stringify({ error: 'A CLI run is already in progress' }))
+    );
+
+    const caller = await createCallerForUser(adminUser.id);
+    await expect(
+      caller.admin.kiloclawInstances.startKiloCliRun({
+        userId: testUserId,
+        prompt: 'test prompt',
+      })
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: 'A CLI run is already in progress',
+    });
+  });
+
+  it('maps controller_route_unavailable to PRECONDITION_FAILED', async () => {
+    const { KiloClawApiError } = jest.requireMock<{
+      KiloClawApiError: new (statusCode: number, responseBody: string) => Error;
+    }>('@/lib/kiloclaw/kiloclaw-internal-client');
+
+    mockStartKiloCliRun.mockRejectedValue(
+      new KiloClawApiError(
+        404,
+        JSON.stringify({ error: 'Route not found', code: 'controller_route_unavailable' })
+      )
+    );
+
+    const caller = await createCallerForUser(adminUser.id);
+    await expect(
+      caller.admin.kiloclawInstances.startKiloCliRun({
+        userId: testUserId,
+        prompt: 'test prompt',
+      })
+    ).rejects.toMatchObject({
+      code: 'PRECONDITION_FAILED',
+      message: 'Instance needs redeploy to support recovery',
+    });
+
+    try {
+      await caller.admin.kiloclawInstances.startKiloCliRun({
+        userId: testUserId,
+        prompt: 'test prompt',
+      });
+      throw new Error('Expected startKiloCliRun to reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(TRPCError);
+      if (!(err instanceof TRPCError)) throw err;
+      expect(err.cause).toBeInstanceOf(UpstreamApiError);
+      if (!(err.cause instanceof UpstreamApiError)) throw err;
+      expect(err.cause.upstreamCode).toBe('controller_route_unavailable');
+    }
+  });
+
+  it('maps worker 409 with empty body to CONFLICT with fallback message', async () => {
+    const { KiloClawApiError } = jest.requireMock<{
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      KiloClawApiError: new (statusCode: number, responseBody: string) => any;
+    }>('@/lib/kiloclaw/kiloclaw-internal-client');
+
+    mockStartKiloCliRun.mockRejectedValue(new KiloClawApiError(409, ''));
+
+    const caller = await createCallerForUser(adminUser.id);
+    await expect(
+      caller.admin.kiloclawInstances.startKiloCliRun({
+        userId: testUserId,
+        prompt: 'test prompt',
+      })
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: 'Failed to start kilo CLI run',
+    });
   });
 });
 
