@@ -20,14 +20,26 @@ import { modelsByProvider } from '@kilocode/db/schema';
 import { desc } from 'drizzle-orm';
 import { StoredModelSchema } from '@kilocode/db';
 import * as z from 'zod';
+import { redisGet } from '@/lib/redis';
+import { createCachedFetch } from '@/lib/cached-fetch';
+import {
+  VERCEL_ROUTING_REDIS_KEY,
+  GatewayPercentageSchema,
+  DEFAULT_VERCEL_PERCENTAGE,
+} from '@/lib/gateway-config';
 
 function getRandomNumberLessThan100(randomSeed: string) {
   return crypto.createHash('sha256').update(randomSeed).digest().readUInt32BE(0) % 100;
 }
 
-async function getVercelRoutingPercentage() {
-  return 10;
-}
+const getVercelRoutingPercentage = createCachedFetch(
+  async () => {
+    const raw = await redisGet(VERCEL_ROUTING_REDIS_KEY);
+    return GatewayPercentageSchema.parse(JSON.parse(raw ?? 'null')).vercel_routing_percentage;
+  },
+  10_000,
+  DEFAULT_VERCEL_PERCENTAGE
+);
 
 const getVercelModels_cached = unstable_cache(
   async () => {
