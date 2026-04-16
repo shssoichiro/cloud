@@ -38,6 +38,8 @@ import type {
 import { getMaxTokens } from '@/lib/providers/openrouter/request-helpers';
 import { KILO_AUTO_BALANCED_MODEL, KILO_AUTO_FREE_MODEL } from '@/lib/kilo-auto';
 import type { GatewayChatApiKind, ProviderId } from '@/lib/providers/types';
+export { proxyErrorTypeSchema, ProxyErrorType } from '@/lib/proxy-error-types';
+import { ProxyErrorType } from '@/lib/proxy-error-types';
 
 // FIM suffix markers for tracking purposes - used to wrap suffix in a fake system prompt format
 // This allows FIM requests to be tracked consistently with chat requests
@@ -47,6 +49,7 @@ export function invalidPathResponse() {
   return NextResponse.json(
     {
       error: 'Invalid path',
+      error_type: ProxyErrorType.invalid_path,
       message: 'This endpoint only accepts the path `/chat/completions`.',
     },
     { status: 400 }
@@ -57,6 +60,7 @@ export function invalidRequestResponse() {
   return NextResponse.json(
     {
       error: 'Invalid request',
+      error_type: ProxyErrorType.invalid_request,
       message: 'Could not parse request body. Please ensure it is valid JSON.',
     },
     { status: 400 }
@@ -67,6 +71,7 @@ export function temporarilyUnavailableResponse() {
   return NextResponse.json(
     {
       error: 'Service Unavailable',
+      error_type: ProxyErrorType.temporarily_unavailable,
       message: 'The service is temporarily unavailable. Please try again later.',
     },
     { status: 503 }
@@ -77,6 +82,7 @@ export function upgradeRequiredResponse() {
   return NextResponse.json(
     {
       error: 'upgrade_required',
+      error_type: ProxyErrorType.upgrade_required,
       message: 'Please upgrade your Kilo extension to the latest version.',
     },
     { status: 426 }
@@ -101,6 +107,7 @@ export async function usageLimitExceededResponse(user: User, balance?: number) {
         balance,
         buyCreditsUrl: APP_URL + '/profile',
       },
+      error_type: ProxyErrorType.usage_limit_exceeded,
     },
     { status: 402 }
   );
@@ -112,6 +119,7 @@ export function dataCollectionRequiredResponse() {
   return NextResponse.json(
     {
       error: error, // this field is shown in the extension
+      error_type: ProxyErrorType.data_collection_required,
       message: error,
     },
     { status: 400 }
@@ -126,13 +134,19 @@ export function apiKindNotSupportedResponse(
   const error = isRooCodeBasedClient(fraudHeaders)
     ? 'This model requires Kilo v7 or newer. Please upgrade Kilo and try again.'
     : `This model does not support the ${apiKind} API, please use any of: ${supportedApiKinds.join()}`;
-  return NextResponse.json({ error, message: error }, { status: 400 });
+  return NextResponse.json(
+    { error, error_type: ProxyErrorType.api_kind_not_supported, message: error },
+    { status: 400 }
+  );
 }
 
 async function stealthModelError(response: Response) {
   const error = 'Stealth model unable to process request';
   warnExceptInTest(`Responding with ${response.status} ${error}`);
-  return NextResponse.json({ error, message: error }, { status: response.status });
+  return NextResponse.json(
+    { error, error_type: ProxyErrorType.stealth_model_error, message: error },
+    { status: response.status }
+  );
 }
 
 const byokErrorMessages: Record<number, string> = {
@@ -170,7 +184,11 @@ export async function makeErrorReadable({
     if (byokMessage) {
       warnExceptInTest(`Responding with ${response.status} ${byokMessage}`);
       return NextResponse.json(
-        { error: byokMessage, message: byokMessage },
+        {
+          error: byokMessage,
+          error_type: ProxyErrorType.byok_error,
+          message: byokMessage,
+        },
         { status: response.status }
       );
     }
@@ -184,7 +202,10 @@ export async function makeErrorReadable({
     if (estimatedTokenCount >= model.context_length) {
       const error = `The maximum context length is ${model.context_length} tokens. However, about ${estimatedTokenCount} tokens were requested.`;
       warnExceptInTest(`Responding with ${response.status} ${error}`);
-      return NextResponse.json({ error, message: error }, { status: response.status });
+      return NextResponse.json(
+        { error, error_type: ProxyErrorType.context_length_exceeded, message: error },
+        { status: response.status }
+      );
     }
   }
 
@@ -199,6 +220,7 @@ export function modelNotAllowedResponse() {
   return NextResponse.json(
     {
       error: 'Model not allowed for your team.',
+      error_type: ProxyErrorType.model_not_allowed,
       message: 'The requested model is not allowed for your team.',
     },
     { status: 404 }
@@ -209,16 +231,20 @@ export function forbiddenFreeModelResponse(
   header: FraudDetectionHeaders,
   feature: FeatureValue | null
 ) {
+  const errorType = ProxyErrorType.discontinued_free_model;
   if (feature === 'kiloclaw' || feature === 'openclaw') {
     const error = `The free period of this model ended. Please use ${KILO_AUTO_FREE_MODEL.name} to continue, switch using: /model kilocode/${KILO_AUTO_FREE_MODEL.id}`;
-    return NextResponse.json({ error, message: error }, { status: 404 });
+    return NextResponse.json({ error, error_type: errorType, message: error }, { status: 404 });
   } else if (isRooCodeBasedClient(header)) {
     // https://github.com/Kilo-Org/kilocode/blob/50d6bd482bec6fae7d1c80b14ffb064de3761507/src/shared/kilocode/errorUtils.ts#L13
     const error = `The alpha period for this model has ended.`;
-    return NextResponse.json({ error: error, message: error }, { status: 404 });
+    return NextResponse.json(
+      { error: error, error_type: errorType, message: error },
+      { status: 404 }
+    );
   } else {
     const error = `The free period of this model ended. Please use ${KILO_AUTO_BALANCED_MODEL.id} for affordable inference or ${KILO_AUTO_FREE_MODEL.id} for limited free inference.`;
-    return NextResponse.json({ error, message: error }, { status: 404 });
+    return NextResponse.json({ error, error_type: errorType, message: error }, { status: 404 });
   }
 }
 
@@ -226,6 +252,7 @@ export function modelDoesNotExistResponse() {
   return NextResponse.json(
     {
       error: 'Model not found',
+      error_type: ProxyErrorType.model_not_found,
       message: 'The requested model could not be found.',
     },
     { status: 404 }
@@ -235,12 +262,18 @@ export function modelDoesNotExistResponse() {
 export function featureExclusiveModelResponse(modelId: string) {
   const exclusiveTo = kiloExclusiveModels.find(m => m.public_id === modelId)?.exclusive_to ?? [];
   const error = `${modelId} is only available for ${exclusiveTo.join(', ')}. Use ${KILO_AUTO_FREE_MODEL.id} as a free alternative.`;
-  return NextResponse.json({ error, message: error }, { status: 403 });
+  return NextResponse.json(
+    { error, error_type: ProxyErrorType.feature_exclusive_model, message: error },
+    { status: 403 }
+  );
 }
 
 export function storeAndPreviousResponseIdIsNotSupported() {
   const error = 'The store and previous_response_id fields are not supported.';
-  return NextResponse.json({ error, message: error }, { status: 400 });
+  return NextResponse.json(
+    { error, error_type: ProxyErrorType.unsupported_field, message: error },
+    { status: 400 }
+  );
 }
 
 export function getOutputHeaders(response: Response) {
