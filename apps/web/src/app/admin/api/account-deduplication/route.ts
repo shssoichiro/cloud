@@ -40,14 +40,23 @@ export async function GET(
   const searchParams = request.nextUrl.searchParams;
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
   const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)));
+  const minAccounts = Math.max(2, parseInt(searchParams.get('minAccounts') ?? '2', 10));
+  const hideAllBlocked = searchParams.get('hideAllBlocked') === 'true';
 
-  // Count distinct normalized_email values that appear more than once
+  const havingClauses = [sql`count(*) >= ${minAccounts}`];
+  if (hideAllBlocked) {
+    // Exclude groups where every user is blocked
+    havingClauses.push(sql`count(*) FILTER (WHERE ${kilocode_users.blocked_reason} IS NULL) > 0`);
+  }
+  const havingClause = sql.join(havingClauses, sql` AND `);
+
+  // Count distinct normalized_email values that meet the filter criteria
   const countRows = await db
     .select({ normalized_email: kilocode_users.normalized_email })
     .from(kilocode_users)
     .where(isNotNull(kilocode_users.normalized_email))
     .groupBy(kilocode_users.normalized_email)
-    .having(sql`count(*) > 1`);
+    .having(havingClause);
 
   const total = countRows.length;
   const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -59,7 +68,7 @@ export async function GET(
     .from(kilocode_users)
     .where(isNotNull(kilocode_users.normalized_email))
     .groupBy(kilocode_users.normalized_email)
-    .having(sql`count(*) > 1`)
+    .having(havingClause)
     .orderBy(kilocode_users.normalized_email)
     .limit(limit)
     .offset(offset);
