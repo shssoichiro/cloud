@@ -68,6 +68,7 @@ import { DetailField, formatAbsoluteTime, formatRelativeTime, parseTimestamp } f
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { AdminFileEditor } from './AdminFileEditor';
+import { KiloCliRunCard } from './KiloCliRunCard';
 import { BumpVolumeTo15GbButton } from './BumpVolumeTo15GbDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -2967,6 +2968,8 @@ export function KiloclawInstanceDetail({ instanceId }: { instanceId: string }) {
             </CardContent>
           </Card>
         )}
+
+        {isActive && <KiloCliRunCard userId={data.user_id} instanceId={data.id} />}
 
         {/* Volume Reassociation (danger zone) */}
         {isActive &&

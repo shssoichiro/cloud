@@ -770,7 +770,6 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
         }
 
         if (result.cancelled) {
-          const resolvedInstanceId = instance?.id ?? null;
           try {
             await createKiloClawAdminAuditLog({
               action: 'kiloclaw.cli_run.cancel',
@@ -780,12 +779,9 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
               target_user_id: input.userId,
               message: 'CLI run cancelled',
               metadata: {
-                instanceId: resolvedInstanceId,
+                instanceId: result.instanceId,
                 requestedInstanceId: input.instanceId ?? null,
-                // Whether the router resolved an instance for the user. Note:
-                // even when true, cancelCliRun may still reach the controller
-                // via the run row's own instance_id.
-                routerInstanceMissing: !resolvedInstanceId,
+                usedFallback: !instance,
                 runId: input.runId,
               },
             });
@@ -802,12 +798,24 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
     }),
 
   listKiloCliRuns: adminProcedure
-    .input(z.object({ userId: z.string().min(1), limit: z.number().min(1).max(50).default(20) }))
+    .input(
+      z.object({
+        userId: z.string().min(1),
+        instanceId: z.uuid().optional(),
+        limit: z.number().min(1).max(50).default(20),
+      })
+    )
     .query(async ({ input }) => {
+      const conditions: SQL[] = [eq(kiloclaw_cli_runs.user_id, input.userId)];
+
+      if (input.instanceId) {
+        conditions.push(eq(kiloclaw_cli_runs.instance_id, input.instanceId));
+      }
+
       const runs = await db
         .select()
         .from(kiloclaw_cli_runs)
-        .where(eq(kiloclaw_cli_runs.user_id, input.userId))
+        .where(and(...conditions))
         .orderBy(desc(kiloclaw_cli_runs.started_at))
         .limit(input.limit);
 
@@ -846,7 +854,8 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
         const pattern = `%${escaped}%`;
         const searchCond = or(
           ilike(kilocode_users.google_user_email, pattern),
-          ilike(kiloclaw_cli_runs.prompt, pattern)
+          ilike(kiloclaw_cli_runs.prompt, pattern),
+          ilike(sql`${kiloclaw_cli_runs.instance_id}::text`, pattern)
         );
         if (searchCond) conditions.push(searchCond);
       }
@@ -859,6 +868,7 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
             id: kiloclaw_cli_runs.id,
             user_id: kiloclaw_cli_runs.user_id,
             user_email: kilocode_users.google_user_email,
+            instance_id: kiloclaw_cli_runs.instance_id,
             initiated_by_admin_id: kiloclaw_cli_runs.initiated_by_admin_id,
             initiated_by_admin_email: initiatingAdminUsers.google_user_email,
             prompt: kiloclaw_cli_runs.prompt,

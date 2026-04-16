@@ -149,6 +149,69 @@ afterEach(async () => {
 });
 /* eslint-enable drizzle/enforce-delete-with-where */
 
+describe('admin.kiloclawInstances.listKiloCliRuns', () => {
+  it('returns all runs for a user when instanceId is omitted', async () => {
+    const caller = await createCallerForUser(adminUser.id);
+    const result = await caller.admin.kiloclawInstances.listKiloCliRuns({
+      userId: cliRunUser.id,
+    });
+
+    expect(result.runs).toHaveLength(1);
+    expect(result.runs[0]).toMatchObject({ id: cliRunId });
+  });
+
+  it('scopes runs to a specific instance when instanceId is provided', async () => {
+    const secondInstanceId = crypto.randomUUID();
+    await db.insert(kiloclaw_instances).values({
+      id: secondInstanceId,
+      user_id: cliRunUser.id,
+      sandbox_id: `ki_${secondInstanceId.replace(/-/g, '')}`,
+    });
+
+    const [secondRun] = await db
+      .insert(kiloclaw_cli_runs)
+      .values({
+        user_id: cliRunUser.id,
+        instance_id: secondInstanceId,
+        prompt: 'run on second instance',
+        status: 'running',
+        started_at: '2026-04-08T13:00:00.000Z',
+      })
+      .returning({ id: kiloclaw_cli_runs.id });
+
+    try {
+      const caller = await createCallerForUser(adminUser.id);
+
+      // Without instanceId — returns both
+      const allResult = await caller.admin.kiloclawInstances.listKiloCliRuns({
+        userId: cliRunUser.id,
+      });
+      expect(allResult.runs).toHaveLength(2);
+
+      // With first instanceId — returns only the first run
+      const firstResult = await caller.admin.kiloclawInstances.listKiloCliRuns({
+        userId: cliRunUser.id,
+        instanceId: cliRunInstanceId,
+      });
+      expect(firstResult.runs).toHaveLength(1);
+      expect(firstResult.runs[0]).toMatchObject({ id: cliRunId });
+
+      // With second instanceId — returns only the second run
+      const secondResult = await caller.admin.kiloclawInstances.listKiloCliRuns({
+        userId: cliRunUser.id,
+        instanceId: secondInstanceId,
+      });
+      expect(secondResult.runs).toHaveLength(1);
+      expect(secondResult.runs[0]).toMatchObject({ id: secondRun.id });
+    } finally {
+      /* eslint-disable drizzle/enforce-delete-with-where */
+      await db.delete(kiloclaw_cli_runs).where(eq(kiloclaw_cli_runs.id, secondRun.id));
+      await db.delete(kiloclaw_instances).where(eq(kiloclaw_instances.id, secondInstanceId));
+      /* eslint-enable drizzle/enforce-delete-with-where */
+    }
+  });
+});
+
 describe('admin.kiloclawInstances.destroyFlyMachine', () => {
   it('throws FORBIDDEN for non-admin users', async () => {
     const caller = await createCallerForUser(regularUser.id);
@@ -599,6 +662,118 @@ describe('admin.kiloclawInstances.getKiloCliRunStatus', () => {
     expect(run?.initiated_by_admin_email).toBe(adminUser.google_user_email);
     expect(run).not.toHaveProperty('initiated_by_admin_name');
   });
+
+  it('returns the instance_id on each run', async () => {
+    const caller = await createCallerForUser(adminUser.id);
+    const result = await caller.admin.kiloclawInstances.listAllCliRuns({
+      offset: 0,
+      limit: 10,
+      initiatedBy: 'all',
+      status: 'all',
+    });
+
+    const run = result.runs.find(row => row.id === cliRunId);
+    expect(run?.instance_id).toBe(cliRunInstanceId);
+  });
+
+  it('finds runs when searching by full instance_id', async () => {
+    const caller = await createCallerForUser(adminUser.id);
+    const result = await caller.admin.kiloclawInstances.listAllCliRuns({
+      offset: 0,
+      limit: 10,
+      initiatedBy: 'all',
+      status: 'all',
+      search: cliRunInstanceId,
+    });
+
+    expect(result.runs.map(r => r.id)).toContain(cliRunId);
+  });
+
+  it('finds runs when searching by a substring of the instance_id', async () => {
+    const caller = await createCallerForUser(adminUser.id);
+    const fragment = cliRunInstanceId.slice(0, 8);
+    const result = await caller.admin.kiloclawInstances.listAllCliRuns({
+      offset: 0,
+      limit: 10,
+      initiatedBy: 'all',
+      status: 'all',
+      search: fragment,
+    });
+
+    expect(result.runs.map(r => r.id)).toContain(cliRunId);
+  });
+
+  it('returns no runs when searching by an instance_id that does not match', async () => {
+    const caller = await createCallerForUser(adminUser.id);
+    const result = await caller.admin.kiloclawInstances.listAllCliRuns({
+      offset: 0,
+      limit: 10,
+      initiatedBy: 'all',
+      status: 'all',
+      search: '00000000-0000-0000-0000-000000000000',
+    });
+
+    expect(result.runs.map(r => r.id)).not.toContain(cliRunId);
+  });
+});
+
+describe('admin.kiloclawInstances.listKiloCliRuns', () => {
+  it('scopes results to the given instanceId', async () => {
+    // Create a second instance for the same user with its own CLI run
+    const [otherInstance] = await db
+      .insert(kiloclaw_instances)
+      .values({
+        id: crypto.randomUUID(),
+        user_id: cliRunUser.id,
+        sandbox_id: `ki_${crypto.randomUUID().replace(/-/g, '')}`,
+      })
+      .returning({ id: kiloclaw_instances.id });
+
+    const [otherRun] = await db
+      .insert(kiloclaw_cli_runs)
+      .values({
+        user_id: cliRunUser.id,
+        instance_id: otherInstance.id,
+        prompt: 'run on other instance',
+        status: 'completed',
+        started_at: '2026-04-08T13:00:00.000Z',
+        completed_at: '2026-04-08T13:05:00.000Z',
+        exit_code: 0,
+        initiated_by_admin_id: null,
+      })
+      .returning({ id: kiloclaw_cli_runs.id });
+
+    try {
+      const caller = await createCallerForUser(adminUser.id);
+
+      // Without instanceId — returns runs from both instances
+      const allRuns = await caller.admin.kiloclawInstances.listKiloCliRuns({
+        userId: cliRunUser.id,
+      });
+      const allIds = allRuns.runs.map(r => r.id);
+      expect(allIds).toContain(cliRunId);
+      expect(allIds).toContain(otherRun.id);
+
+      // Scoped to the original instance — only its run
+      const scopedOriginal = await caller.admin.kiloclawInstances.listKiloCliRuns({
+        userId: cliRunUser.id,
+        instanceId: cliRunInstanceId,
+      });
+      expect(scopedOriginal.runs.map(r => r.id)).toEqual([cliRunId]);
+
+      // Scoped to the other instance — only its run
+      const scopedOther = await caller.admin.kiloclawInstances.listKiloCliRuns({
+        userId: cliRunUser.id,
+        instanceId: otherInstance.id,
+      });
+      expect(scopedOther.runs.map(r => r.id)).toEqual([otherRun.id]);
+    } finally {
+      /* eslint-disable drizzle/enforce-delete-with-where */
+      await db.delete(kiloclaw_cli_runs).where(eq(kiloclaw_cli_runs.id, otherRun.id));
+      await db.delete(kiloclaw_instances).where(eq(kiloclaw_instances.id, otherInstance.id));
+      /* eslint-enable drizzle/enforce-delete-with-where */
+    }
+  });
 });
 
 describe('admin.kiloclawInstances inbound email controls', () => {
@@ -835,7 +1010,7 @@ describe('admin.kiloclawInstances.cancelKiloCliRun', () => {
     expect(logs[0].metadata).toEqual({
       instanceId: cliRunInstanceId,
       requestedInstanceId: cliRunInstanceId,
-      routerInstanceMissing: false,
+      usedFallback: false,
       runId: cliRunId,
     });
   });
@@ -900,9 +1075,9 @@ describe('admin.kiloclawInstances.cancelKiloCliRun', () => {
       expect(logs[0].target_user_id).toBe(cliRunUser.id);
       expect(logs[0].message).toBe('CLI run cancelled');
       expect(logs[0].metadata).toEqual({
-        instanceId: null,
+        instanceId: destroyedInstance.id,
         requestedInstanceId: destroyedInstance.id,
-        routerInstanceMissing: true,
+        usedFallback: true,
         runId: staleRun.id,
       });
     } finally {
