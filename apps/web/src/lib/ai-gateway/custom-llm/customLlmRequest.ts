@@ -39,7 +39,6 @@ import {
   CustomLlmExtraHeadersSchema,
   InterleavedFormatSchema,
   ReasoningEffortSchema,
-  VerbositySchema,
 } from '@kilocode/db/schema-types';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type OpenAI from 'openai';
@@ -579,7 +578,6 @@ function buildCommonParams(
   request: OpenRouterChatCompletionRequest,
   isLegacyExtension: boolean
 ) {
-  const verbosity = VerbositySchema.safeParse(request.verbosity).data;
   const reasoningEffort = ReasoningEffortSchema.safeParse(request.reasoning?.effort).data;
   return {
     messages,
@@ -593,13 +591,11 @@ function buildCommonParams(
     providerOptions: {
       anthropic: {
         thinking: { type: 'adaptive' },
-        effort: verbosity,
         disableParallelToolUse: request.parallel_tool_calls === false || isLegacyExtension,
       } satisfies AnthropicProviderOptions,
       openai: {
         forceReasoning: (reasoningEffort !== 'none' && customLlm.force_reasoning) || undefined,
         reasoningSummary: 'auto',
-        textVerbosity: verbosity === 'max' ? 'high' : verbosity,
         reasoningEffort: reasoningEffort,
         include: ['reasoning.encrypted_content'],
         parallelToolCalls: (request.parallel_tool_calls ?? true) && !isLegacyExtension,
