@@ -14,7 +14,6 @@ import {
 } from '@kilocode/worker-utils/kiloclaw-billing-observability';
 import {
   credit_transactions,
-  kiloclaw_earlybird_purchases,
   kiloclaw_email_log,
   kiloclaw_instances,
   kiloclaw_subscriptions,
@@ -35,7 +34,7 @@ const DESTRUCTION_GRACE_DAYS = 7;
 const PAST_DUE_THRESHOLD_DAYS = 14;
 const TRIAL_WARNING_DAYS = 2;
 const DESTRUCTION_WARNING_DAYS = 2;
-const KILOCLAW_EARLYBIRD_EXPIRY_DATE = '2026-09-26';
+const EARLYBIRD_WARNING_DAYS = 14;
 const AUTO_RESUME_INITIAL_BACKOFF_MS = 2 * 60 * 60 * 1000;
 const AUTO_RESUME_MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
 const SOFT_DELETED_EMAIL_SUFFIX = '@deleted.invalid';
@@ -2252,16 +2251,15 @@ async function runEarlybirdWarningSweep(
   summary: BillingSummary
 ): Promise<void> {
   const clawUrl = buildClawUrl(env);
-  const earlybirdExpiry = new Date(KILOCLAW_EARLYBIRD_EXPIRY_DATE);
-  const daysUntilEarlybird = Math.ceil((earlybirdExpiry.getTime() - Date.now()) / MS_PER_DAY);
-
-  if (daysUntilEarlybird <= 0 || daysUntilEarlybird > 14) {
-    return;
-  }
+  const advisoryNow = new Date().toISOString();
+  const earlybirdWarningCutoff = new Date(
+    Date.now() + EARLYBIRD_WARNING_DAYS * MS_PER_DAY
+  ).toISOString();
 
   const canonicalRows = await database
     .select({
       user_id: kiloclaw_subscriptions.user_id,
+      trial_ends_at: kiloclaw_subscriptions.trial_ends_at,
       email: kilocode_users.google_user_email,
     })
     .from(kiloclaw_subscriptions)
@@ -2271,7 +2269,8 @@ async function runEarlybirdWarningSweep(
         eq(kiloclaw_subscriptions.access_origin, 'earlybird'),
         eq(kiloclaw_subscriptions.status, 'trialing'),
         currentSubscriptionRowFilter(),
-        sql`${kiloclaw_subscriptions.trial_ends_at} > now()`,
+        gt(kiloclaw_subscriptions.trial_ends_at, advisoryNow),
+        lte(kiloclaw_subscriptions.trial_ends_at, earlybirdWarningCutoff),
         sql`NOT EXISTS (
           SELECT 1
           FROM ${kiloclaw_subscriptions} AS other
@@ -2291,45 +2290,17 @@ async function runEarlybirdWarningSweep(
       )
     );
 
-  const legacyRows = await database
-    .select({
-      user_id: kiloclaw_earlybird_purchases.user_id,
-      email: kilocode_users.google_user_email,
-    })
-    .from(kiloclaw_earlybird_purchases)
-    .innerJoin(kilocode_users, eq(kiloclaw_earlybird_purchases.user_id, kilocode_users.id))
-    .where(sql`NOT EXISTS (
-        SELECT 1
-        FROM ${kiloclaw_subscriptions}
-        WHERE ${kiloclaw_subscriptions.user_id} = ${kiloclaw_earlybird_purchases.user_id}
-          AND ${kiloclaw_subscriptions.transferred_to_subscription_id} IS NULL
-          AND ${kiloclaw_subscriptions.access_origin} = 'earlybird'
-      )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM ${kiloclaw_subscriptions}
-        WHERE ${kiloclaw_subscriptions.user_id} = ${kiloclaw_earlybird_purchases.user_id}
-          AND ${kiloclaw_subscriptions.transferred_to_subscription_id} IS NULL
-          AND (
-            ${kiloclaw_subscriptions.status} = 'active'
-            OR (
-              ${kiloclaw_subscriptions.status} = 'past_due'
-              AND ${kiloclaw_subscriptions.suspended_at} IS NULL
-            )
-            OR (
-              ${kiloclaw_subscriptions.status} = 'trialing'
-              AND ${kiloclaw_subscriptions.access_origin} IS DISTINCT FROM 'earlybird'
-              AND ${kiloclaw_subscriptions.trial_ends_at} > now()
-            )
-          )
-      )`);
-
-  for (const row of [...canonicalRows, ...legacyRows]) {
+  for (const row of canonicalRows) {
     try {
       if (isSoftDeletedUserEmail(row.email)) continue;
-      const expiryDate = formatDateForEmail(earlybirdExpiry);
+      if (!row.trial_ends_at) continue;
+
+      const trialEndsAt = new Date(row.trial_ends_at);
+      const daysRemaining = Math.ceil((trialEndsAt.getTime() - Date.now()) / MS_PER_DAY);
+      const expiryDate = formatDateForEmail(trialEndsAt);
+
       const sent =
-        daysUntilEarlybird <= 1
+        daysRemaining <= 1
           ? await trySendEmail(
               database,
               env,
@@ -2353,7 +2324,7 @@ async function runEarlybirdWarningSweep(
               'claw_earlybird_14d',
               'clawEarlybirdEndingSoon',
               {
-                days_remaining: String(daysUntilEarlybird),
+                days_remaining: String(daysRemaining),
                 expiry_date: expiryDate,
                 claw_url: clawUrl,
               },
