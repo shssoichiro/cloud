@@ -15,8 +15,11 @@ import { eq } from 'drizzle-orm';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyMock = jest.Mock<(...args: any[]) => any>;
 
+type PatchWebSearchConfigResult = { exaMode: 'kilo-proxy' | 'disabled' | null };
+
 type KiloClawClientMock = {
   __destroyMock: AnyMock;
+  __patchWebSearchConfigMock: AnyMock;
 };
 
 jest.mock('@/lib/stripe-client', () => ({
@@ -54,9 +57,11 @@ jest.mock('@/lib/config.server', () => {
 
 jest.mock('@/lib/kiloclaw/kiloclaw-internal-client', () => {
   const destroyMock = jest.fn();
+  const patchWebSearchConfigMock = jest.fn();
   return {
     KiloClawInternalClient: jest.fn().mockImplementation(() => ({
       destroy: destroyMock,
+      patchWebSearchConfig: patchWebSearchConfigMock,
     })),
     KiloClawApiError: class KiloClawApiError extends Error {
       statusCode: number;
@@ -68,6 +73,7 @@ jest.mock('@/lib/kiloclaw/kiloclaw-internal-client', () => {
       }
     },
     __destroyMock: destroyMock,
+    __patchWebSearchConfigMock: patchWebSearchConfigMock,
   };
 });
 
@@ -78,6 +84,10 @@ let createCallerForUser: (userId: string) => Promise<{
   organizations: {
     kiloclaw: {
       destroy: (input: { organizationId: string }) => Promise<{ ok: true }>;
+      patchWebSearchConfig: (input: {
+        organizationId: string;
+        exaMode?: 'kilo-proxy' | 'disabled' | null;
+      }) => Promise<PatchWebSearchConfigResult>;
     };
   };
 }>;
@@ -87,10 +97,27 @@ beforeAll(async () => {
   createCallerForUser = mod.createCallerForUser;
 });
 
+async function createActiveOrgInstance(userId: string, organizationId: string): Promise<string> {
+  const instanceId = crypto.randomUUID();
+  const [row] = await db
+    .insert(kiloclaw_instances)
+    .values({
+      id: instanceId,
+      user_id: userId,
+      organization_id: organizationId,
+      sandbox_id: `ki_${instanceId.replace(/-/g, '')}`,
+    })
+    .returning({ id: kiloclaw_instances.id });
+
+  if (!row) throw new Error('Failed to create organization KiloClaw instance');
+  return row.id;
+}
+
 describe('organization kiloclaw destroy', () => {
   beforeEach(async () => {
     await cleanupDbForTest();
     kiloclawClientMock.__destroyMock.mockReset();
+    kiloclawClientMock.__patchWebSearchConfigMock.mockReset();
     kiloclawClientMock.__destroyMock.mockResolvedValue({ ok: true });
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
@@ -105,14 +132,8 @@ describe('organization kiloclaw destroy', () => {
       google_user_email: `org-kiloclaw-destroy-${Math.random()}@example.com`,
     });
     const organization = await createOrganization('Org KiloClaw Destroy Test', user.id);
-    const instanceId = crypto.randomUUID();
+    const instanceId = await createActiveOrgInstance(user.id, organization.id);
 
-    await db.insert(kiloclaw_instances).values({
-      id: instanceId,
-      user_id: user.id,
-      organization_id: organization.id,
-      sandbox_id: `ki_${instanceId.replace(/-/g, '')}`,
-    });
     await db.insert(kiloclaw_subscriptions).values({
       user_id: user.id,
       instance_id: instanceId,
@@ -164,5 +185,61 @@ describe('organization kiloclaw destroy', () => {
         destruction_deadline: null,
       })
     );
+  });
+});
+
+describe('organizations.kiloclaw.patchWebSearchConfig', () => {
+  beforeEach(async () => {
+    await cleanupDbForTest();
+    kiloclawClientMock.__destroyMock.mockReset();
+    kiloclawClientMock.__patchWebSearchConfigMock.mockReset();
+  });
+
+  it('patches web search config for the active org instance', async () => {
+    const user = await insertTestUser({
+      google_user_email: `org-kiloclaw-web-search-${crypto.randomUUID()}@example.com`,
+    });
+    const organization = await createOrganization('Org KiloClaw Web Search Test', user.id);
+    const instanceId = await createActiveOrgInstance(user.id, organization.id);
+    kiloclawClientMock.__patchWebSearchConfigMock.mockResolvedValue({ exaMode: 'disabled' });
+
+    const caller = await createCallerForUser(user.id);
+    await expect(
+      caller.organizations.kiloclaw.patchWebSearchConfig({
+        organizationId: organization.id,
+        exaMode: 'disabled',
+      })
+    ).resolves.toEqual({ exaMode: 'disabled' });
+
+    expect(kiloclawClientMock.__patchWebSearchConfigMock).toHaveBeenCalledTimes(1);
+    expect(kiloclawClientMock.__patchWebSearchConfigMock).toHaveBeenCalledWith(
+      user.id,
+      { exaMode: 'disabled' },
+      instanceId
+    );
+
+    const firstCall = kiloclawClientMock.__patchWebSearchConfigMock.mock.calls[0];
+    if (!firstCall) throw new Error('Expected patchWebSearchConfig to be called');
+    expect(firstCall[1]).not.toHaveProperty('organizationId');
+  });
+
+  it('rejects when the organization has no active instance', async () => {
+    const user = await insertTestUser({
+      google_user_email: `org-kiloclaw-web-search-${crypto.randomUUID()}@example.com`,
+    });
+    const organization = await createOrganization('Org KiloClaw Web Search Test', user.id);
+    const caller = await createCallerForUser(user.id);
+
+    await expect(
+      caller.organizations.kiloclaw.patchWebSearchConfig({
+        organizationId: organization.id,
+        exaMode: 'disabled',
+      })
+    ).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      message: 'No active KiloClaw instance found for this organization',
+    });
+
+    expect(kiloclawClientMock.__patchWebSearchConfigMock).not.toHaveBeenCalled();
   });
 });
