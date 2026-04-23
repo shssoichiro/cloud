@@ -25,7 +25,7 @@ import {
   isKiloAutoModel,
 } from '@/lib/kilo-auto';
 import { userIsWithinFirstKiloClawInstanceWindow } from '@/lib/kiloclaw/setup-promo';
-import { getRandomNumberLessThan100 } from '@/lib/ai-gateway/getRandomNumberLessThan100';
+import { getRandomNumber } from '@/lib/ai-gateway/getRandomNumber';
 import {
   findKiloExclusiveModel,
   isFreeModel,
@@ -98,10 +98,11 @@ export async function resolveAutoModel(
   if (model === KILO_AUTO_FREE_MODEL.id) {
     const openRouterModels = await getOpenRouterModels();
     const candidates = getAutoFreeCandidates(openRouterModels, apiKind);
-    const randomNumber = getRandomNumberLessThan100(
-      'free_routing_' + (sessionId ?? (await userPromise)?.id ?? clientIp)
+    const randomNumber = getRandomNumber(
+      'free_routing_' + (sessionId ?? (await userPromise)?.id ?? clientIp),
+      candidates.length
     );
-    return { model: candidates[randomNumber % candidates.length] };
+    return { model: candidates[randomNumber] };
   }
   if (model === KILO_AUTO_SMALL_MODEL.id) {
     return {
