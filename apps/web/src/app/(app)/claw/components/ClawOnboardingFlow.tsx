@@ -22,8 +22,8 @@ import { ChannelSelectionStepView } from './ChannelSelectionStep';
 import { ClawContextProvider, useClawContext } from './ClawContext';
 import { ClawConfigServiceBanner } from './ClawConfigServiceBanner';
 import { ClawHeader } from './ClawHeader';
-import { PermissionStep } from './PermissionStep';
 import { ProvisioningStep, ProvisioningStepView } from './ProvisioningStep';
+import { DEFAULT_ONBOARDING_EXEC_PRESET } from './claw.types';
 import type { BotIdentity, ExecPreset } from './claw.types';
 import {
   getClawOnboardingFlowState,
@@ -116,7 +116,7 @@ function ClawOnboardingFlowInner({
   const gatewayUrl = useGatewayUrl(status);
 
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>('identity');
-  const [selectedPreset, setSelectedPreset] = useState<ExecPreset | null>(null);
+  const selectedPreset: ExecPreset = DEFAULT_ONBOARDING_EXEC_PRESET;
   const [botIdentity, setBotIdentity] = useState<BotIdentity | null>(null);
   const [channelTokens, setChannelTokens] = useState<Record<string, string> | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
@@ -132,7 +132,6 @@ function ClawOnboardingFlowInner({
     createSetupStarted,
     setupFailed,
     onboardingStep,
-    selectedPreset,
     hasBotIdentity: botIdentity !== null,
     selectedChannelId,
   };
@@ -196,7 +195,6 @@ function ClawOnboardingFlowInner({
 
   const resetWizardSelections = useCallback(() => {
     setOnboardingStep('identity');
-    setSelectedPreset(null);
     setBotIdentity(null);
     setChannelTokens(null);
     setSelectedChannelId(null);
@@ -270,24 +268,12 @@ function ClawOnboardingFlowInner({
             });
             provisionInstance(weatherLocation?.location);
           }
-          posthog?.capture('claw_setup_permissions_viewed');
-          setBotIdentity(identity);
-          setOnboardingStep('permissions');
-        }}
-      />
-    );
-  }
-
-  function renderPermissionsStep() {
-    return (
-      <PermissionStep
-        currentStep={flowState.currentStep}
-        totalSteps={flowState.totalSteps}
-        instanceRunning={flowState.instanceRunning}
-        onSelect={preset => {
-          posthog?.capture('claw_setup_permissions_completed', { preset });
+          posthog?.capture('claw_setup_permissions_completed', {
+            preset: DEFAULT_ONBOARDING_EXEC_PRESET,
+            defaulted: true,
+          });
           posthog?.capture('claw_setup_channels_viewed');
-          setSelectedPreset(preset);
+          setBotIdentity(identity);
           setOnboardingStep('channels');
         }}
       />
@@ -332,7 +318,6 @@ function ClawOnboardingFlowInner({
           totalSteps={flowState.totalSteps}
         />
       );
-    if (selectedPreset === null) return renderPermissionsStep();
 
     return (
       <ProvisioningStep
@@ -400,8 +385,6 @@ function ClawOnboardingFlowInner({
     switch (renderStep) {
       case 'identity':
         return renderIdentityStep();
-      case 'permissions':
-        return renderPermissionsStep();
       case 'channels':
         return renderChannelsStep();
       case 'provisioning':
