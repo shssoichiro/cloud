@@ -53,7 +53,10 @@ import {
   getPersonalProvisionLockKey,
   withKiloclawProvisionContextLock,
 } from '@/lib/kiloclaw/provision-lock';
-import { clearSubscriptionLifecycleAfterInstanceDestroy } from '@/lib/kiloclaw/instance-lifecycle';
+import {
+  clearSubscriptionLifecycleAfterInstanceDestroy,
+  clearTrialInactivityStopAfterStart,
+} from '@/lib/kiloclaw/instance-lifecycle';
 
 import { dayjs } from '@/lib/kilo-pass/dayjs';
 import {
@@ -2439,10 +2442,19 @@ export const kiloclawRouter = createTRPCRouter({
   start: clawAccessProcedure.mutation(async ({ ctx }) => {
     const instance = await getActiveInstance(ctx.user.id);
     const client = new KiloClawInternalClient();
-    const result = await client.start(ctx.user.id, workerInstanceId(instance));
-    // /api/platform/start always returns { ok: true } regardless of whether
-    // the machine transitioned state, so this may fire for no-op requests.
-    // The UI only enables Start when isStartable is true, so false fires are rare.
+    const result = await client.start(ctx.user.id, workerInstanceId(instance), {
+      reason: 'manual_user_request',
+    });
+    if (instance && result.currentStatus === 'running') {
+      try {
+        await clearTrialInactivityStopAfterStart({
+          kiloUserId: ctx.user.id,
+          instanceId: instance.id,
+        });
+      } catch (error) {
+        console.error('Failed to clear trial inactivity stop marker after start:', error);
+      }
+    }
     PostHogClient().capture({
       distinctId: ctx.user.google_user_email,
       event: 'claw_instance_started',
@@ -2454,7 +2466,9 @@ export const kiloclawRouter = createTRPCRouter({
   stop: clawAccessProcedure.mutation(async ({ ctx }) => {
     const instance = await getActiveInstance(ctx.user.id);
     const client = new KiloClawInternalClient();
-    return client.stop(ctx.user.id, workerInstanceId(instance));
+    return client.stop(ctx.user.id, workerInstanceId(instance), {
+      reason: 'manual_user_request',
+    });
   }),
 
   destroy: baseProcedure.mutation(async ({ ctx }) => {
@@ -2462,7 +2476,9 @@ export const kiloclawRouter = createTRPCRouter({
     const client = new KiloClawInternalClient();
     let result: Awaited<ReturnType<KiloClawInternalClient['destroy']>>;
     try {
-      result = await client.destroy(ctx.user.id, workerInstanceId(destroyedRow));
+      result = await client.destroy(ctx.user.id, workerInstanceId(destroyedRow), {
+        reason: 'manual_user_request',
+      });
     } catch (error) {
       if (destroyedRow) {
         await restoreDestroyedInstance(destroyedRow.id);

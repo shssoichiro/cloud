@@ -7,12 +7,17 @@ vi.mock('cloudflare:workers', () => ({
 }));
 
 function makeEnv(overrides: Record<string, unknown> = {}) {
-  const startAsync = vi.fn().mockResolvedValue(undefined);
+  const start = vi.fn().mockResolvedValue({
+    started: true,
+    previousStatus: 'stopped',
+    currentStatus: 'running',
+    startedAt: 1_776_885_000_000,
+  });
   return {
     env: {
       KILOCLAW_INSTANCE: {
         idFromName: (id: string) => id,
-        get: () => ({ startAsync }),
+        get: () => ({ start }),
       },
       KILOCLAW_AE: { writeDataPoint: vi.fn() },
       KV_CLAW_CACHE: {
@@ -24,7 +29,7 @@ function makeEnv(overrides: Record<string, unknown> = {}) {
       },
       ...overrides,
     } as never,
-    startAsync,
+    start,
   };
 }
 
@@ -48,7 +53,7 @@ function findJsonLog(message: string): Record<string, unknown> | undefined {
     .find((record: Record<string, unknown>) => record.message === message);
 }
 
-describe('POST /start-async', () => {
+describe('POST /start', () => {
   beforeEach(() => {
     loggedValues = [];
     vi.spyOn(console, 'log').mockImplementation((value?: unknown) => {
@@ -63,52 +68,90 @@ describe('POST /start-async', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns 200 and calls the DO async start path', async () => {
-    const { env, startAsync } = makeEnv();
-    const { path, init } = postJson(
-      '/start-async?instanceId=11111111-1111-4111-8111-111111111111',
-      {
-        userId: 'user-1',
-      }
-    );
+  it('returns the structured start result from the DO sync start path', async () => {
+    const { env, start } = makeEnv();
+    const { path, init } = postJson('/start?instanceId=11111111-1111-4111-8111-111111111111', {
+      userId: 'user-1',
+    });
 
     const response = await platform.request(path, init, env);
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true });
-    expect(startAsync).toHaveBeenCalledWith('user-1', undefined);
+    expect(await response.json()).toEqual({
+      ok: true,
+      started: true,
+      previousStatus: 'stopped',
+      currentStatus: 'running',
+      startedAt: 1_776_885_000_000,
+    });
+    expect(start).toHaveBeenCalledWith('user-1', undefined);
   });
 
-  it('passes an optional start reason through to the DO async path', async () => {
-    const { env, startAsync } = makeEnv();
-    const { path, init } = postJson(
-      '/start-async?instanceId=11111111-1111-4111-8111-111111111111',
-      {
-        userId: 'user-1',
-        reason: 'interrupted_auto_resume',
-      }
-    );
+  it('passes an optional start reason through to the DO', async () => {
+    const { env, start } = makeEnv();
+    const { path, init } = postJson('/start?instanceId=11111111-1111-4111-8111-111111111111', {
+      userId: 'user-1',
+      reason: 'manual_user_request',
+    });
 
     const response = await platform.request(path, init, env);
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true });
-    expect(startAsync).toHaveBeenCalledWith('user-1', {
-      reason: 'interrupted_auto_resume',
+    expect(await response.json()).toEqual({
+      ok: true,
+      started: true,
+      previousStatus: 'stopped',
+      currentStatus: 'running',
+      startedAt: 1_776_885_000_000,
+    });
+    expect(start).toHaveBeenCalledWith('user-1', { reason: 'manual_user_request' });
+  });
+
+  it('returns a structured no-op result when the instance is still stopped', async () => {
+    const { env, start } = makeEnv();
+    start.mockResolvedValueOnce({
+      started: false,
+      previousStatus: 'stopped',
+      currentStatus: 'stopped',
+      startedAt: null,
+    });
+    const { path, init } = postJson('/start', {
+      userId: 'user-1',
+    });
+
+    const response = await platform.request(path, init, env);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      started: false,
+      previousStatus: 'stopped',
+      currentStatus: 'stopped',
+      startedAt: null,
     });
   });
 
-  it('logs billing-correlated async start requests with propagated context', async () => {
+  it('rejects unknown start reasons', async () => {
+    const { env, start } = makeEnv();
+    const { path, init } = postJson('/start', {
+      userId: 'user-1',
+      reason: 'typoed_reason',
+    });
+
+    const response = await platform.request(path, init, env);
+
+    expect(response.status).toBe(400);
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('logs billing-correlated start requests with propagated context', async () => {
     const { env } = makeEnv();
-    const { path, init } = postJson(
-      '/start-async?instanceId=11111111-1111-4111-8111-111111111111',
-      {
-        userId: 'user-1',
-      }
-    );
+    const { path, init } = postJson('/start?instanceId=11111111-1111-4111-8111-111111111111', {
+      userId: 'user-1',
+    });
     const headers = new Headers(init.headers as Record<string, string>);
     headers.set('x-kiloclaw-billing-run-id', '11111111-1111-4111-8111-111111111111');
-    headers.set('x-kiloclaw-billing-sweep', 'interrupted_auto_resume');
+    headers.set('x-kiloclaw-billing-sweep', 'trial_inactivity_stop_candidate');
     headers.set('x-kiloclaw-billing-call-id', '22222222-2222-4222-8222-222222222222');
     headers.set('x-kiloclaw-billing-attempt', '2');
 
@@ -125,41 +168,23 @@ describe('POST /start-async', () => {
     expect(findJsonLog('Starting billing-correlated kiloclaw platform request')).toEqual(
       expect.objectContaining({
         billingFlow: 'kiloclaw_lifecycle',
-        billingSweep: 'interrupted_auto_resume',
+        billingSweep: 'trial_inactivity_stop_candidate',
         billingComponent: 'kiloclaw_platform',
         method: 'POST',
-        path: '/start-async',
+        path: '/start',
       })
     );
     expect(findJsonLog('Finished billing-correlated kiloclaw platform request')).toEqual(
       expect.objectContaining({
         billingFlow: 'kiloclaw_lifecycle',
-        billingSweep: 'interrupted_auto_resume',
+        billingSweep: 'trial_inactivity_stop_candidate',
         billingComponent: 'kiloclaw_platform',
         outcome: 'completed',
         method: 'POST',
-        path: '/start-async',
+        path: '/start',
         statusCode: 200,
         userId: 'user-1',
       })
     );
-  });
-
-  it('surfaces DO guard errors from async start requests', async () => {
-    const err = Object.assign(new Error('Cannot start: instance is being destroyed'), {
-      status: 409,
-    });
-    const { env, startAsync } = makeEnv();
-    startAsync.mockRejectedValueOnce(err);
-    const { path, init } = postJson('/start-async', {
-      userId: 'user-1',
-    });
-
-    const response = await platform.request(path, init, env);
-
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({
-      error: 'start failed',
-    });
   });
 });
