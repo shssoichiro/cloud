@@ -50,7 +50,8 @@ import { linkAccountToExistingUser } from '@/lib/user';
 import type { FailureResult } from '@/lib/maybe-result';
 import { failureResult, whenOk } from '@/lib/maybe-result';
 import type { AuthErrorType } from '@/lib/auth/constants';
-import { hosted_domain_specials, SSO_SIGNIN_PATH } from '@/lib/auth/constants';
+import { hosted_domain_specials } from '@/lib/auth/constants';
+import { authFailureRedirectUrl, ssoSignInRedirectUrl } from '@/lib/auth/redirect-urls';
 import { isValidCallbackPath } from '@/lib/getSignInCallbackUrl';
 import {
   GITHUB_CLIENT_ID,
@@ -521,24 +522,23 @@ const authOptions: NextAuthOptions = {
       id: 'email',
       name: 'Email',
       credentials: {
-        email: { label: 'Email', type: 'email' },
         token: { label: 'Token', type: 'text' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.token) {
+        if (!credentials?.token) {
           return null;
         }
 
         const tokenData = await verifyAndConsumeMagicLinkToken(credentials.token);
 
-        if (!tokenData || tokenData.email !== credentials.email) {
+        if (!tokenData) {
           return null;
         }
 
         return {
-          id: `email-${credentials.email}`,
-          email: credentials.email,
-          name: credentials.email.split('@')[0],
+          id: `email-${tokenData.email}`,
+          email: tokenData.email,
+          name: tokenData.email.split('@')[0],
           image: '',
         };
       },
@@ -579,24 +579,20 @@ const authOptions: NextAuthOptions = {
       let isAccountLinking: boolean | null = null;
       let linkingSession: AccountLinkingSession | null = null;
       const redirectContext = await getSignInRedirectContext();
-      const redirectUrlForCode = (error: AuthErrorType, email?: string): string => {
-        const params = new URLSearchParams({ error });
-        if (email) {
-          params.set('email', email);
+      const redirectUrlForCode = (error: AuthErrorType): string => {
+        const redirectUrl = new URL(
+          authFailureRedirectUrl(error, Boolean(isAccountLinking)),
+          'http://localhost'
+        );
+        if (!isAccountLinking) {
+          if (redirectContext.callbackPath) {
+            redirectUrl.searchParams.set('callbackPath', redirectContext.callbackPath);
+          }
+          if (redirectContext.signup) {
+            redirectUrl.searchParams.set('signup', 'true');
+          }
         }
-        if (isAccountLinking) {
-          return `/connected-accounts?${params.toString()}`;
-        }
-        // Preserve the original sign-in context so an error bounce (e.g. BLOCKED,
-        // USER-NOT-FOUND, DIFFERENT-OAUTH) doesn't strand a mobile device-auth
-        // flow on a plain sign-in page without the code or signup mode.
-        if (redirectContext.callbackPath) {
-          params.set('callbackPath', redirectContext.callbackPath);
-        }
-        if (redirectContext.signup) {
-          params.set('signup', 'true');
-        }
-        return `/users/sign_in?${params.toString()}`;
+        return `${redirectUrl.pathname}?${redirectUrl.searchParams.toString()}`;
       };
       try {
         if (!account) return `TRAP: No account found`;
@@ -621,7 +617,7 @@ const authOptions: NextAuthOptions = {
         const domain = getLowerDomainFromEmail(accountInfo.google_user_email);
 
         if (!domain) {
-          return redirectUrlForCode('USER-NOT-FOUND', accountInfo.google_user_email);
+          return redirectUrlForCode('USER-NOT-FOUND');
         }
 
         if (await isEmailBlacklistedByDomainAsync(accountInfo.google_user_email)) {
@@ -630,7 +626,7 @@ const authOptions: NextAuthOptions = {
             accountInfo
           );
 
-          return redirectUrlForCode(`BLOCKED`, accountInfo.google_user_email);
+          return redirectUrlForCode(`BLOCKED`);
         }
 
         let domainToCheck = domain;
@@ -640,7 +636,7 @@ const authOptions: NextAuthOptions = {
 
         // Block new signups from blocked TLDs (existing users can still sign in)
         if (!existingUser && isBlockedTLD(accountInfo.google_user_email)) {
-          return redirectUrlForCode(`BLOCKED`, accountInfo.google_user_email);
+          return redirectUrlForCode(`BLOCKED`);
         }
 
         if (existingUser) {
@@ -661,11 +657,7 @@ const authOptions: NextAuthOptions = {
             (await doesOrgWithSSODomainExist(domainToCheck));
 
           if (redir) {
-            // Include email in redirect so it can be auto-filled on SSO sign-in page
-            const emailParam = accountInfo.google_user_email
-              ? `&email=${encodeURIComponent(accountInfo.google_user_email)}`
-              : '';
-            return SSO_SIGNIN_PATH + `?domain=${encodeURIComponent(domainToCheck)}${emailParam}`; // redirect to SSO sign-in page
+            return ssoSignInRedirectUrl(domainToCheck);
           }
         }
 
@@ -753,7 +745,7 @@ const authOptions: NextAuthOptions = {
               }
             );
           }
-          return redirectUrlForCode(result.error, accountInfo.google_user_email);
+          return redirectUrlForCode(result.error);
         }
 
         if (result.user.blocked_reason) {
