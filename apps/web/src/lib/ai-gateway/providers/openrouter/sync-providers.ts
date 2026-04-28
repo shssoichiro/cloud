@@ -21,6 +21,7 @@ import type { StoredModel } from '@/lib/ai-gateway/providers/vercel/types';
 import { EndpointsSchema, ModelsSchema } from '@/lib/ai-gateway/providers/vercel/types';
 import { redisSet } from '@/lib/redis';
 import { GATEWAY_METADATA_REDIS_KEYS, type RedisKey } from '@/lib/redis-keys';
+import { syncDirectByokModels } from '@/lib/ai-gateway/providers/direct-byok/sync-direct-byok';
 
 const ATTRIBUTION_HEADERS = {
   'HTTP-Referer': 'https://kilocode.ai',
@@ -343,11 +344,15 @@ export async function syncAndStoreProviders() {
     openrouterProviders,
   });
 
+  const direct_byok_model_counts = await syncDirectByokModels(openrouter_data);
+  console.log('[syncAndStoreProviders] direct-byok model counts:', direct_byok_model_counts);
+
   return {
     id: result.id,
     generated_at: result.data.generated_at,
     total_models: result.data.total_models,
     total_providers: result.data.total_providers,
+    direct_byok_model_counts,
     time: performance.now() - startTime,
   };
 }
