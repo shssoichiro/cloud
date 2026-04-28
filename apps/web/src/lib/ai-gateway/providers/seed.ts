@@ -9,9 +9,8 @@ export const seed_20_pro_free_model: KiloExclusiveModel = {
   max_completion_tokens: 128_000,
   status: 'disabled',
   flags: ['reasoning', 'vision'],
-  gateway: 'bytedance',
+  gateway: 'seed',
   internal_id: 'seed-2-0-pro-260328',
-  inference_provider: 'seed',
   pricing: null,
   exclusive_to: [],
 };

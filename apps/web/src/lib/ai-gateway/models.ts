@@ -14,7 +14,7 @@ import {
   CLAUDE_SONNET_CURRENT_MODEL_ID,
 } from '@/lib/ai-gateway/providers/anthropic.constants';
 import { trinity_large_thinking_free_model } from '@/lib/ai-gateway/providers/arcee';
-import { seed_20_pro_free_model } from '@/lib/ai-gateway/providers/bytedance';
+import { seed_20_pro_free_model } from '@/lib/ai-gateway/providers/seed';
 import type { KiloExclusiveModel } from '@/lib/ai-gateway/providers/kilo-exclusive-model';
 import {
   MINIMAX_CURRENT_MODEL_ID,
@@ -94,7 +94,7 @@ export const kiloExclusiveModels = [
 ] as KiloExclusiveModel[];
 
 export function isKiloStealthModel(model: string): boolean {
-  return kiloExclusiveModels.some(m => m.public_id === model && m.inference_provider === 'stealth');
+  return kiloExclusiveModels.some(m => m.public_id === model && m.flags.includes('stealth'));
 }
 
 function isOpenRouterStealthModel(model: string): boolean {
