@@ -826,10 +826,17 @@ export const organizationKiloclawRouter = createTRPCRouter({
 
       // Pin consent gate. Symmetric with the personal user path: any pin
       // (set by org member or admin) requires explicit acknowledgement
-      // before a version-changing redeploy proceeds.
+      // before a version-changing redeploy proceeds. See the personal
+      // kiloclaw-router for the residual concurrency note: a pin written
+      // between this SELECT and the worker call is not consulted by the
+      // worker on restart, by design.
       if (input.imageTag) {
         const [pin] = await db
-          .select({ image_tag: kiloclaw_version_pins.image_tag })
+          .select({
+            id: kiloclaw_version_pins.id,
+            image_tag: kiloclaw_version_pins.image_tag,
+            updated_at: kiloclaw_version_pins.updated_at,
+          })
           .from(kiloclaw_version_pins)
           .where(eq(kiloclaw_version_pins.instance_id, instance.id))
           .limit(1);
@@ -842,9 +849,30 @@ export const organizationKiloclawRouter = createTRPCRouter({
         }
 
         if (pin) {
-          await db
+          // Conditional delete tied to both the row id and the updated_at
+          // we observed. setMyPin uses onConflictDoUpdate which keeps the
+          // same row id but bumps updated_at, so checking id alone would
+          // miss in-place edits. Pinning updated_at catches both
+          // replacement (different id) and update (same id, newer
+          // updated_at). Empty returning() means the row changed.
+          const deleted = await db
             .delete(kiloclaw_version_pins)
-            .where(eq(kiloclaw_version_pins.instance_id, instance.id));
+            .where(
+              and(
+                eq(kiloclaw_version_pins.instance_id, instance.id),
+                eq(kiloclaw_version_pins.id, pin.id),
+                eq(kiloclaw_version_pins.updated_at, pin.updated_at)
+              )
+            )
+            .returning({ id: kiloclaw_version_pins.id });
+
+          if (deleted.length === 0) {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message: 'PIN_EXISTS',
+            });
+          }
+
           await pushPinToWorker(ctx.user.id, instance.id, null);
         }
       }

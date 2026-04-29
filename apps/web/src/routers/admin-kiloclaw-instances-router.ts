@@ -1241,12 +1241,17 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
       // (whether forward-upgrading, downgrading, or switching variants)
       // overrides whatever pin is currently set on the instance. The DO
       // does not consult the pin table on restart, so the gate lives at
-      // the web layer where authorization context exists.
+      // the web layer where authorization context exists. See the
+      // personal kiloclaw-router for the residual concurrency note: a
+      // pin written between this SELECT and the worker call is not
+      // consulted by the worker on restart, by design.
       if (input.imageTag) {
         const [pin] = await db
           .select({
+            id: kiloclaw_version_pins.id,
             image_tag: kiloclaw_version_pins.image_tag,
             pinned_by: kiloclaw_version_pins.pinned_by,
+            updated_at: kiloclaw_version_pins.updated_at,
           })
           .from(kiloclaw_version_pins)
           .where(eq(kiloclaw_version_pins.instance_id, input.instanceId))
@@ -1264,13 +1269,32 @@ export const adminKiloclawInstancesRouter = createTRPCRouter({
         }
 
         if (pin) {
-          // Admin override deletes the existing pin (whether user-set or
-          // admin-set). No replacement pin written — once the consent
-          // gate has been spent, the user is free to re-establish their
-          // own pin if they want to block the next change.
-          await db
+          // Conditional delete tied to both the row id and the updated_at
+          // we observed. setMyPin uses onConflictDoUpdate which keeps the
+          // same row id but bumps updated_at, so checking id alone would
+          // miss in-place edits. Pinning updated_at catches both
+          // replacement (different id) and update (same id, newer
+          // updated_at). Empty returning() means the row changed.
+          // Admin override deletes any pin (user-set or admin-set). No
+          // replacement pin written — once the consent gate has been
+          // spent, the user is free to re-establish their own pin.
+          const deleted = await db
             .delete(kiloclaw_version_pins)
-            .where(eq(kiloclaw_version_pins.instance_id, input.instanceId));
+            .where(
+              and(
+                eq(kiloclaw_version_pins.instance_id, input.instanceId),
+                eq(kiloclaw_version_pins.id, pin.id),
+                eq(kiloclaw_version_pins.updated_at, pin.updated_at)
+              )
+            )
+            .returning({ id: kiloclaw_version_pins.id });
+
+          if (deleted.length === 0) {
+            throw new TRPCError({
+              code: 'PRECONDITION_FAILED',
+              message: 'PIN_EXISTS',
+            });
+          }
 
           // Sync the cleared pin into DO state. The follow-up restartMachine
           // call overwrites trackedImageTag anyway, but pushing the clear
