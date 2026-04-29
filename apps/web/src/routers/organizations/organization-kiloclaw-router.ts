@@ -814,10 +814,41 @@ export const organizationKiloclawRouter = createTRPCRouter({
           .max(128)
           .regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/)
           .optional(),
+        // Mirrors kiloclaw-router.restartMachine: when the redeploy targets a
+        // specific image tag, any existing pin is treated as a consent gate.
+        // The frontend dialog click flips this to true; backend deletes the
+        // pin row and pushes the clear to DO state before redeploying.
+        acknowledgePinRemoval: z.boolean().default(false),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const instance = await requireOrgInstance(ctx.user.id, input.organizationId);
+
+      // Pin consent gate. Symmetric with the personal user path: any pin
+      // (set by org member or admin) requires explicit acknowledgement
+      // before a version-changing redeploy proceeds.
+      if (input.imageTag) {
+        const [pin] = await db
+          .select({ image_tag: kiloclaw_version_pins.image_tag })
+          .from(kiloclaw_version_pins)
+          .where(eq(kiloclaw_version_pins.instance_id, instance.id))
+          .limit(1);
+
+        if (pin && !input.acknowledgePinRemoval) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'PIN_EXISTS',
+          });
+        }
+
+        if (pin) {
+          await db
+            .delete(kiloclaw_version_pins)
+            .where(eq(kiloclaw_version_pins.instance_id, instance.id));
+          await pushPinToWorker(ctx.user.id, instance.id, null);
+        }
+      }
+
       const token = generateApiToken(ctx.user, undefined, { expiresIn: TOKEN_EXPIRY.fiveMinutes });
       const client = new KiloClawUserClient(token);
       return client.restartMachine(input.imageTag ? { imageTag: input.imageTag } : undefined, {
@@ -1046,20 +1077,12 @@ export const organizationKiloclawRouter = createTRPCRouter({
         });
       }
 
-      const [existingPin] = await db
-        .select({ pinned_by: kiloclaw_version_pins.pinned_by })
-        .from(kiloclaw_version_pins)
-        .where(eq(kiloclaw_version_pins.instance_id, instance.id))
-        .limit(1);
-
-      if (existingPin && existingPin.pinned_by !== ctx.user.id) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message:
-            'Your version is pinned by an admin. Contact your Kilo admin to change or remove the pin.',
-        });
-      }
-
+      // Pins are advisory consent metadata. Either an org member or an
+      // admin can write/replace/delete the pin at any time — overrides
+      // happen through explicit upgrade/downgrade actions where the
+      // consent dialog enforces awareness, not through this metadata
+      // mutation. The upsert below handles overwriting any existing pin
+      // (including admin-set) with the caller's pin.
       let result: typeof kiloclaw_version_pins.$inferSelect | undefined;
       try {
         [result] = await db
@@ -1103,34 +1126,14 @@ export const organizationKiloclawRouter = createTRPCRouter({
   removeMyPin: organizationMemberMutationProcedure.mutation(async ({ ctx, input }) => {
     const instance = await requireOrgInstance(ctx.user.id, input.organizationId);
 
+    // Pins are advisory consent metadata — any org member or admin can
+    // clear it at any time. Idempotent: if no row exists, we still push
+    // the clear to the DO so a previously-failed worker sync can be
+    // retried by simply calling removeMyPin again.
     const [deleted] = await db
       .delete(kiloclaw_version_pins)
-      .where(
-        and(
-          eq(kiloclaw_version_pins.instance_id, instance.id),
-          eq(kiloclaw_version_pins.pinned_by, ctx.user.id)
-        )
-      )
+      .where(eq(kiloclaw_version_pins.instance_id, instance.id))
       .returning();
-
-    if (!deleted) {
-      // No self-set pin was deleted. Either an admin pin exists (forbid),
-      // or no pin exists at all. In the latter case we still push the
-      // clear to the DO so a previously-failed worker sync can be retried
-      // by simply calling removeMyPin again.
-      const [existingPin] = await db
-        .select({ pinned_by: kiloclaw_version_pins.pinned_by })
-        .from(kiloclaw_version_pins)
-        .where(eq(kiloclaw_version_pins.instance_id, instance.id))
-        .limit(1);
-
-      if (existingPin) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Your version is pinned by an admin. Contact your Kilo admin to remove the pin.',
-        });
-      }
-    }
 
     const workerSync = await pushPinToWorker(ctx.user.id, instance.id, null);
 
