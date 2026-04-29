@@ -28,6 +28,7 @@ import {
   kiloclaw_instances,
   kiloclaw_email_log,
   kiloclaw_cli_runs,
+  kilocode_users,
   cloud_agent_webhook_triggers,
   credit_transactions,
   organizations,
@@ -3301,6 +3302,49 @@ export const kiloclawRouter = createTRPCRouter({
           totalPages: Math.ceil(totalCount / limit),
         },
       };
+    }),
+
+  /**
+   * Read the signed in user's `kiloclaw_early_access` flag. When true, the
+   * rollout selector force includes the user's instances in any in flight
+   * candidate, regardless of bucket. Pin overrides still win per instance.
+   */
+  myEarlyAccess: baseProcedure.query(async ({ ctx }) => {
+    const [row] = await db
+      .select({ early_access: kilocode_users.kiloclaw_early_access })
+      .from(kilocode_users)
+      .where(eq(kilocode_users.id, ctx.user.id))
+      .limit(1);
+    return row?.early_access ?? false;
+  }),
+
+  /**
+   * Toggle the signed in user's own `kiloclaw_early_access` flag.
+   * Self serve counterpart of admin.kiloclawInstances.setEarlyAccess.
+   *
+   * Uses baseProcedure (not clawAccessProcedure) because the Settings page is
+   * shared between personal and org contexts. An org-only user — who has
+   * KiloClaw access via their org but no personal subscription/trial — must
+   * still be able to toggle this user-level preference for their org instance.
+   *
+   * Routes through the KiloClaw platform service (same path as the admin
+   * endpoint) so writes to this flag have a single choke-point — if that
+   * route ever gains side-effects (cache bust, audit log, DO notification),
+   * both admin and self-serve paths pick them up automatically.
+   */
+  setMyEarlyAccess: baseProcedure
+    .input(z.object({ value: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const client = new KiloClawInternalClient();
+      try {
+        const result = await client.setUserKiloclawEarlyAccess(ctx.user.id, input.value);
+        return { earlyAccess: result.earlyAccess };
+      } catch (err) {
+        if (err instanceof KiloClawApiError && err.statusCode === 404) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+        }
+        throw err;
+      }
     }),
 
   getMyPin: baseProcedure.query(async ({ ctx }) => {
