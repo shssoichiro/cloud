@@ -39,6 +39,7 @@ jest.mock('@slack/web-api', () => ({
 import type { Owner } from '@/lib/integrations/core/types';
 import type { SlackInstallation } from '@chat-adapter/slack';
 import {
+  deleteInstallationByTeamId,
   getMissingSlackScopes,
   SLACK_SCOPES,
   testConnection,
@@ -133,6 +134,25 @@ describe('slack-service uninstallApp', () => {
     await uninstallApp(owner, { deleteChatSdkInstallation });
 
     expect(deleteChatSdkInstallation).toHaveBeenCalledWith('T456');
+    expect(mockDeleteWhere).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('slack-service deleteInstallationByTeamId', () => {
+  beforeEach(() => {
+    mockLimit.mockReset();
+    mockDeleteWhere.mockReset();
+    mockDeleteWhere.mockResolvedValue(undefined);
+  });
+
+  it('deletes the platform integration and Chat SDK state for a Slack team', async () => {
+    mockLimit.mockResolvedValue([buildSlackIntegration()]);
+
+    await expect(deleteInstallationByTeamId('T123')).resolves.toEqual({
+      success: true,
+      deleted: true,
+    });
+
     expect(mockDeleteWhere).toHaveBeenCalledTimes(1);
   });
 });
