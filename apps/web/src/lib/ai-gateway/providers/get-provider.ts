@@ -1,6 +1,6 @@
 import type { GatewayRequest } from '@/lib/ai-gateway/providers/openrouter/types';
 import { shouldRouteToVercel } from '@/lib/ai-gateway/providers/vercel';
-import { kiloExclusiveModels } from '@/lib/ai-gateway/models';
+import { isKiloExclusiveModel, kiloExclusiveModels } from '@/lib/ai-gateway/models';
 import {
   getBYOKforOrganization,
   getBYOKforUser,
@@ -132,6 +132,13 @@ async function checkVercelBYOK(
   organizationId: string | undefined
 ): Promise<BYOKResult[] | null> {
   if (isAnonymousContext(user)) return null;
+  // Kilo-exclusive models are not routable through Vercel BYOK. Reasoning in particular
+  // breaks: the Vercel AI Gateway normalizes reasoning to each provider's upstream-native
+  // shape, whereas our Kilo-exclusive models are served through generic OpenAI-compatible
+  // endpoints (Martian, direct Alibaba, etc.) where that normalization doesn't apply and the
+  // response ends up corrupted. Skip the Vercel BYOK lookup entirely and let the caller fall
+  // through to the model's declared gateway.
+  if (isKiloExclusiveModel(requestedModel)) return null;
   const modelProviders = await getModelUserByokProviders(requestedModel);
   if (modelProviders.length === 0) return null;
   return organizationId
