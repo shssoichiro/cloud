@@ -358,6 +358,7 @@ export const organizationKiloclawRouter = createTRPCRouter({
         instanceId: null,
         inboundEmailAddress: null,
         inboundEmailEnabled: false,
+        scheduledAction: null,
       } satisfies KiloClawDashboardStatus;
     }
 
@@ -381,6 +382,11 @@ export const organizationKiloclawRouter = createTRPCRouter({
       instanceId: instance.id,
       inboundEmailAddress,
       inboundEmailEnabled: instance.inboundEmailEnabled,
+      // Org instances don't surface scheduled actions yet — the
+      // banner reads from kiloclaw.getStatus on the personal path,
+      // not org. Set null to satisfy the type. Lighting up the org
+      // banner is a follow-up.
+      scheduledAction: null,
     } satisfies KiloClawDashboardStatus;
   }),
 
