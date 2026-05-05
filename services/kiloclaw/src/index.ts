@@ -15,8 +15,9 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 import type { Context, Next } from 'hono';
 import { Hono } from 'hono';
 import { getCookie, deleteCookie } from 'hono/cookie';
+import type { z } from 'zod';
+import { sandboxIdSchema, type chatWebhookSchema } from '@kilocode/kilo-chat';
 
-import { chatWebhookRpcSchema } from '@kilocode/kilo-chat';
 import type { AppEnv, KiloClawEnv, ChatWebhookPayload } from './types';
 import type { SnapshotRestoreMessage } from './schemas/snapshot-restore';
 import { accessGatewayRoutes, publicRoutes, api, kiloclaw, platform, controller } from './routes';
@@ -1089,12 +1090,16 @@ export default class extends WorkerEntrypoint<KiloClawEnv> {
    * stale-online until staleness inference catches up, ~poll interval).
    */
   async deliverChatWebhook(payload: ChatWebhookPayload): Promise<void> {
-    const parsed = chatWebhookRpcSchema.parse(payload);
+    const { targetBotId, ...rpcPayload } = payload;
+    const webhookPayload = rpcPayload satisfies z.infer<typeof chatWebhookSchema>;
     const botPrefix = 'bot:kiloclaw:';
-    if (!parsed.targetBotId.startsWith(botPrefix)) {
-      throw new Error(`Invalid targetBotId: ${parsed.targetBotId}`);
+    if (!targetBotId.startsWith(botPrefix)) {
+      throw new Error(`Invalid targetBotId: ${targetBotId}`);
     }
-    const sandboxId = parsed.targetBotId.slice(botPrefix.length);
+    const sandboxId = targetBotId.slice(botPrefix.length);
+    if (!sandboxIdSchema.safeParse(sandboxId).success) {
+      throw new Error(`Invalid sandboxId derived from targetBotId: ${targetBotId}`);
+    }
 
     const { doKey, label } = await this.resolveChatWebhookDoKey(sandboxId);
     const getWebhookStub = () =>
@@ -1135,7 +1140,6 @@ export default class extends WorkerEntrypoint<KiloClawEnv> {
     );
 
     // Forward the webhook payload (without targetBotId) to the controller
-    const { targetBotId: _, ...webhookPayload } = parsed;
     const body = JSON.stringify(webhookPayload);
 
     const controller = new AbortController();

@@ -78,6 +78,11 @@ const KILOCLAW_CUSTOMIZER_PLUGIN_PATH = '/usr/local/lib/node_modules/@kiloclaw/k
 const KILOCLAW_MORNING_BRIEFING_PLUGIN_ID = 'kiloclaw-morning-briefing';
 const KILOCLAW_MORNING_BRIEFING_PLUGIN_PATH =
   '/usr/local/lib/node_modules/@kiloclaw/kiloclaw-morning-briefing';
+const LEGACY_STREAM_CHAT_PLUGIN_ID = 'openclaw-channel-streamchat';
+const LEGACY_STREAM_CHAT_PLUGIN_PATH =
+  '/usr/local/lib/node_modules/@wunderchat/openclaw-channel-streamchat';
+const KILO_CHAT_PLUGIN_ID = 'kilo-chat';
+const KILO_CHAT_PLUGIN_PATH = '/usr/local/lib/node_modules/@kiloclaw/kilo-chat';
 const KILO_EXA_PROVIDER_ID = 'kilo-exa';
 
 type KiloExaSearchMode = 'kilo-proxy' | 'disabled';
@@ -103,6 +108,39 @@ function resolveKiloExaSearchMode(value: string | undefined): KiloExaSearchModeS
 type ConfigObject = Record<string, any>;
 
 type EnvLike = Record<string, string | undefined>;
+
+export function sanitizeLegacyStreamChatConfig(config: ConfigObject): void {
+  if (config.channels && typeof config.channels === 'object' && !Array.isArray(config.channels)) {
+    delete config.channels.streamchat;
+  }
+
+  if (config.plugins && typeof config.plugins === 'object' && !Array.isArray(config.plugins)) {
+    if (
+      config.plugins.load &&
+      typeof config.plugins.load === 'object' &&
+      !Array.isArray(config.plugins.load) &&
+      Array.isArray(config.plugins.load.paths)
+    ) {
+      config.plugins.load.paths = config.plugins.load.paths.filter(
+        (pluginPath: unknown) => pluginPath !== LEGACY_STREAM_CHAT_PLUGIN_PATH
+      );
+    }
+
+    if (
+      config.plugins.entries &&
+      typeof config.plugins.entries === 'object' &&
+      !Array.isArray(config.plugins.entries)
+    ) {
+      delete config.plugins.entries[LEGACY_STREAM_CHAT_PLUGIN_ID];
+    }
+
+    if (Array.isArray(config.plugins.allow)) {
+      config.plugins.allow = config.plugins.allow.filter(
+        (pluginId: unknown) => pluginId !== LEGACY_STREAM_CHAT_PLUGIN_ID
+      );
+    }
+  }
+}
 
 const INBOUND_EMAIL_HOOK_ID = 'cloudflare-email-inbound';
 const DEFAULT_HOOK_SESSION_KEY_PREFIX = 'hook:';
@@ -200,6 +238,8 @@ export function generateBaseConfig(
     }
     console.log('No existing config file, starting with empty config');
   }
+
+  sanitizeLegacyStreamChatConfig(config);
 
   config.gateway = config.gateway ?? {};
   config.channels = config.channels ?? {};
@@ -472,34 +512,6 @@ export function generateBaseConfig(
     config.plugins.entries.slack.enabled = true;
   }
 
-  // Stream Chat default channel (auto-provisioned at provision time)
-  if (env.STREAM_CHAT_API_KEY && env.STREAM_CHAT_BOT_USER_ID && env.STREAM_CHAT_BOT_USER_TOKEN) {
-    config.channels.streamchat = config.channels.streamchat ?? {};
-    config.channels.streamchat.apiKey = env.STREAM_CHAT_API_KEY;
-    config.channels.streamchat.botUserId = env.STREAM_CHAT_BOT_USER_ID;
-    config.channels.streamchat.botUserToken = env.STREAM_CHAT_BOT_USER_TOKEN;
-    config.channels.streamchat.botUserName = 'KiloClaw';
-    config.channels.streamchat.enabled = true;
-
-    config.plugins = config.plugins ?? {};
-    config.plugins.load = config.plugins.load ?? {};
-    config.plugins.load.paths = Array.isArray(config.plugins.load.paths)
-      ? config.plugins.load.paths
-      : [];
-    const pluginPath = '/usr/local/lib/node_modules/@wunderchat/openclaw-channel-streamchat';
-    if (!(config.plugins.load.paths as string[]).includes(pluginPath)) {
-      (config.plugins.load.paths as string[]).push(pluginPath);
-    }
-
-    config.plugins.entries = config.plugins.entries ?? {};
-    // Entry key must match the plugin's manifest id (openclaw.plugin.json).
-    // The fork's manifest declares id "openclaw-channel-streamchat" to align
-    // with the idHint that OpenClaw derives from the package name.
-    const scEntry = 'openclaw-channel-streamchat';
-    config.plugins.entries[scEntry] = config.plugins.entries[scEntry] ?? {};
-    config.plugins.entries[scEntry].enabled = true;
-  }
-
   // Session — default DM scope to per-channel-peer so each channel+peer
   // combination gets its own session. OpenClaw's onboard sets this for new
   // instances, but legacy instances may not have it.
@@ -520,14 +532,16 @@ export function generateBaseConfig(
   config.plugins.load.paths = Array.isArray(config.plugins.load.paths)
     ? config.plugins.load.paths
     : [];
-  const kiloChatPluginPath = '/usr/local/lib/node_modules/@kiloclaw/kilo-chat';
-  if (!(config.plugins.load.paths as string[]).includes(kiloChatPluginPath)) {
-    (config.plugins.load.paths as string[]).push(kiloChatPluginPath);
+  if (!(config.plugins.load.paths as string[]).includes(KILO_CHAT_PLUGIN_PATH)) {
+    (config.plugins.load.paths as string[]).push(KILO_CHAT_PLUGIN_PATH);
+  }
+  if (Array.isArray(config.plugins.allow) && !config.plugins.allow.includes(KILO_CHAT_PLUGIN_ID)) {
+    config.plugins.allow.push(KILO_CHAT_PLUGIN_ID);
   }
 
   config.plugins.entries = config.plugins.entries ?? {};
-  config.plugins.entries['kilo-chat'] = config.plugins.entries['kilo-chat'] ?? {};
-  config.plugins.entries['kilo-chat'].enabled = true;
+  config.plugins.entries[KILO_CHAT_PLUGIN_ID] = config.plugins.entries[KILO_CHAT_PLUGIN_ID] ?? {};
+  config.plugins.entries[KILO_CHAT_PLUGIN_ID].enabled = true;
 
   // Webhook hooks configuration for controller-mediated inbound events.
   // hooks.token stays local to the machine; external Workers authenticate to

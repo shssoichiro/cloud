@@ -593,14 +593,6 @@ export type UpdateProviderRolloutResponse = {
   availability: ProviderRolloutAvailability;
 };
 
-/** Stream Chat credentials for a user's KiloClaw channel */
-export type ChatCredentials = {
-  apiKey: string;
-  userId: string;
-  userToken: string;
-  channelId: string;
-} | null;
-
 /** Combined status returned by tRPC getStatus */
 export type KiloClawDashboardStatus = PlatformStatusResponse & {
   /**

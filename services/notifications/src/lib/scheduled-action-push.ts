@@ -5,51 +5,23 @@
  * deleteStaleTokens, sendPush, enqueueReceipts} dependency object.
  */
 
-import { z } from 'zod';
+import {
+  sendScheduledActionNoticeInputSchema,
+  type PushData,
+  type ScheduledActionEvent,
+  type SendScheduledActionNoticeParams,
+  type SendScheduledActionNoticeResult,
+} from '@kilocode/notifications';
 
 import type { ExpoPushMessage, SendResult, TicketTokenPair } from './expo-push';
 
-export type ScheduledActionEvent =
-  | 'scheduled_restart_notice'
-  | 'scheduled_restart_cancelled'
-  | 'scheduled_version_change_notice'
-  | 'scheduled_version_change_cancelled';
+export type {
+  ScheduledActionEvent,
+  SendScheduledActionNoticeParams,
+  SendScheduledActionNoticeResult,
+} from '@kilocode/notifications';
 
-export type SendScheduledActionNoticeParams = {
-  userId: string;
-  /** Chat route id surfaced on the device. Currently this is the instance sandboxId. */
-  instanceId: string;
-  /** Included for worker-side logs only. */
-  sandboxId: string;
-  event: ScheduledActionEvent;
-  instanceName: string | null;
-  /** When the action is scheduled to run. ISO 8601. */
-  scheduledAt: string;
-  /** Target image_tag for version_change events; null for restart events. */
-  targetImageTag?: string | null;
-};
-
-export type SendScheduledActionNoticeResult = {
-  tokenCount: number;
-  sent: number;
-  staleTokens: number;
-  receiptCount: number;
-};
-
-export const ParamsSchema = z.object({
-  userId: z.string().min(1),
-  instanceId: z.string().min(1),
-  sandboxId: z.string(),
-  event: z.enum([
-    'scheduled_restart_notice',
-    'scheduled_restart_cancelled',
-    'scheduled_version_change_notice',
-    'scheduled_version_change_cancelled',
-  ]),
-  instanceName: z.string().nullable(),
-  scheduledAt: z.string(),
-  targetImageTag: z.string().nullable().optional(),
-});
+export const ParamsSchema = sendScheduledActionNoticeInputSchema;
 
 const BODY_MAX_LENGTH = 100;
 
@@ -120,19 +92,22 @@ export function buildScheduledActionMessages(
   const title = buildTitle(params.event, params.instanceName);
   const body = buildBody(params);
 
-  return tokens.map(token => ({
-    to: token,
-    title,
-    body,
-    // Keep in sync with NotificationData in apps/mobile/src/lib/notifications.ts
-    data: {
+  return tokens.map(token => {
+    const data = {
       type: 'scheduled-action',
       event: params.event,
-      instanceId: params.instanceId,
-    },
-    sound: 'default' as const,
-    priority: 'high' as const,
-  }));
+      sandboxId: params.sandboxId,
+    } satisfies PushData;
+
+    return {
+      to: token,
+      title,
+      body,
+      data,
+      sound: 'default',
+      priority: 'high',
+    } satisfies ExpoPushMessage;
+  });
 }
 
 export type ScheduledActionDispatchDeps = {

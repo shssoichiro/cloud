@@ -55,6 +55,7 @@ function fakeDeps(overrides: Partial<ScheduledActionDispatchDeps> = {}): {
           token: typeof m.to === 'string' ? m.to : m.to[0],
         })),
         staleTokens: [],
+        ticketErrors: [],
       } satisfies SendResult;
     },
     enqueueReceipts: async pairs => {
@@ -79,7 +80,7 @@ describe('buildScheduledActionMessages', () => {
     expect(m.data).toMatchObject({
       type: 'scheduled-action',
       event: 'scheduled_restart_notice',
-      instanceId: 'sandbox-1',
+      sandboxId: 'ki_deadbeef',
     });
     expect(m.sound).toBe('default');
     expect(m.priority).toBe('high');
@@ -183,6 +184,7 @@ describe('dispatchScheduledActionPush', () => {
       sendPush: async () => ({
         ticketTokenPairs: [{ ticketId: 't-0', token: 'ExponentPushToken[aaa]' }],
         staleTokens: ['ExponentPushToken[bbb]'],
+        ticketErrors: [],
       }),
     });
     const result = await dispatchScheduledActionPush(baseParams(), deps);
@@ -193,7 +195,7 @@ describe('dispatchScheduledActionPush', () => {
 
   it('skips enqueueReceipts when no tickets returned', async () => {
     const { deps, calls } = fakeDeps({
-      sendPush: async () => ({ ticketTokenPairs: [], staleTokens: [] }),
+      sendPush: async () => ({ ticketTokenPairs: [], staleTokens: [], ticketErrors: [] }),
     });
     await dispatchScheduledActionPush(baseParams(), deps);
 
