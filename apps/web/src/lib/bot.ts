@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { Chat, type ActionEvent, type Message, type Thread, type WebhookOptions } from 'chat';
+import { createGitHubAdapter, type GitHubAdapter } from '@chat-adapter/github';
 import { createSlackAdapter, SlackAdapter } from '@chat-adapter/slack';
 import { captureException } from '@sentry/nextjs';
 import type { HomeView } from '@slack/types';
@@ -10,12 +11,15 @@ import {
   getPlatformIdentity,
   getPlatformIntegration,
   getPlatformIntegrationByBotUserId,
+  isGitHubBotEnabled,
 } from '@/lib/bot/platform-helpers';
+import { PLATFORM } from '@/lib/integrations/core/constants';
 import { LINK_ACCOUNT_ACTION_PREFIX, promptLinkAccount } from '@/lib/bot/link-account';
 import { findUserById } from '@/lib/user';
 import { processLinkedMessage } from '@/lib/bot/run';
 import { createChatState } from '@/lib/bot/state';
 import { SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SLACK_SIGNING_SECRET } from '@/lib/config.server';
+import { getGitHubAppCredentials } from '@/lib/integrations/platforms/github/app-selector';
 
 const SLACK_ASSISTANT_SUGGESTED_PROMPTS = [
   {
@@ -242,13 +246,18 @@ function buildSlackAppHomeView() {
   } satisfies HomeView;
 }
 
-function createKiloBot(slackAdapter: ReturnType<typeof createSlackAdapter>) {
+function createKiloBot(
+  slackAdapter: ReturnType<typeof createSlackAdapter>,
+  githubAdapter: GitHubAdapter
+) {
   const chatBot = new Chat({
     userName: process.env.NODE_ENV === 'production' ? 'Kilo' : 'Henk',
     adapters: {
+      github: githubAdapter,
       slack: slackAdapter,
     },
     state: createChatState(),
+    logger: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
   });
 
   chatBot.webhooks.slack = (request, options) =>
@@ -258,7 +267,9 @@ function createKiloBot(slackAdapter: ReturnType<typeof createSlackAdapter>) {
     thread: Thread,
     message: Message
   ): Promise<void> {
-    const identity = getPlatformIdentity(thread, message);
+    const identity = await getPlatformIdentity(thread, message, githubThread =>
+      githubAdapter.getInstallationId(githubThread)
+    );
     const [platformIntegration, kiloUserId] = await Promise.all([
       getPlatformIntegration(identity),
       resolveKiloUserId(chatBot.getState(), identity),
@@ -271,8 +282,16 @@ function createKiloBot(slackAdapter: ReturnType<typeof createSlackAdapter>) {
       return;
     }
 
+    // Canary gate: the GitHub bot path is opt-in per integration via
+    // `metadata.bot_enabled`. Webhooks still arrive at the adapter so this
+    // handler runs, but we drop out before any user-visible side effects
+    // (no link prompt, no agent run, no GitHub API calls).
+    if (identity.platform === PLATFORM.GITHUB && !isGitHubBotEnabled(platformIntegration)) {
+      return;
+    }
+
     if (!kiloUserId) {
-      await promptLinkAccount(thread, message, identity, chatBot.getState());
+      await promptLinkAccount(thread, message, identity, platformIntegration, chatBot.getState());
       return;
     }
 
@@ -280,7 +299,7 @@ function createKiloBot(slackAdapter: ReturnType<typeof createSlackAdapter>) {
 
     if (!user) {
       await unlinkKiloUser(chatBot.getState(), identity);
-      await promptLinkAccount(thread, message, identity, chatBot.getState());
+      await promptLinkAccount(thread, message, identity, platformIntegration, chatBot.getState());
       return;
     }
 
@@ -385,4 +404,12 @@ const slackAdapter = createSlackAdapter({
   signingSecret: SLACK_SIGNING_SECRET,
 });
 
-export const bot = createKiloBot(slackAdapter);
+const githubAppCredentials = getGitHubAppCredentials('standard');
+const githubAdapter = createGitHubAdapter({
+  appId: githubAppCredentials.appId,
+  privateKey: githubAppCredentials.privateKey,
+  webhookSecret: githubAppCredentials.webhookSecret,
+  userName: process.env.NODE_ENV === 'development' ? 'kilocode-dev' : 'kilocode-bot',
+});
+
+export const bot = createKiloBot(slackAdapter, githubAdapter);
